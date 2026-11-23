@@ -45,7 +45,7 @@ namespace Overtime.Editor
             hints.rectTransform.pivot = Vector2.one;
             hints.rectTransform.anchoredPosition = new Vector2(-44f, -44f);
             var group = hints.gameObject.AddComponent<CanvasGroup>();
-            var hintText = "WASD   MOVE     MOUSE   LOOK\nSPACE   JUMP     HOLD SPACE   ATTACH\nLMB   CAPTURE / FIRE     ESC   RELEASE\nR   RESET    H   HINTS    F3   DEBUG    F4   MOTION";
+            var hintText = "WASD   MOVE     MOUSE   LOOK\nSPACE   TAP JUMP / HOLD  ATTACH/DROP\nLMB   CAPTURE / FIRE     ESC   RELEASE\nR   RESET    H   HINTS    F3   DEBUG    F4   MOTION";
             Label("Bindings", hints.transform, new Vector2(16f, 10f), new Vector2(386f, 114f), hintText, 16f, s_paper);
 
             var debugPanel = Panel("Debug Overlay", root.transform, Vector2.up, Vector2.zero, new Vector2(420f, 234f), s_ink);

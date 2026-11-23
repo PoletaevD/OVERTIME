@@ -6,6 +6,20 @@ namespace Overtime
     [RequireComponent(typeof(CapsuleCollider))]
     internal sealed class GravityMotor : MonoBehaviour
     {
+        internal enum TransitionReason
+        {
+            Spawn,
+            ManualAttachment,
+            InnerCorner,
+            OuterCorner,
+            Jump,
+            EdgeRelease,
+            ManualRelease,
+            RotationBlocked
+        }
+
+        private const float ContactProbeDistance = 0.12f;
+
         [Header("Movement")]
         [SerializeField, Min(0.1f)] private float _walkSpeed = 9f;
         [SerializeField, Min(0.1f)] private float _acceleration = 60f;
@@ -25,9 +39,12 @@ namespace Overtime
         [SerializeField, Min(0.01f)] private float _rotationDuration = 0.21f;
         [SerializeField, Range(0.1f, 1f)] private float _transitionSensitivity = 0.46f;
         [SerializeField, Range(0.1f, 0.99f)] private float _normalHysteresis = 0.82f;
-        [SerializeField, Min(0f)] private float _detachmentGrace = 0.34f;
+        [SerializeField, Min(0f), InspectorName("Corner Transition Grace")] private float _detachmentGrace = 0.10f;
         [SerializeField, Min(0f)] private float _reattachDelay = 0.36f;
-        [SerializeField, Min(0f)] private float _attachmentHoldDuration = 0.11f;
+        [SerializeField, Min(0f), InspectorName("Manual Attachment Hold Duration")] private float _attachmentHoldDuration = 0.12f;
+        [SerializeField, Min(0.1f)] private float _magneticReleaseHoldDuration = 0.35f;
+        [SerializeField, Min(0.1f)] private float _automaticCornerDetectionDistance = 0.95f;
+        [SerializeField, Min(0f)] private float _automaticCornerMinimumSpeed = 1.8f;
 
         private CapsuleCollision _collision;
         private GravitySurfaceProbe _probe;
@@ -35,22 +52,32 @@ namespace Overtime
         private Quaternion _orientation;
         private Quaternion _rotationStart;
         private Quaternion _rotationTarget;
-        private Vector3 _blockedNormal;
-        private Vector3 _edgeUp;
-        private float _blockedTime;
+        private RaycastHit _lastSupport;
+        private RaycastHit _manualCandidate;
+        private RaycastHit _outerCorner;
+        private RaycastHit _previousSupport;
+        private Vector3 _heldCornerTravel;
         private float _rotationProgress;
-        private float _surfaceLock;
+        private float _rotationBlockedTime;
+        private float _cornerReverseDelay;
         private float _timeWithoutGround;
         private float _jumpRemaining;
-        private float _ignoreGround;
+        private float _reattachRemaining;
         private float _holdTime;
-        private float _edgeHeight = float.NegativeInfinity;
+        private float _magneticHoldTime;
         private bool _magnetic;
+        private bool _holdingMagneticJump;
+        private bool _waitForNewPress;
 
         internal Vector3 Velocity { get; private set; }
         internal Vector3 Up { get; private set; } = Vector3.up;
         internal Vector3 ContactNormal { get; private set; }
         internal Collider Surface { get; private set; }
+        internal Collider ManualCandidate => _manualCandidate.collider;
+        internal Collider AutomaticCandidate { get; private set; }
+        internal float ManualAttachmentProgress => ManualCandidate != null ? Mathf.Clamp01(_holdTime / Mathf.Max(_attachmentHoldDuration, 0.001f)) : 0f;
+        internal bool JumpInFlight { get; private set; }
+        internal TransitionReason CurrentTransitionReason { get; private set; }
         internal bool Grounded => Surface != null;
         internal bool Magnetic => _magnetic;
         internal bool Transitioning => _rotationProgress < 1f;
@@ -77,74 +104,108 @@ namespace Overtime
             Velocity = Vector3.zero;
             Surface = null;
             ContactNormal = Vector3.zero;
+            Obstructed = false;
             _magnetic = false;
+            ClearMagneticHold();
+            _waitForNewPress = false;
+            JumpInFlight = false;
+            CurrentTransitionReason = TransitionReason.Spawn;
+            _lastSupport = default;
+            _outerCorner = default;
+            _previousSupport = default;
+            AutomaticCandidate = null;
             _rotationProgress = 1f;
-            _surfaceLock = 0f;
-            _ignoreGround = 0f;
-            _blockedTime = 0f;
+            _rotationBlockedTime = 0f;
+            _cornerReverseDelay = 0f;
+            _reattachRemaining = 0f;
             _timeWithoutGround = float.PositiveInfinity;
             _jumpRemaining = 0f;
-            _holdTime = 0f;
-            _edgeHeight = float.NegativeInfinity;
+            ClearManualCandidate();
             transform.SetPositionAndRotation(_center, _orientation);
         }
 
         internal void QueueJump()
         {
+            _waitForNewPress = false;
+            ClearMagneticHold();
+            _holdingMagneticJump = _magnetic;
             _jumpRemaining = _jumpBuffer;
         }
 
         internal void Step(Vector2 input, Vector3 heading, bool jumpHeld, float deltaTime)
         {
-            _blockedTime = Mathf.Max(0f, _blockedTime - deltaTime);
-            _surfaceLock = Mathf.Max(0f, _surfaceLock - deltaTime);
-            _ignoreGround = Mathf.Max(0f, _ignoreGround - deltaTime);
-            _holdTime = jumpHeld ? _holdTime + deltaTime : 0f;
-            var wish = GravityFrame.MoveDirection(input, heading, Up);
-            var hasSupport = FindSupport(out _);
-            _timeWithoutGround = hasSupport ? 0f : _timeWithoutGround + deltaTime;
-
-            var aim = wish.sqrMagnitude > 0.01f ? wish.normalized : GravityFrame.Tangent(heading, Up);
-            var canRoundEdge = wish.sqrMagnitude > 0.01f && !hasSupport && _timeWithoutGround <= _detachmentGrace;
-            var candidate = default(RaycastHit);
-            var edgeHeight = float.NegativeInfinity;
-            var wantsAttachment = jumpHeld && _surfaceLock <= 0f && !Transitioning && _probe.Find(_center, Up, aim, _blockedTime > 0f ? _blockedNormal : Vector3.zero, _detectionDistance, _transitionSensitivity, _normalHysteresis, canRoundEdge, out candidate, out edgeHeight);
-            var decidingAttachment = wantsAttachment && _holdTime < _attachmentHoldDuration;
-            if (wantsAttachment && !decidingAttachment)
+            _cornerReverseDelay = Mathf.Max(0f, _cornerReverseDelay - deltaTime);
+            _reattachRemaining = Mathf.Max(0f, _reattachRemaining - deltaTime);
+            if (!Transitioning)
             {
-                var oldUp = Up;
-                ChangeGravity(candidate.normal.normalized, heading, true);
-                _edgeUp = oldUp;
-                _edgeHeight = edgeHeight;
-                wish = GravityFrame.Transport(oldUp, Up, heading) * wish;
-                hasSupport = false;
-                _jumpRemaining = 0f;
+                AutomaticCandidate = null;
             }
-            else if (_magnetic && _timeWithoutGround > _detachmentGrace && !Transitioning)
+
+            if (!jumpHeld)
             {
-                var oldUp = Up;
-                ChangeGravity(Vector3.up, heading, false);
-                wish = GravityFrame.Transport(oldUp, Up, heading) * wish;
+                _waitForNewPress = false;
+                ClearMagneticHold();
+            }
+
+            var wish = GravityFrame.MoveDirection(input, heading, Up);
+            var hasSupport = FindSupport(out var support);
+            if (hasSupport)
+            {
+                RememberSupport(support);
+            }
+            else
+            {
+                _timeWithoutGround += deltaTime;
+            }
+
+            var liftOff = false;
+            var coastPastEdge = false;
+            var hasManualCandidate = UpdateManualCandidate(wish, heading, jumpHeld, deltaTime);
+            var canJump = _jumpRemaining > 0f && !JumpInFlight && (!Transitioning || (_magnetic && hasSupport)) && _timeWithoutGround <= _coyoteTime;
+            if (canJump && !hasManualCandidate)
+            {
+                liftOff = true;
+                JumpInFlight = true;
+                CurrentTransitionReason = TransitionReason.Jump;
+                _reattachRemaining = _reattachDelay;
+                _jumpRemaining = 0f;
                 hasSupport = false;
+                AutomaticCandidate = null;
+                Surface = null;
+                ContactNormal = Vector3.zero;
+                _timeWithoutGround = float.PositiveInfinity;
+            }
+            else if (hasManualCandidate && _holdTime >= _attachmentHoldDuration)
+            {
+                wish = ChangeGravity(_manualCandidate.normal, heading, wish, TransitionReason.ManualAttachment);
+                ClearManualCandidate();
+                _jumpRemaining = 0f;
+                hasSupport = false;
+            }
+            else if (_magnetic && !JumpInFlight)
+            {
+                hasSupport = FollowSurface(heading, ref wish, hasSupport, out coastPastEdge);
+            }
+
+            if (_holdingMagneticJump && ResolveMagneticHold(heading, ref wish, deltaTime))
+            {
+                hasSupport = false;
+                coastPastEdge = false;
+            }
+
+            if (!(canJump && hasManualCandidate))
+            {
+                _jumpRemaining = Mathf.Max(0f, _jumpRemaining - deltaTime);
             }
 
             UpdateCapsuleRotation(deltaTime);
-            var velocity = Accelerate(wish, hasSupport, deltaTime);
-            if (_jumpRemaining > 0f && !decidingAttachment && _timeWithoutGround <= _coyoteTime && _ignoreGround <= 0f && _surfaceLock <= 0f)
+            var velocity = Accelerate(wish, hasSupport, coastPastEdge, deltaTime);
+            if (liftOff)
             {
-                _blockedNormal = Up;
-                _blockedTime = _reattachDelay;
-                _ignoreGround = 0.14f;
-                _timeWithoutGround = _coyoteTime + deltaTime;
-                _jumpRemaining = 0f;
                 velocity = Vector3.ProjectOnPlane(velocity, Up) + Up * _jumpSpeed;
                 Jumped?.Invoke();
             }
 
-            if (!decidingAttachment)
-            {
-                _jumpRemaining -= deltaTime;
-            }
             var downwardSpeed = Mathf.Max(0f, Vector3.Dot(-Up, velocity));
             Obstructed = _collision.Move(ref _center, _orientation * Vector3.up, ref velocity, deltaTime);
             Velocity = velocity;
@@ -152,7 +213,136 @@ namespace Overtime
             transform.SetPositionAndRotation(_center, _orientation);
         }
 
-        private Vector3 Accelerate(Vector3 wish, bool hasSupport, float deltaTime)
+        private bool UpdateManualCandidate(Vector3 wish, Vector3 heading, bool jumpHeld, float deltaTime)
+        {
+            var aim = wish.sqrMagnitude > 0.01f ? wish.normalized : GravityFrame.Tangent(heading, Up);
+            if (!jumpHeld || _magnetic || _waitForNewPress || Transitioning || _reattachRemaining > 0f || !_probe.FindManual(_center, Up, aim, _detectionDistance, _transitionSensitivity, _normalHysteresis, out var candidate))
+            {
+                ClearManualCandidate();
+                return false;
+            }
+
+            if (_manualCandidate.collider != candidate.collider || Vector3.Dot(_manualCandidate.normal, candidate.normal) < 0.99f)
+            {
+                _holdTime = 0f;
+            }
+
+            _manualCandidate = candidate;
+            _holdTime += deltaTime;
+            return true;
+        }
+
+        private void ClearManualCandidate()
+        {
+            _manualCandidate = default;
+            _holdTime = 0f;
+        }
+
+        private bool FollowSurface(Vector3 heading, ref Vector3 wish, bool hasSupport, out bool coastPastEdge)
+        {
+            coastPastEdge = false;
+            if (FindAutomaticCorner(wish, Vector3.ProjectOnPlane(Velocity, Up), out var next, out var outer))
+            {
+                AutomaticCandidate = next.collider;
+                coastPastEdge = !HasCornerClearance(next, outer);
+                if (!coastPastEdge)
+                {
+                    wish = TurnCorner(next, outer, heading, wish);
+                    return false;
+                }
+            }
+
+            if (!hasSupport && !coastPastEdge && (!Transitioning || _lastSupport.collider != null) && _timeWithoutGround >= _detachmentGrace)
+            {
+                wish = ChangeGravity(Vector3.up, heading, wish, TransitionReason.EdgeRelease);
+            }
+
+            return hasSupport;
+        }
+
+        private bool ResolveMagneticHold(Vector3 heading, ref Vector3 wish, float deltaTime)
+        {
+            _magneticHoldTime += deltaTime;
+            var tangent = Vector3.ProjectOnPlane(Velocity, Up);
+            var hasCorner = FindAutomaticCorner(wish, tangent, out var next, out var outer);
+            if (hasCorner)
+            {
+                _heldCornerTravel = tangent;
+            }
+            else if (FindAutomaticCorner(wish, _heldCornerTravel, out next, out outer) && !outer && _collision.Cast(_center, _orientation * Vector3.up, _heldCornerTravel.normalized, ContactProbeDistance, out var obstruction) && obstruction.collider == next.collider && Vector3.Dot(obstruction.normal, next.normal) >= _normalHysteresis)
+            {
+                // Preserve the approach while this face blocks the capsule and the player still presses toward it.
+                hasCorner = true;
+            }
+            else
+            {
+                _heldCornerTravel = Vector3.zero;
+            }
+
+            if (hasCorner)
+            {
+                AutomaticCandidate = next.collider;
+            }
+
+            if (_magneticHoldTime < _magneticReleaseHoldDuration || (hasCorner && !HasCornerClearance(next, outer)))
+            {
+                return false;
+            }
+
+            wish = hasCorner ? TurnCorner(next, outer, heading, wish) : ChangeGravity(Vector3.up, heading, wish, TransitionReason.ManualRelease);
+            return true;
+        }
+
+        private void ClearMagneticHold()
+        {
+            _holdingMagneticJump = false;
+            _magneticHoldTime = 0f;
+            _heldCornerTravel = Vector3.zero;
+        }
+
+        private bool FindAutomaticCorner(Vector3 wish, Vector3 tangent, out RaycastHit next, out bool outer)
+        {
+            next = default;
+            outer = false;
+            if (_lastSupport.collider == null || wish.sqrMagnitude <= 0.01f || tangent.magnitude < _automaticCornerMinimumSpeed)
+            {
+                return false;
+            }
+
+            var travel = tangent.normalized;
+            var desired = wish.normalized;
+            if (Vector3.Dot(travel, desired) <= 0.5f)
+            {
+                return false;
+            }
+
+            var hasFooting = _probe.HasFooting(_center, Up, _lastSupport.point, _normalHysteresis);
+            if (!_probe.FindCorner(_center, Up, travel, desired, _lastSupport.point, _automaticCornerDetectionDistance, _normalHysteresis, hasFooting, out next, out outer))
+            {
+                return false;
+            }
+
+            if (_cornerReverseDelay > 0f && _previousSupport.collider != null && Vector3.Dot(next.normal, _previousSupport.normal) >= _normalHysteresis && Mathf.Abs(Vector3.Dot(next.point - _previousSupport.point, next.normal)) < 0.12f)
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool HasCornerClearance(RaycastHit next, bool outer)
+        {
+            return !outer || Vector3.Dot(_center - next.point, next.normal) >= _collision.Radius + 0.04f;
+        }
+
+        private Vector3 TurnCorner(RaycastHit next, bool outer, Vector3 heading, Vector3 wish)
+        {
+            var transportedWish = ChangeGravity(next.normal, heading, wish, outer ? TransitionReason.OuterCorner : TransitionReason.InnerCorner);
+            _outerCorner = outer ? next : default;
+            return transportedWish;
+        }
+
+        private Vector3 Accelerate(Vector3 wish, bool hasSupport, bool coastPastEdge, float deltaTime)
         {
             var vertical = Vector3.Dot(Velocity, Up);
             var horizontal = Vector3.ProjectOnPlane(Velocity, Up);
@@ -164,15 +354,13 @@ namespace Overtime
             }
 
             var gravity = _magnetic && vertical <= 0f ? _attachmentAcceleration : _gravityForce;
-            vertical = hasSupport ? -2.4f : Mathf.Max(-35f, vertical - gravity * deltaTime);
-            if (Vector3.Dot(_center, _edgeUp) > _edgeHeight && !float.IsNegativeInfinity(_edgeHeight))
+            if (coastPastEdge)
             {
-                // Clear the old top before pulling inward so a convex turn cannot cut through the lip.
-                vertical = 0.85f;
+                vertical = Mathf.Max(0f, vertical);
             }
             else
             {
-                _edgeHeight = float.NegativeInfinity;
+                vertical = hasSupport ? -2.4f : Mathf.Max(-35f, vertical - gravity * deltaTime);
             }
 
             return Vector3.ClampMagnitude(horizontal, _maximumSpeed) + Up * vertical;
@@ -182,7 +370,16 @@ namespace Overtime
         {
             var axis = _orientation * Vector3.up;
             hit = default;
-            return _ignoreGround <= 0f && _collision.Cast(_center, axis, -Up, 0.12f, out hit) && Vector3.Dot(hit.normal, Up) > 0.69f;
+            return (!JumpInFlight || Vector3.Dot(Velocity, Up) <= 0f) && _collision.Cast(_center, axis, -Up, ContactProbeDistance, out hit) && Vector3.Dot(hit.normal, Up) > 0.69f;
+        }
+
+        private void RememberSupport(RaycastHit support)
+        {
+            _timeWithoutGround = 0f;
+            if (Vector3.Dot(support.normal, Up) >= _normalHysteresis)
+            {
+                _lastSupport = support;
+            }
         }
 
         private void UpdateContact(float downwardSpeed)
@@ -197,31 +394,51 @@ namespace Overtime
 
             Surface = ground.collider;
             ContactNormal = ground.normal;
+            RememberSupport(ground);
+            JumpInFlight = false;
             if (!wasGrounded && downwardSpeed > 1.8f)
             {
                 Landed?.Invoke(Mathf.Clamp01(downwardSpeed / 12f));
             }
         }
 
-        private void ChangeGravity(Vector3 nextUp, Vector3 heading, bool magnet)
+        private Vector3 ChangeGravity(Vector3 nextUp, Vector3 heading, Vector3 wish, TransitionReason reason)
         {
             var previousUp = Up;
             var transport = GravityFrame.Transport(previousUp, nextUp, heading);
-            var tangent = Vector3.ProjectOnPlane(Velocity, previousUp);
-            Velocity = magnet ? transport * tangent : Velocity;
+            var releasing = reason is TransitionReason.EdgeRelease or TransitionReason.ManualRelease;
+            Velocity = releasing ? Velocity - Vector3.up * Mathf.Max(0f, Velocity.y) : transport * Vector3.ProjectOnPlane(Velocity, previousUp);
             Up = nextUp;
-            _magnetic = magnet && Vector3.Dot(nextUp, Vector3.up) < 0.999f;
-            _edgeHeight = float.NegativeInfinity;
+            _magnetic = Vector3.Dot(Up, Vector3.up) < 0.999f;
+            if (!_magnetic)
+            {
+                // Returning to world gravity ends the gesture that started on a magnetic face.
+                _waitForNewPress = true;
+                _jumpRemaining = 0f;
+            }
 
-            _blockedNormal = previousUp;
-            _blockedTime = _reattachDelay;
-            _surfaceLock = _rotationDuration;
+            ClearMagneticHold();
+            JumpInFlight = false;
+            CurrentTransitionReason = reason;
+
+            var previousTarget = Transitioning ? _rotationTarget : _orientation;
+            _previousSupport = _lastSupport;
+            _lastSupport = default;
+            _outerCorner = default;
+            _cornerReverseDelay = _rotationDuration + 0.08f;
             _timeWithoutGround = 0f;
-            _rotationProgress = 0f;
+            _rotationBlockedTime = 0f;
             _rotationStart = _orientation;
-            _rotationTarget = transport * _orientation;
+            _rotationTarget = transport * previousTarget;
+            _rotationProgress = Quaternion.Angle(_rotationStart, _rotationTarget) < 0.01f ? 1f : 0f;
             Surface = null;
-            GravityChanged?.Invoke(transport);
+            ContactNormal = Vector3.zero;
+            if (Vector3.Dot(previousUp, nextUp) < 0.99999f)
+            {
+                GravityChanged?.Invoke(transport);
+            }
+
+            return transport * wish;
         }
 
         private void UpdateCapsuleRotation(float deltaTime)
@@ -233,24 +450,56 @@ namespace Overtime
 
             var progress = Mathf.Min(1f, _rotationProgress + deltaTime / _rotationDuration);
             var rotation = Quaternion.Slerp(_rotationStart, _rotationTarget, Mathf.SmoothStep(0f, 1f, progress));
-            if (_collision.Resolve(ref _center, rotation, 0.16f))
+            var center = _center;
+            if (TryRotate(ref center, rotation))
             {
+                _center = center;
                 _rotationProgress = progress;
                 _orientation = rotation;
+                _rotationBlockedTime = 0f;
+                if (!Transitioning)
+                {
+                    _outerCorner = default;
+                }
+
                 return;
             }
 
-            // A tight obstruction can delay body rotation. Revert to the last clear axis if it persists.
-            if (_timeWithoutGround > _detachmentGrace + _rotationDuration)
+            _rotationBlockedTime += deltaTime;
+            if (_magnetic && !JumpInFlight && _rotationBlockedTime > _rotationDuration)
             {
                 var clearUp = _orientation * Vector3.up;
                 var transport = GravityFrame.Transport(Up, clearUp, _orientation * Vector3.forward);
+                Velocity = transport * Velocity;
                 Up = clearUp;
                 _rotationProgress = 1f;
-                _timeWithoutGround = _detachmentGrace + deltaTime;
+                _outerCorner = default;
+                _timeWithoutGround = 0f;
                 _magnetic = Vector3.Dot(Up, Vector3.up) < 0.999f;
+                CurrentTransitionReason = TransitionReason.RotationBlocked;
                 GravityChanged?.Invoke(transport);
             }
+        }
+
+        private bool TryRotate(ref Vector3 center, Quaternion rotation)
+        {
+            if (_outerCorner.collider != null)
+            {
+                // Keep the expanding capsule outside the lip while its axis rolls around the edge.
+                var clearance = _collision.Radius + _collision.Segment * Mathf.Abs(Vector3.Dot(rotation * Vector3.up, Up));
+                var correction = clearance + 0.024f - Vector3.Dot(center - _outerCorner.point, Up);
+                if (correction > 0.001f)
+                {
+                    var offset = Up * correction;
+                    _collision.Move(ref center, _orientation * Vector3.up, ref offset, 1f);
+                    if (Vector3.Dot(center - _outerCorner.point, Up) < clearance)
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return _collision.Resolve(ref center, rotation, 0.16f);
         }
     }
 }

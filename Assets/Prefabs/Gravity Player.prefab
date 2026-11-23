@@ -616,9 +616,12 @@ MonoBehaviour:
   _rotationDuration: 0.21
   _transitionSensitivity: 0.46
   _normalHysteresis: 0.82
-  _detachmentGrace: 0.34
+  _detachmentGrace: 0.1
   _reattachDelay: 0.36
-  _attachmentHoldDuration: 0.11
+  _attachmentHoldDuration: 0.12
+  _magneticReleaseHoldDuration: 0.35
+  _automaticCornerDetectionDistance: 0.95
+  _automaticCornerMinimumSpeed: 1.8
 --- !u!114 &4273624653739196201
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2009,7 +2012,7 @@ MonoBehaviour:
       m_Calls: []
   m_text: 'WASD   MOVE     MOUSE   LOOK
 
-    SPACE   JUMP     HOLD SPACE   ATTACH
+    SPACE   TAP JUMP / HOLD  ATTACH/DROP
 
     LMB  
     CAPTURE / FIRE     ESC   RELEASE

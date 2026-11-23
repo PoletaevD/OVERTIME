@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -7,8 +8,15 @@ namespace Overtime.Tests
     public sealed class GravityMotorTests
     {
         private const float StepTime = 1f / 120f;
+        private const int HoldSteps = 15;
+        private const int ReleaseSteps = 42;
+        private const int MovingTapSteps = 22;
+        private const int EdgeGraceSteps = 12;
+        private const int LocalFlightSteps = 42;
+
         private readonly List<GameObject> _objects = new();
         private GravityMotor _motor;
+        private BoxCollider _northWall;
         private Vector3 _heading;
         private Vector3 _origin;
 
@@ -16,9 +24,8 @@ namespace Overtime.Tests
         public void SetUp()
         {
             _origin = new Vector3(1000f, 500f, 1000f);
-            _heading = Vector3.forward;
             CreateBox("Test floor", new Vector3(0f, -0.5f, 0f), new Vector3(28f, 1f, 28f));
-            CreateBox("North wall", new Vector3(0f, 4f, 5.5f), new Vector3(28f, 8f, 1f));
+            _northWall = CreateBox("North wall", new Vector3(0f, 4f, 5.5f), new Vector3(28f, 8f, 1f));
             CreateBox("South wall", new Vector3(0f, 4f, -5.5f), new Vector3(28f, 8f, 1f));
             CreateBox("Ceiling", new Vector3(0f, 8.5f, 0f), new Vector3(28f, 1f, 28f));
 
@@ -28,10 +35,9 @@ namespace Overtime.Tests
             capsule.height = 1.7f;
             capsule.radius = 0.37f;
             _motor = player.AddComponent<GravityMotor>();
-            InvokeAwake();
-            _motor.ResetAt(_origin + new Vector3(0f, 0.88f, 0f), Quaternion.identity);
+            typeof(GravityMotor).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(_motor, null);
             _motor.GravityChanged += transport => _heading = transport * _heading;
-            Physics.SyncTransforms();
+            Reset(new Vector3(0f, 0.88f, 0f));
         }
 
         [TearDown]
@@ -48,82 +54,395 @@ namespace Overtime.Tests
         [Test]
         public void TapJumpNearWallDoesNotAttachAndLands()
         {
-            Step(Vector2.up, false, 64);
+            Reset(new Vector3(0f, 0.88f, 3.8f));
             _motor.QueueJump();
             Step(Vector2.up, true, 4);
+            Assert.That(_motor.ManualAttachmentProgress, Is.GreaterThan(0f));
+
+            Step(Vector2.up, false, 22);
+            Assert.That(_motor.JumpInFlight, Is.True);
             Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
-            Step(Vector2.up, false, 18);
-            Assert.That(_motor.Grounded, Is.False);
             Assert.That(_motor.transform.position.y - _origin.y, Is.GreaterThan(1.4f));
 
-            Step(Vector2.up, false, 130);
+            Step(Vector2.up, false, 100);
             Assert.That(_motor.Grounded, Is.True);
             Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
             Assert.That(_motor.transform.position.z - _origin.z, Is.LessThan(4.65f));
         }
 
         [Test]
-        public void HoldTransitionsFloorWallCeilingAndOppositeWall()
+        public void ValidWallMustBeHeldForConfiguredDelay()
         {
-            Step(Vector2.up, true, 82);
-            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
-            Assert.That(_motor.Grounded, Is.True);
-            Assert.That(_motor.transform.position.y - _origin.y, Is.GreaterThan(2f));
+            Reset(new Vector3(0f, 0.88f, 3.8f));
+            var jumps = 0;
+            _motor.Jumped += () => jumps++;
+            _motor.QueueJump();
 
-            Step(Vector2.up, true, 75);
-            Assert.That(_motor.Up, Is.EqualTo(Vector3.down));
-            Assert.That(_motor.Grounded, Is.True);
-            Assert.That(_motor.Velocity.z, Is.LessThan(-3f));
+            Step(Vector2.up, true, HoldSteps - 1);
+            Assert.That(_motor.ManualCandidate, Is.EqualTo(_northWall));
+            Assert.That(_motor.ManualAttachmentProgress, Is.InRange(0.95f, 0.99f));
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Step(Vector2.up, true, 1);
+
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.ManualAttachment));
+            Assert.That(jumps, Is.Zero);
+        }
+
+        [Test]
+        public void HeldSpaceBeforeDetectionDoesNotCountTowardDelay()
+        {
+            Step(Vector2.zero, true, 60);
+            Assert.That(_motor.ManualAttachmentProgress, Is.Zero);
+
+            StepUntil(() => _motor.ManualCandidate != null, Vector2.up, true, 90);
+            Assert.That(_motor.ManualAttachmentProgress, Is.LessThan(0.08f));
+            Step(Vector2.up, true, HoldSteps - 2);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Step(Vector2.up, true, 1);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+        }
+
+        [Test]
+        public void LosingManualCandidateRestartsDelay()
+        {
+            Reset(new Vector3(0f, 0.88f, 3.8f));
+            Step(Vector2.zero, true, HoldSteps - 2);
+
+            _northWall.enabled = false;
+            Step(Vector2.zero, true, 1);
+            Assert.That(_motor.ManualAttachmentProgress, Is.Zero);
+
+            _northWall.enabled = true;
+            Step(Vector2.zero, true, HoldSteps - 1);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Step(Vector2.zero, true, 1);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+        }
+
+        [Test]
+        public void HeldSpaceCanAttachLateInAnOrdinaryJump()
+        {
+            Reset(new Vector3(0f, 0.88f, 1.5f));
+            var jumps = 0;
+            _motor.Jumped += () => jumps++;
+            _motor.QueueJump();
+            Step(Vector2.up, true, 1);
+            Assert.That(_motor.JumpInFlight, Is.True);
+            Assert.That(_motor.Velocity.y, Is.GreaterThan(8f));
+
+            Step(Vector2.up, true, 42);
+            Assert.That(_motor.ManualAttachmentProgress, Is.Zero);
+            StepUntil(() => _motor.ManualCandidate != null, Vector2.up, true, 25);
+            Assert.That(_motor.JumpInFlight, Is.True);
+            Assert.That(_motor.ManualAttachmentProgress, Is.LessThan(0.08f));
+
+            Step(Vector2.up, true, HoldSteps - 1);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+            Assert.That(jumps, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void WallToCeilingTurnsBeforeImpactWithoutSpace()
+        {
+            AttachNorthWall();
+            StepUntil(() => _motor.Up == Vector3.down, Vector2.up, false, 150);
+
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.InnerCorner));
+            Assert.That(_motor.AutomaticCandidate?.name, Is.EqualTo("Ceiling"));
+            Assert.That(_motor.Speed, Is.GreaterThan(8f));
+            Assert.That(_motor.Obstructed, Is.False);
+            Assert.That(_motor.Velocity.z, Is.LessThan(-8f));
+            StepUntil(() => _motor.Grounded && !_motor.Transitioning, Vector2.up, false, 45);
+            Assert.That(_motor.Surface?.name, Is.EqualTo("Ceiling"));
 
             var beforeStrafe = _motor.transform.position;
             Step(Vector2.right, false, 35);
             Assert.That(Mathf.Abs(_motor.transform.position.x - beforeStrafe.x), Is.GreaterThan(0.8f));
-            Step(Vector2.up, true, 123);
-            Assert.That(_motor.Up, Is.EqualTo(Vector3.forward));
-        }
-
-        [Test]
-        public void CeilingJumpUnlocksMagnetAndReturnsToWorldGravity()
-        {
-            Step(Vector2.up, true, 154);
             Assert.That(_motor.Up, Is.EqualTo(Vector3.down));
-            Step(Vector2.zero, false, 35);
-            _motor.QueueJump();
-            Step(Vector2.zero, true, 22);
-            Assert.That(_motor.Grounded, Is.False);
-            Assert.That(_motor.Velocity.y, Is.LessThan(0f));
-
-            Step(Vector2.zero, false, 165);
-            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
-            Assert.That(_motor.Grounded, Is.True);
-            Assert.That(_motor.Magnetic, Is.False);
         }
 
         [Test]
-        public void HoldRoundsAConvexEdgeAndMagnetLocksToItsSide()
+        public void OuterCornerOntoHorizontalFaceEndsMagneticMode()
         {
-            CreateBox("Convex ledge", new Vector3(0f, 1.9f, 0f), new Vector3(5f, 3.8f, 4f));
-            _motor.ResetAt(_origin + new Vector3(0f, 4.68f, 0f), Quaternion.identity);
-            Physics.SyncTransforms();
+            var ledge = CreateBox("Convex ledge", new Vector3(0f, 0.8f, -1f), new Vector3(5f, 1.6f, 4f));
+            Reset(new Vector3(0f, 0.88f, -4.2f));
+            Step(Vector2.up, true, HoldSteps);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
 
-            Step(Vector2.up, true, 80);
-            Assert.That(_motor.Up, Is.EqualTo(Vector3.forward));
-            Assert.That(_motor.Magnetic, Is.True);
-            Assert.That(_motor.Surface?.name, Is.EqualTo("Convex ledge"), $"Capsule {_motor.transform.position - _origin:F3}, velocity {_motor.Velocity:F3}, rotating {_motor.Transitioning}");
+            StepUntil(() => _motor.Up == Vector3.up, Vector2.up, false, 130);
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.OuterCorner));
+            Assert.That(_motor.AutomaticCandidate, Is.EqualTo(ledge));
+            Assert.That(_motor.Magnetic, Is.False);
+            Assert.That(_motor.Speed, Is.GreaterThan(7f));
+
+            Step(Vector2.up, false, 150);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Assert.That(_motor.Surface?.name, Is.EqualTo("Test floor"));
+            Assert.That(_motor.AutomaticCandidate, Is.Null);
         }
 
-        private void CreateBox(string name, Vector3 position, Vector3 size)
+        [TestCase(1f)]
+        [TestCase(0.28f)]
+        public void OuterCornerBetweenWallsKeepsMagnetAndSpeed(float input)
+        {
+            var ledge = CreateBox("Convex ledge", new Vector3(0f, 2f, -1f), new Vector3(5f, 4f, 4f));
+            Reset(new Vector3(0f, 0.88f, -4.2f));
+            Step(Vector2.up, true, HoldSteps);
+            Step(Vector2.zero, false, 42);
+            var strafe = Vector2.right * input;
+            StepUntil(() => _motor.Up == Vector3.right, strafe, false, 190);
+
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.OuterCorner));
+            Assert.That(_motor.AutomaticCandidate, Is.EqualTo(ledge));
+            Assert.That(_motor.Magnetic, Is.True);
+            Assert.That(_motor.Speed, Is.EqualTo(9f * input).Within(0.15f));
+            StepUntil(() => _motor.Surface == ledge, strafe, false, 38);
+        }
+
+        [Test]
+        public void UnsupportedEdgeFallsBackAfterCornerGrace()
+        {
+            CreateBox("Thin wall", new Vector3(0f, 2f, 0f), new Vector3(6f, 4f, 0.06f));
+            Reset(new Vector3(0f, 0.88f, -1.2f));
+            Step(Vector2.up, true, HoldSteps);
+            StepUntil(() => !_motor.Grounded && !_motor.Transitioning, Vector2.up, false, 130);
+
+            Step(Vector2.up, false, EdgeGraceSteps / 2);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+            Assert.That(_motor.Magnetic, Is.True);
+            StepUntil(() => !_motor.Magnetic, Vector2.up, false, EdgeGraceSteps / 2 + 1);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Assert.That(_motor.Velocity.y, Is.LessThan(0f));
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.EdgeRelease));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CeilingJumpKeepsLocalGravityBeyondCornerGraceAndLands(bool moving)
+        {
+            AttachNorthWall();
+            StepUntil(() => _motor.Up == Vector3.down, Vector2.up, false, 150);
+            Step(Vector2.zero, false, 38);
+            AssertLocalJump(Vector3.down, "Ceiling", moving);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void WallJumpKeepsLocalGravityAndLandsOnSameWall(bool moving)
+        {
+            AttachNorthWall();
+            Step(Vector2.zero, false, 40);
+            AssertLocalJump(Vector3.back, "North wall", moving);
+        }
+
+        [TestCase(false, false)]
+        [TestCase(false, true)]
+        [TestCase(true, false)]
+        [TestCase(true, true)]
+        public void HoldingSpaceWithoutContinuationLetsGoOfWallOrCeiling(bool ceiling, bool moving)
+        {
+            AttachNorthWall();
+            if (ceiling)
+            {
+                StepUntil(() => _motor.Up == Vector3.down, Vector2.up, false, 150);
+            }
+
+            var input = moving ? Vector2.right : Vector2.zero;
+            Step(input, false, 42);
+            Assert.That(_motor.Grounded, Is.True);
+            var oldUp = _motor.Up;
+            var jumps = 0;
+            _motor.Jumped += () => jumps++;
+            _motor.QueueJump();
+            Step(input, true, 1);
+            Assert.That(Vector3.Dot(_motor.Velocity, oldUp), Is.GreaterThan(8f));
+            Step(input, true, ReleaseSteps - 2);
+
+            Assert.That(_motor.Up, Is.EqualTo(oldUp));
+            Assert.That(jumps, Is.EqualTo(1));
+            Step(input, true, 1);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Assert.That(_motor.Magnetic, Is.False);
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.ManualRelease));
+            Assert.That(_motor.Velocity.y, Is.LessThan(0f));
+            Assert.That(jumps, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void HoldingSpaceAcrossReleaseRequiresNewPressToAttach()
+        {
+            AttachNorthWall();
+            Step(Vector2.zero, false, 42);
+            _motor.QueueJump();
+            Step(Vector2.zero, true, ReleaseSteps);
+            Step(Vector2.up, true, 120);
+
+            Assert.That(_motor.Surface?.name, Is.EqualTo("Test floor"));
+            Assert.That(_motor.ManualCandidate, Is.Null);
+            Assert.That(_motor.Magnetic, Is.False);
+
+            Step(Vector2.up, false, 1);
+            _motor.QueueJump();
+            Step(Vector2.up, true, HoldSteps);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+        }
+
+        [Test]
+        public void HoldingSpaceTowardReachableCornerKeepsMagneticGravity()
+        {
+            AttachNorthWall();
+            StepUntil(() => _motor.transform.position.y - _origin.y > 6.55f, Vector2.up, false, 130);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+            _motor.QueueJump();
+            Step(Vector2.up, true, ReleaseSteps + 5);
+
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.down));
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.InnerCorner));
+            Assert.That(_motor.Magnetic, Is.True);
+            Assert.That(_motor.JumpInFlight, Is.False);
+        }
+
+        [Test]
+        public void ChangingDirectionBeforeReleaseHoldInvalidatesTheCorner()
+        {
+            AttachNorthWall();
+            StepUntil(() => _motor.transform.position.y - _origin.y > 6.55f, Vector2.up, false, 130);
+            _motor.QueueJump();
+            StepUntil(() => _motor.AutomaticCandidate != null, Vector2.up, true, MovingTapSteps);
+            Step(Vector2.right, true, ReleaseSteps);
+
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.ManualRelease));
+        }
+
+        [Test]
+        public void TapJumpTowardReachableCornerKeepsTheTakeoffGravity()
+        {
+            AttachNorthWall();
+            StepUntil(() => _motor.transform.position.y - _origin.y > 6.55f, Vector2.up, false, 130);
+            _motor.QueueJump();
+            Step(Vector2.up, true, MovingTapSteps);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+            Assert.That(_motor.JumpInFlight, Is.True);
+
+            StepUntil(() => _motor.Grounded, Vector2.up, false, 90);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+            Assert.That(_motor.Surface, Is.EqualTo(_northWall));
+        }
+
+        [Test]
+        public void SideWallDoesNotTriggerAutomaticCorner()
+        {
+            CreateBox("Side wall", new Vector3(0.92f, 3.4f, 4.25f), new Vector3(1f, 3f, 1.5f));
+            AttachNorthWall();
+            Step(Vector2.up, false, 62);
+
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+            Assert.That(_motor.Surface, Is.EqualTo(_northWall));
+            Assert.That(_motor.AutomaticCandidate, Is.Null);
+        }
+
+        [Test]
+        public void WorldGravityRunDoesNotAutomaticallyClimb()
+        {
+            Step(Vector2.up, false, 140);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.up));
+            Assert.That(_motor.Magnetic, Is.False);
+            Assert.That(_motor.Surface?.name, Is.EqualTo("Test floor"));
+        }
+
+        [Test]
+        public void ConsecutiveCornersKeepSpeedAndStopAutoTurningOnTheFloor()
+        {
+            AttachNorthWall();
+            Step(Vector2.up, false, 65);
+            var normals = new List<Vector3>();
+            _motor.GravityChanged += _ => normals.Add(_motor.Up);
+            var minimumSpeed = _motor.Speed;
+            var largestStep = 0f;
+            for (var i = 0; i < 480 && normals.Count < 3; i++)
+            {
+                var position = _motor.transform.position;
+                Step(Vector2.up, false, 1);
+                minimumSpeed = Mathf.Min(minimumSpeed, _motor.Speed);
+                largestStep = Mathf.Max(largestStep, Vector3.Distance(position, _motor.transform.position));
+            }
+
+            Assert.That(normals, Is.EqualTo(new[] { Vector3.down, Vector3.forward, Vector3.up }));
+            Assert.That(minimumSpeed, Is.GreaterThan(8f));
+            Assert.That(largestStep, Is.LessThan(0.15f));
+            Step(Vector2.up, false, 220);
+            Assert.That(normals.Count, Is.EqualTo(3));
+            Assert.That(_motor.Magnetic, Is.False);
+            Assert.That(_motor.Surface?.name, Is.EqualTo("Test floor"));
+        }
+
+        private void AssertLocalJump(Vector3 up, string surface, bool moving)
+        {
+            var input = moving ? Vector2.right : Vector2.zero;
+            Step(input, false, 24);
+            Assert.That(_motor.Up, Is.EqualTo(up));
+            Assert.That(_motor.Surface?.name, Is.EqualTo(surface));
+            var orientation = _motor.transform.rotation;
+            var gravityChanges = 0;
+            _motor.GravityChanged += _ => gravityChanges++;
+
+            _motor.QueueJump();
+            Step(input, true, 1);
+            Assert.That(Vector3.Dot(_motor.Velocity, up), Is.GreaterThan(8f));
+            if (moving)
+            {
+                Assert.That(_motor.Speed, Is.GreaterThan(8f));
+            }
+
+            Step(input, true, MovingTapSteps - 1);
+            Step(input, false, LocalFlightSteps - MovingTapSteps + 1);
+            Assert.That(_motor.Grounded, Is.False);
+            Assert.That(_motor.JumpInFlight, Is.True);
+            Assert.That(Vector3.Dot(_motor.Velocity, up), Is.LessThan(0f));
+            Assert.That(_motor.Up, Is.EqualTo(up));
+            Assert.That(_motor.Magnetic, Is.True);
+            Assert.That(Quaternion.Angle(_motor.transform.rotation, orientation), Is.LessThan(0.01f));
+
+            StepUntil(() => _motor.Grounded, input, false, 90);
+            Assert.That(_motor.JumpInFlight, Is.False);
+            Assert.That(_motor.Surface?.name, Is.EqualTo(surface));
+            Assert.That(gravityChanges, Is.Zero);
+        }
+
+        private void AttachNorthWall()
+        {
+            Reset(new Vector3(0f, 0.88f, 3.8f));
+            Step(Vector2.up, true, HoldSteps);
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+        }
+
+        private void Reset(Vector3 position)
+        {
+            _heading = Vector3.forward;
+            _motor.ResetAt(_origin + position, Quaternion.identity);
+            Physics.SyncTransforms();
+        }
+
+        private BoxCollider CreateBox(string name, Vector3 position, Vector3 size)
         {
             var box = new GameObject(name);
             _objects.Add(box);
             box.transform.position = _origin + position;
-            box.AddComponent<BoxCollider>().size = size;
+            var collider = box.AddComponent<BoxCollider>();
+            collider.size = size;
+            return collider;
         }
 
-        private void InvokeAwake()
+        private void StepUntil(System.Func<bool> condition, Vector2 input, bool held, int limit)
         {
-            var awake = typeof(GravityMotor).GetMethod("Awake", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-            awake.Invoke(_motor, null);
+            for (var i = 0; i < limit && !condition(); i++)
+            {
+                Step(input, held, 1);
+            }
+
+            Assert.That(condition(), Is.True, $"Position {_motor.transform.position - _origin:F2}, velocity {_motor.Velocity:F2}, up {_motor.Up}, reason {_motor.CurrentTransitionReason}");
         }
 
         private void Step(Vector2 input, bool held, int frames)

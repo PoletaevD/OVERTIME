@@ -72,6 +72,7 @@ namespace Overtime
             _transition = 1f;
             _reference = rotation;
             _display = rotation;
+            _transitionStart = rotation;
             _verticalKick = 0f;
             _gravityKick = 0f;
             _fovOffset = 0f;
@@ -151,8 +152,9 @@ namespace Overtime
             _reference = transport * _reference;
             _transition = 0f;
             _gravityTween?.Kill();
-            _gravityKick = _gravityResponse;
-            _gravityTween = DOTween.To(() => _gravityKick, value => _gravityKick = value, 0f, 0.32f).SetEase(Ease.OutCubic).SetUpdate(true);
+            _gravityTween = DOTween.Sequence().SetUpdate(true)
+                .Append(DOTween.To(() => _gravityKick, value => _gravityKick = value, _gravityResponse, 0.045f).SetEase(Ease.OutQuad))
+                .Append(DOTween.To(() => _gravityKick, value => _gravityKick = value, 0f, 0.275f).SetEase(Ease.OutCubic));
         }
 
         private void KillTweens()

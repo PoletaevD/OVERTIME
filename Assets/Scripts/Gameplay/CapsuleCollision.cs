@@ -12,6 +12,7 @@ namespace Overtime
         private readonly RaycastHit[] _hits = new RaycastHit[24];
         private readonly Collider[] _overlaps = new Collider[24];
 
+        internal float Radius => _shape.radius;
         internal float Segment => _shape.height * 0.5f - _shape.radius;
 
         internal CapsuleCollision(CapsuleCollider shape, LayerMask mask)

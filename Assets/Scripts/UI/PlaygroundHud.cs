@@ -156,7 +156,7 @@ namespace Overtime
 
             if (_debugPanel.activeSelf)
             {
-                _debug.SetText($"MOTOR TELEMETRY\nVelocity  {_motor.Velocity:F2}\nUp  {up:F2}\nContact normal  {_motor.ContactNormal:F2}\nSurface  {_motor.Surface?.name ?? "-"}\nMagnetic  {_motor.Magnetic}    Rotating  {_motor.Transitioning}\nCollision  {_motor.Obstructed}    Reduced Motion  {_reducedMotion}");
+                _debug.SetText($"MOTOR TELEMETRY\nGravity up  {up:F2}\nCurrent surface  {_motor.Surface?.name ?? "-"}\nManual candidate  {_motor.ManualCandidate?.name ?? "-"}\nManual attachment  {_motor.ManualAttachmentProgress:P0}\nAutomatic candidate  {_motor.AutomaticCandidate?.name ?? "-"}\nJump detached  {_motor.JumpInFlight}    Rotating  {_motor.Transitioning}\nTransition  {_motor.CurrentTransitionReason}\nVelocity  {_motor.Velocity:F2}    Collision  {_motor.Obstructed}");
             }
         }
 

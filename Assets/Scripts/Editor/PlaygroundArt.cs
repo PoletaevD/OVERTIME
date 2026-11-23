@@ -67,7 +67,7 @@ namespace Overtime.Editor
                 Block(zone, "Ceiling Guide", 0f, 9.98f, z, 13.9f, 0.034f, 0.095f, _cyan, false);
             }
 
-            Label(zone, "HOLD SPACE TOWARD WALL", new Vector3(0f, 4.04f, 8.18f), 0.24f, new Color(0.47f, 0.88f, 0.91f));
+            Label(zone, "HOLD SPACE TO ATTACH  /  KEEP MOVING TO TURN", new Vector3(0f, 4.04f, 8.18f), 0.24f, new Color(0.47f, 0.88f, 0.91f));
             Block(zone, "Upper Deck | Entrance", 0f, 3.72f, 23.2f, 14f, 0.55f, 3.6f, _panel);
             Block(zone, "Upper Deck Leading Edge", 0f, 4f, 21.45f, 13.94f, 0.03f, 0.095f, _orange, false);
         }
