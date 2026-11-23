@@ -1,0 +1,6 @@
+{
+    "name": "Overtime.Editor",
+    "rootNamespace": "Overtime.Editor",
+    "includePlatforms": ["Editor"],
+    "references": ["Overtime.Runtime", "Unity.InputSystem", "Unity.Cinemachine", "Unity.TextMeshPro", "UnityEngine.UI", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"]
+}

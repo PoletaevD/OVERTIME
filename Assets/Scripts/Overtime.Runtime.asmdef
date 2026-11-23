@@ -1,0 +1,5 @@
+{
+    "name": "Overtime.Runtime",
+    "rootNamespace": "Overtime",
+    "references": ["Unity.InputSystem", "Unity.Cinemachine", "Unity.TextMeshPro", "UnityEngine.UI"]
+}
