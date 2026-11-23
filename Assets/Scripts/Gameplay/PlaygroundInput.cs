@@ -12,6 +12,9 @@ namespace Overtime
         private InputAction _look;
         private InputAction _jump;
         private InputAction _attack;
+        private InputAction _reload;
+        private InputAction _combatRestart;
+        private InputAction _rechargeChrono;
         private InputAction _rewind;
         private InputAction _override;
         private InputAction _recall;
@@ -22,13 +25,24 @@ namespace Overtime
         private bool _focused;
         private bool _captured;
         private bool _discardLook;
+        private bool _combatBindings;
+        private bool _blockFireHold;
+        private bool _gameOver;
+        private bool _captureRequested;
+        private bool _fireRequested;
+        private bool _reloadRequested;
+        private bool _restartRequested;
+        private bool _rechargeRequested;
 
         internal Vector2 Move => _captured ? _move.ReadValue<Vector2>() : Vector2.zero;
         internal bool JumpPressed => _captured && _jump.WasPressedThisFrame();
         internal bool JumpHeld => _captured && _jump.IsPressed();
         internal bool Focused => _focused;
         internal bool FirePressed { get; private set; }
-        internal bool ResetPressed => _focused && Keyboard.current?.rKey.wasPressedThisFrame == true;
+        internal bool FireHeld => _captured && !_blockFireHold && _attack.IsPressed();
+        internal bool ResetPressed => _focused && (_combatBindings ? _restartRequested : Keyboard.current?.rKey.wasPressedThisFrame == true);
+        internal bool ReloadPressed => _captured && _reloadRequested;
+        internal bool RechargePressed => _captured && _rechargeRequested;
         internal bool DebugPressed => _focused && Keyboard.current?.f3Key.wasPressedThisFrame == true;
         internal bool HintsPressed => _focused && Keyboard.current?.hKey.wasPressedThisFrame == true;
         internal bool ReducedMotionPressed => _focused && Keyboard.current?.f4Key.wasPressedThisFrame == true;
@@ -41,6 +55,9 @@ namespace Overtime
             _look = map.FindAction("Look", true);
             _jump = map.FindAction("Jump", true);
             _attack = map.FindAction("Attack", true);
+            _reload = map.FindAction("Reload", true);
+            _combatRestart = map.FindAction("CombatRestart", true);
+            _rechargeChrono = map.FindAction("RechargeChrono", true);
             _playerActions = map;
             _rewind = map.FindAction("Rewind", true);
             _override = map.FindAction("OverrideTime", true);
@@ -63,6 +80,7 @@ namespace Overtime
             _playerActions.actionTriggered -= OnActionTriggered;
             _temporalSelection = default;
             _focusBlockedButtons = 0;
+            ClearCombatCommands();
             SetCapture(false);
             _instance.Disable();
         }
@@ -79,8 +97,32 @@ namespace Overtime
             {
                 _focusBlockedButtons |= _temporalSelection.Held;
                 _temporalSelection = default;
+                ClearCombatCommands();
                 SetCapture(false);
             }
+        }
+
+        internal void UseCombatBindings(bool active)
+        {
+            _combatBindings = active;
+        }
+
+        internal void SetGameOver(bool active)
+        {
+            _gameOver = active;
+            if (active)
+            {
+                SetCapture(false);
+            }
+        }
+
+        internal void ClearCombatCommands()
+        {
+            _captureRequested = false;
+            _fireRequested = false;
+            _reloadRequested = false;
+            _restartRequested = false;
+            _rechargeRequested = false;
         }
 
         internal TemporalSelection TakeTemporalSelection()
@@ -92,9 +134,24 @@ namespace Overtime
 
         private void OnActionTriggered(InputAction.CallbackContext context)
         {
+            if (!_focused)
+            {
+                return;
+            }
+
             var action = context.action;
+            if (_combatBindings && context.performed)
+            {
+                var attack = action == _attack;
+                _captureRequested |= attack && context.control.device is Mouse;
+                _fireRequested |= attack;
+                _reloadRequested |= action == _reload;
+                _restartRequested |= action == _combatRestart;
+                _rechargeRequested |= action == _rechargeChrono;
+            }
+
             var mode = action == _rewind ? TemporalMode.Reset : action == _override ? TemporalMode.Override : action == _recall ? TemporalMode.Recall : action == _bulletTime ? TemporalMode.BulletTime : TemporalMode.Normal;
-            if (mode == TemporalMode.Normal || !_focused)
+            if (mode == TemporalMode.Normal)
             {
                 return;
             }
@@ -114,7 +171,7 @@ namespace Overtime
         internal void Poll()
         {
             FirePressed = false;
-            if (!_focused)
+            if (!_focused || _gameOver)
             {
                 return;
             }
@@ -129,13 +186,19 @@ namespace Overtime
                 _captured = false;
             }
 
-            if (!_captured && Mouse.current?.leftButton.wasPressedThisFrame == true)
+            if (!_captured && (_captureRequested || Mouse.current?.leftButton.wasPressedThisFrame == true))
             {
                 SetCapture(true);
+                _blockFireHold = true;
                 return;
             }
 
-            FirePressed = _captured && _attack.WasPressedThisFrame();
+            if (!_attack.IsPressed())
+            {
+                _blockFireHold = false;
+            }
+
+            FirePressed = _captured && !_blockFireHold && (_combatBindings ? _fireRequested : _attack.WasPressedThisFrame());
         }
 
         internal void SuppressFire()

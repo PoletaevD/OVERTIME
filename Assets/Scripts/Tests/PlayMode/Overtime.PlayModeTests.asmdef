@@ -5,6 +5,7 @@
         "Overtime.Runtime",
         "Unity.InputSystem",
         "Unity.TextMeshPro",
+        "UnityEngine.UI",
         "UnityEngine.TestRunner"
     ],
     "overrideReferences": true,

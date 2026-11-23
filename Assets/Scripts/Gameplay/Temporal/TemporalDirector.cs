@@ -27,6 +27,9 @@ namespace Overtime
         [SerializeField, Range(0.05f, 1f)] private float _bulletTimeRate = 0.25f;
         [SerializeField] private TemporalActor[] _worldActors = Array.Empty<TemporalActor>();
         [SerializeField] private TemporalDestructible _testTarget;
+        [SerializeField] private ChronoEnergy _energy;
+        [SerializeField] private Transform _rechargeStation;
+        [SerializeField, Min(0.1f)] private float _rechargeRadius = 1.8f;
 
         private PlaygroundPlayer _player;
         private PlaygroundPlayer.Snapshot[] _playerFrames;
@@ -34,11 +37,22 @@ namespace Overtime
         private Vector2 _pendingLook;
         private bool _pendingJump;
         private bool _pendingFire;
+        private bool _pendingReload;
+        private bool _pendingRecharge;
+        private bool _playerChangedBetweenSteps;
+        private bool _restartRequested;
+        // A forward tick captures pending mutations. Entering reverse playback discards them.
         private bool _worldChangedBetweenSteps;
         private bool _blockJumpHold;
         private int _exhaustedButtons;
 
         internal event Action<TemporalMode> ModeChanged;
+
+        internal ChronoEnergy Energy => _energy;
+        internal float EnergyCost => _energy.Cost(Mode);
+        internal CapsuleCollider PlayerCapsule => _player.Capsule;
+        internal bool CanRecharge => _rechargeStation != null && (_rechargeStation.position - _player.transform.position).sqrMagnitude <= _rechargeRadius * _rechargeRadius;
+        internal bool RecoveryAvailable => _player.Combat is { Alive: false, GameOver: false } && (CanRecover(TemporalMode.Reset) || CanRecover(TemporalMode.Recall));
 
         internal TemporalTimeline PlayerTimeline { get; private set; }
         internal TemporalTimeline WorldTimeline { get; private set; }
@@ -55,6 +69,7 @@ namespace Overtime
         internal void Initialize(PlaygroundPlayer player)
         {
             _player = player;
+            _energy?.ResetRun();
             PlayerTimeline = new TemporalTimeline(_historySeconds);
             WorldTimeline = new TemporalTimeline(_historySeconds);
             SetTimelineRates();
@@ -77,23 +92,32 @@ namespace Overtime
             WorldSteps = 0;
             _exhaustedButtons &= input.Selection.Held & ~input.Selection.Released;
 
-            if (input.DebugReset)
+            if (input.DebugReset || _restartRequested)
             {
+                _restartRequested = false;
                 Restart();
                 _exhaustedButtons = input.Selection.Held;
                 return false;
             }
 
+            if (_player.Combat?.GameOver == true)
+            {
+                return false;
+            }
+
+            var realElapsed = Math.Max(0d, elapsed);
+            var wasDead = _player.Combat is { Alive: false };
             if (!input.Focused)
             {
                 ChangeMode(TemporalMode.Normal);
                 ClearPendingInput();
+                ResolveRecovery(realElapsed);
                 return false;
             }
 
             var wasReversing = IsPlayerProtected;
             ChangeMode(SelectMode(input.Selection));
-            var acceptsInput = !wasReversing && !IsPlayerProtected;
+            var acceptsInput = !wasDead && !wasReversing && !IsPlayerProtected;
             if (!input.JumpHeld)
             {
                 _blockJumpHold = false;
@@ -108,19 +132,19 @@ namespace Overtime
                 _pendingLook += input.Look;
                 _pendingJump |= input.JumpPressed;
                 _pendingFire |= CanAffectWorld && input.FirePressed;
+                _pendingReload |= input.ReloadPressed;
+                _pendingRecharge |= CanAffectWorld && input.RechargePressed;
             }
 
-            elapsed = Math.Min(Math.Max(0d, elapsed), MaxFrameTime);
-            if (Mode == TemporalMode.Reset)
+            elapsed = Math.Min(realElapsed, MaxFrameTime);
+            var realPerSimulatedSecond = elapsed > 0d ? realElapsed / elapsed : 1d;
+            if (wasDead && IsPlayerProtected)
             {
-                // RESET only seeks existing frames. Its cost is independent of the distance.
-                SeekReset(elapsed);
-            }
-            else
-            {
-                AdvanceIndependent(elapsed, input);
+                elapsed = Math.Min(elapsed, _player.Combat.RecoveryRemaining / realPerSimulatedSecond);
             }
 
+            AdvanceModes(elapsed, realPerSimulatedSecond, input);
+            ResolveRecovery(wasDead ? realElapsed : 0d);
             Present();
             return acceptsInput;
         }
@@ -133,11 +157,16 @@ namespace Overtime
                 var mode = selection.Preferred(excluded);
                 var unavailable = mode switch
                 {
-                    TemporalMode.Reset => Mode != TemporalMode.Reset && PlayerTimeline.AtStart && WorldTimeline.AtStart,
-                    TemporalMode.Override => WorldTimeline.AtStart,
-                    TemporalMode.Recall => PlayerTimeline.AtStart,
+                    TemporalMode.Reset => Mode != TemporalMode.Reset && PlayerTimeline.AtStart && WorldTimeline.AtStart && !_worldChangedBetweenSteps && !_playerChangedBetweenSteps,
+                    TemporalMode.Override => WorldTimeline.AtStart && !_worldChangedBetweenSteps,
+                    TemporalMode.Recall => PlayerTimeline.AtStart && !_playerChangedBetweenSteps,
                     _ => false
                 };
+
+                if (mode != TemporalMode.Normal)
+                {
+                    unavailable |= _energy?.Empty == true || (_player.Combat is { Alive: false } && !CanRecover(mode));
+                }
 
                 if (!unavailable)
                 {
@@ -146,7 +175,7 @@ namespace Overtime
 
                 var button = 1 << (int)mode;
                 excluded |= button;
-                if (mode != TemporalMode.Reset)
+                if (mode != TemporalMode.Reset || _energy?.Empty == true)
                 {
                     _exhaustedButtons |= button;
                 }
@@ -180,6 +209,10 @@ namespace Overtime
             if (playerReverses)
             {
                 PlayerTimeline.BeginReverse();
+                if (_playerChangedBetweenSteps)
+                {
+                    RestorePlayer();
+                }
             }
 
             if (worldReverses)
@@ -203,6 +236,7 @@ namespace Overtime
             if (worldReverses || worldWasReversing)
             {
                 _pendingFire = false;
+                _pendingRecharge = false;
             }
 
             Physics.SyncTransforms();
@@ -250,27 +284,94 @@ namespace Overtime
             }
         }
 
-        private void AdvanceIndependent(double elapsed, in TemporalInput input)
+        private void AdvanceModes(double elapsed, double realPerSimulatedSecond, in TemporalInput input)
         {
-            while (true)
+            while (Mode != TemporalMode.Normal)
             {
-                if (Mode == TemporalMode.Reset)
+                var mode = Mode;
+                var availableHistory = mode switch
                 {
-                    SeekReset(elapsed);
-                    return;
+                    TemporalMode.Reset => Math.Max(PlayerTimeline.TimeToStart, WorldTimeline.TimeToStart),
+                    TemporalMode.Override => WorldTimeline.TimeToStart,
+                    TemporalMode.Recall => PlayerTimeline.TimeToStart,
+                    _ => double.PositiveInfinity
+                };
+                var unitsPerSecond = mode == TemporalMode.BulletTime ? realPerSimulatedSecond : mode == TemporalMode.Override ? WorldTimeline.Rate : PlayerTimeline.Rate;
+                var costPerSecond = (_energy?.Cost(mode) ?? 0f) * unitsPerSecond;
+                var affordable = _energy?.Affordable(costPerSecond) ?? double.PositiveInfinity;
+                var slice = Math.Max(0d, Math.Min(elapsed, Math.Min(availableHistory, affordable)));
+
+                _energy?.Spend(slice * costPerSecond);
+                if (mode == TemporalMode.Reset)
+                {
+                    SeekReset(slice);
+                }
+                else
+                {
+                    RunSchedule(slice, input);
                 }
 
-                var reversing = Mode == TemporalMode.Override ? WorldTimeline : Mode == TemporalMode.Recall ? PlayerTimeline : null;
-                var slice = reversing == null ? elapsed : Math.Min(elapsed, reversing.TimeToStart);
-                RunSchedule(slice, input);
-                if (reversing == null || !reversing.AtStart)
+                var atStart = mode == TemporalMode.Override && WorldTimeline.AtStart || mode == TemporalMode.Recall && PlayerTimeline.AtStart;
+                if (_energy?.Empty != true && !atStart)
                 {
-                    return;
+                    if (slice >= elapsed || mode == TemporalMode.Reset)
+                    {
+                        return;
+                    }
+
+                    elapsed -= slice;
+                    continue;
                 }
 
-                _exhaustedButtons |= 1 << (int)Mode;
+                _exhaustedButtons |= 1 << (int)mode;
                 elapsed = Math.Max(0d, elapsed - slice);
                 ChangeMode(SelectMode(input.Selection));
+            }
+
+            RunSchedule(elapsed, input);
+        }
+
+        private bool CanRecover(TemporalMode mode)
+        {
+            if ((mode != TemporalMode.Reset && mode != TemporalMode.Recall) || _energy == null || _energy.Empty || _player.Combat.RecoveryRemaining <= 0d)
+            {
+                return false;
+            }
+
+            var rate = mode == TemporalMode.Reset ? _rewindRate : _recallRate;
+            var distance = Math.Min(_energy.Affordable(_energy.Cost(mode)), _player.Combat.RecoveryRemaining * rate);
+            var preview = mode == Mode ? PlayerTimeline.PreviewFraction : 0f;
+            var steps = (long)Math.Floor(distance / TemporalTimeline.TickDuration + preview + 0.00001d);
+            var oldest = Math.Max(PlayerTimeline.Oldest, PlayerTimeline.Cursor - steps);
+            for (var tick = PlayerTimeline.Cursor; tick >= oldest; tick--)
+            {
+                if (_playerFrames[PlayerTimeline.Slot(tick)].Combat.HitPoints > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void ResolveRecovery(double elapsed)
+        {
+            if (_player.Combat is not { Alive: false, GameOver: false } combat)
+            {
+                return;
+            }
+
+            combat.AdvanceRecoveryClock(elapsed);
+            if (!RecoveryAvailable)
+            {
+                combat.EndRecovery();
+            }
+
+            if (combat.GameOver)
+            {
+                ChangeMode(TemporalMode.Normal);
+                ClearPendingInput();
+                _player.SetGameOver(true);
             }
         }
 
@@ -322,10 +423,18 @@ namespace Overtime
                     }
                     else
                     {
-                        _player.Simulate(input.Move, look, _pendingJump, input.JumpHeld && !_blockJumpHold, Step);
+                        if (_player.Combat?.Alive != false)
+                        {
+                            _player.Simulate(input.Move, look, _pendingJump, input.JumpHeld && !_blockJumpHold, Step);
+                            SimulatePlayerCombat(input.FireHeld);
+                        }
+
                         _pendingJump = false;
+                        _pendingFire = false;
+                        _pendingReload = false;
+                        _pendingRecharge = false;
                         _playerFrames[PlayerTimeline.RecordNext()] = _player.Capture();
-                        ResolveTestShot();
+                        _playerChangedBetweenSteps = false;
                     }
 
                     _collision.Refresh(WorldTimeline.Direction == TemporalDirection.Reverse);
@@ -346,27 +455,62 @@ namespace Overtime
             }
         }
 
-        private void ResolveTestShot()
+        private void SimulatePlayerCombat(bool fireHeld)
         {
-            if (!_pendingFire)
+            if (_player.Combat != null)
             {
+                if (_pendingRecharge && CanAffectWorld && CanRecharge)
+                {
+                    _energy.Recharge();
+                }
+
+                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, this);
                 return;
             }
 
-            _pendingFire = false;
-            if (CanAffectWorld && _testTarget != null)
+            if (_pendingFire && CanAffectWorld)
             {
                 Physics.SyncTransforms();
-                if (Physics.Raycast(_player.AimRay, out var hit, 40f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) && _testTarget.TryHit(hit.collider))
-                {
-                    _worldChangedBetweenSteps = true;
-                }
+                _worldChangedBetweenSteps |= _testTarget != null && _testTarget.TryHit(_player.AimRay);
+                _player.ConfirmLegacyShot();
             }
+        }
+
+        internal DamageResult DamageTarget(CombatTarget target, Collider hit, int amount, out bool weakPoint)
+        {
+            weakPoint = false;
+            if (!CanAffectWorld || _player.Combat is not { Alive: true, GameOver: false })
+            {
+                return default;
+            }
+
+            var damage = target.Hit(hit, amount, _player.ReducedMotion, out weakPoint);
+            _worldChangedBetweenSteps |= damage.Amount > 0;
+            if (damage.Killed)
+            {
+                _energy.Reward(target.RewardId);
+            }
+
+            return damage;
+        }
+
+        internal bool CanDamagePlayer => CanAffectWorld && _player.Combat is { Alive: true, GameOver: false };
+
+        internal bool DamagePlayer(int amount)
+        {
+            if (!CanDamagePlayer || !_player.Combat.TakeDamage(amount))
+            {
+                return false;
+            }
+
+            _playerChangedBetweenSteps = true;
+            return true;
         }
 
         private void RestorePlayer()
         {
             _player.Restore(_playerFrames[PlayerTimeline.Slot(PlayerTimeline.Cursor)]);
+            _playerChangedBetweenSteps = false;
         }
 
         private void RestoreWorld()
@@ -425,6 +569,11 @@ namespace Overtime
             }
         }
 
+        internal void RequestRestart()
+        {
+            _restartRequested = true;
+        }
+
         private void Restart()
         {
             ChangeMode(TemporalMode.Normal);
@@ -440,7 +589,11 @@ namespace Overtime
                 actor.ResetState();
             }
 
+            _energy?.ResetRun();
+            _player.Combat?.ResetState();
+            _player.SetGameOver(false);
             _player.ResetAtSpawn();
+            _playerChangedBetweenSteps = false;
             Physics.SyncTransforms();
             _collision.Refresh(false);
             CaptureBaseline();
@@ -458,6 +611,8 @@ namespace Overtime
             _pendingLook = Vector2.zero;
             _pendingJump = false;
             _pendingFire = false;
+            _pendingReload = false;
+            _pendingRecharge = false;
         }
     }
 
@@ -527,19 +682,25 @@ namespace Overtime
         internal bool JumpPressed { get; }
         internal bool JumpHeld { get; }
         internal bool FirePressed { get; }
+        internal bool FireHeld { get; }
+        internal bool ReloadPressed { get; }
+        internal bool RechargePressed { get; }
         internal TemporalSelection Selection { get; }
         internal bool DebugReset { get; }
         internal bool Focused => !_unfocused;
 
         private readonly bool _unfocused;
 
-        internal TemporalInput(Vector2 move, Vector2 look, bool jumpPressed, bool jumpHeld, bool firePressed, TemporalSelection selection, bool debugReset = false, bool focused = true)
+        internal TemporalInput(Vector2 move, Vector2 look, bool jumpPressed, bool jumpHeld, bool firePressed, TemporalSelection selection, bool debugReset = false, bool focused = true, bool fireHeld = false, bool reloadPressed = false, bool rechargePressed = false)
         {
             Move = move;
             Look = look;
             JumpPressed = jumpPressed;
             JumpHeld = jumpHeld;
             FirePressed = firePressed;
+            FireHeld = fireHeld;
+            ReloadPressed = reloadPressed;
+            RechargePressed = rechargePressed;
             Selection = selection;
             DebugReset = debugReset;
             _unfocused = !focused;

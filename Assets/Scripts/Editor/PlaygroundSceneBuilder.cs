@@ -106,7 +106,7 @@ namespace Overtime.Editor
             var movement = weaponInstance.transform.GetChild(0);
             var sway = movement.GetChild(0);
             var recoil = sway.GetChild(0);
-            Wire(presentation, "_input", input, "_motor", motor, "_cameraRig", rig, "_movementPivot", movement, "_swayPivot", sway, "_recoilPivot", recoil, "_muzzleFlash", recoil.Find("Muzzle Flash"));
+            Wire(presentation, "_motor", motor, "_cameraRig", rig, "_movementPivot", movement, "_swayPivot", sway, "_recoilPivot", recoil, "_muzzleFlash", recoil.Find("Muzzle Flash"));
 
             Wire(rig, "_motor", motor, "_cinemachineCamera", cm, "_gravityFrame", gravity, "_yawPivot", yaw, "_pitchPivot", pitch, "_effectsPivot", effects);
             Wire(driver, "_input", input, "_motor", motor, "_cameraRig", rig);

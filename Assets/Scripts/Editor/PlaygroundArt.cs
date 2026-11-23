@@ -39,13 +39,13 @@ namespace Overtime.Editor
             Block(Root, "North Bulkhead", 0f, 5f, 80.7f, 15f, 11f, 1f, _graphite);
         }
 
-        internal Transform BuildTemporalRoom()
+        internal Transform BuildTemporalRoom(string title = "TEMPORAL TEST CHAMBER")
         {
             Root.name = "MERIDIAN | Temporal Test Facility";
             var room = Hall("Temporal Testing Chamber", -10f, 14f, 7f, 0f, true);
             Block(room, "South Bulkhead", 0f, 3.5f, -10.45f, 15f, 7f, 0.9f, _graphite);
             Block(room, "North Bulkhead", 0f, 3.5f, 14.45f, 15f, 7f, 0.9f, _graphite);
-            Gate(room, "MERIDIAN  /  TEMPORAL TEST CHAMBER", 2f, 4.7f, _cyan);
+            Gate(room, $"MERIDIAN  /  {title}", 2f, 4.7f, _cyan);
 
             for (var z = -3f; z <= 12f; z += 5f)
             {

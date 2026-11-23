@@ -12,6 +12,10 @@ namespace Overtime
         [SerializeField, Min(0.05f)] private float _lifetime = 1.45f;
         [SerializeField, Min(0.1f)] private float _speed = 8f;
 
+        [SerializeField] private TemporalDirector _combatDirector;
+        [SerializeField, Min(1)] private int _damage = 15;
+        [SerializeField, Min(0.01f)] private float _radius = 0.13f;
+
         private LineRenderer[] _traces;
         private Projectile[] _live;
         private Projectile[] _history;
@@ -53,8 +57,16 @@ namespace Overtime
                 ref var projectile = ref _live[slot];
                 if (projectile.Active)
                 {
-                    projectile.Remaining = Mathf.Max(0f, projectile.Remaining - step);
-                    projectile.Position += displacement;
+                    if (_combatDirector != null && Sweep(projectile.Position, displacement))
+                    {
+                        projectile.Remaining = 0f;
+                    }
+                    else
+                    {
+                        projectile.Remaining = Mathf.Max(0f, projectile.Remaining - step);
+                        projectile.Position += displacement;
+                    }
+
                     Apply(slot);
                 }
             }
@@ -73,6 +85,25 @@ namespace Overtime
                     }
                 }
             }
+        }
+
+        private bool Sweep(Vector3 origin, Vector3 displacement)
+        {
+            // The combat player's capsule is on Ignore Raycast. Include it only when damage is allowed.
+            var canDamagePlayer = _combatDirector.CanDamagePlayer;
+            var mask = canDamagePlayer ? Physics.AllLayers : Physics.DefaultRaycastLayers;
+            var capsule = _combatDirector.PlayerCapsule;
+            if (canDamagePlayer && (capsule.ClosestPoint(origin) - origin).sqrMagnitude <= _radius * _radius)
+            {
+                return _combatDirector.DamagePlayer(_damage);
+            }
+
+            if (!Physics.SphereCast(origin, _radius, transform.forward, out var hit, displacement.magnitude, mask, QueryTriggerInteraction.Ignore))
+            {
+                return false;
+            }
+
+            return hit.collider != capsule || _combatDirector.DamagePlayer(_damage);
         }
 
         internal override void Capture(int slot)

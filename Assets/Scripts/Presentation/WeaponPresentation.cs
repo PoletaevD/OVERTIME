@@ -5,7 +5,6 @@ namespace Overtime
 {
     internal sealed class WeaponPresentation : MonoBehaviour
     {
-        [SerializeField] private PlaygroundInput _input;
         [SerializeField] private GravityMotor _motor;
         [SerializeField] private GravityCamera _cameraRig;
         [SerializeField] private Transform _movementPivot;
@@ -23,7 +22,7 @@ namespace Overtime
         [SerializeField, Min(0f)] private float _landingOffset = 0.055f;
         [SerializeField, Min(0f)] private float _gravityLean = 5f;
 
-        [Header("Test Fire")]
+        [Header("Fire")]
         [SerializeField, Min(0f)] private float _recoilDistance = 0.075f;
         [SerializeField, Min(0f)] private float _recoilAngle = 8f;
         [SerializeField, Min(0.01f)] private float _recoveryTime = 0.16f;
@@ -33,6 +32,12 @@ namespace Overtime
         private float _motionImpulse;
         private float _gravityImpulse;
         private float _recoil;
+        private float _recoilRoll;
+        private float _kick;
+        private float _flashTime;
+        private uint _confirmedShots;
+        private PlaygroundPlayer _player;
+        private CombatWeapon _weapon;
         private float _resetKick;
         private bool _wasRewinding;
         private Vector2 _sway;
@@ -41,8 +46,22 @@ namespace Overtime
         private Tween _recoilTween;
         private Tween _resetTween;
 
+        internal uint ConfirmedShots => _confirmedShots;
+
         private void OnEnable()
         {
+            _player = GetComponentInParent<PlaygroundPlayer>();
+            _weapon = _player.Combat?.Weapon;
+            if (_weapon != null)
+            {
+                _weapon.ShotFired += OnShot;
+            }
+            else
+            {
+                _player.LegacyShotFired += Fire;
+            }
+
+            _recoilTween = DOVirtual.Float(1f, 0f, _recoveryTime, value => _recoil = value * _kick).SetAutoKill(false).SetUpdate(true).SetEase(Ease.OutCubic).Pause();
             _motor.Jumped += OnJumped;
             _motor.Landed += OnLanded;
             _motor.GravityChanged += OnGravityChanged;
@@ -50,6 +69,15 @@ namespace Overtime
 
         private void OnDisable()
         {
+            if (_weapon != null)
+            {
+                _weapon.ShotFired -= OnShot;
+            }
+            else
+            {
+                _player.LegacyShotFired -= Fire;
+            }
+
             _motor.Jumped -= OnJumped;
             _motor.Landed -= OnLanded;
             _motor.GravityChanged -= OnGravityChanged;
@@ -62,6 +90,7 @@ namespace Overtime
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
             _recoil = 0f;
+            _flashTime = 0f;
             _muzzleFlash.gameObject.SetActive(false);
         }
 
@@ -73,12 +102,17 @@ namespace Overtime
                 SyncTemporalMotion();
             }
 
-            if (_input.FirePressed)
+            var deltaTime = Time.unscaledDeltaTime;
+            if (_flashTime > 0f)
             {
-                Fire();
+                _flashTime -= deltaTime;
+            }
+            else if (_muzzleFlash.gameObject.activeSelf)
+            {
+                _muzzleFlash.gameObject.SetActive(false);
             }
 
-            var deltaTime = Time.unscaledDeltaTime;
+
             var blend = 1f - Mathf.Exp(-deltaTime * 13f);
             var motion = _cameraRig.ReducedMotion ? 0.25f : 1f;
             var phase = _cameraRig.BobPhase;
@@ -96,7 +130,7 @@ namespace Overtime
             _swayPivot.localRotation = Quaternion.Euler(_sway.y * motion, -_sway.x * motion, 0f);
             var temporal = _cameraRig.ReducedMotion ? 0f : _resetKick;
             _recoilPivot.localPosition = Vector3.back * (_recoil * _recoilDistance * motion + temporal * 0.035f);
-            _recoilPivot.localRotation = Quaternion.AngleAxis(-_recoil * _recoilAngle * motion + temporal * 4f, Vector3.right);
+            _recoilPivot.localRotation = Quaternion.Euler(-_recoil * _recoilAngle * motion + temporal * 4f, 0f, _recoil * _recoilRoll * motion);
         }
 
         private void SyncTemporalMotion()
@@ -110,7 +144,8 @@ namespace Overtime
 
             _motionTween?.Kill();
             _gravityTween?.Kill();
-            _recoilTween?.Kill();
+            _recoilTween?.Pause();
+            _flashTime = 0f;
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
             _recoil = 0f;
@@ -123,14 +158,28 @@ namespace Overtime
             }
         }
 
+        private void OnShot(CombatShot shot)
+        {
+            Fire();
+        }
+
         private void Fire()
         {
-            _recoilTween?.Kill();
+            if (_wasRewinding && !_cameraRig.IsRewinding)
+            {
+                _wasRewinding = false;
+                SyncTemporalMotion();
+            }
+
+            _confirmedShots++;
+            var variation = (_confirmedShots % 5) * 0.04f;
+            _recoilRoll = (_confirmedShots % 3 - 1f) * 1.4f;
+            _kick = Mathf.Min(1.35f, _recoil + 0.84f + variation);
+            _recoil = _kick;
+            _recoilTween.Restart();
+            _flashTime = _cameraRig.ReducedMotion ? 0.02f : 0.032f;
+            _muzzleFlash.localScale = Vector3.one * (_cameraRig.ReducedMotion ? 0.55f : 0.85f + variation);
             _muzzleFlash.gameObject.SetActive(true);
-            _recoilTween = DOTween.Sequence().SetUpdate(true)
-                .Append(DOTween.To(() => _recoil, value => _recoil = value, Mathf.Min(1.3f, _recoil + 1f), 0.026f).SetEase(Ease.OutCubic))
-                .InsertCallback(0.047f, () => _muzzleFlash.gameObject.SetActive(false))
-                .Append(DOTween.To(() => _recoil, value => _recoil = value, 0f, _recoveryTime).SetEase(Ease.OutCubic));
         }
 
         private void OnJumped()

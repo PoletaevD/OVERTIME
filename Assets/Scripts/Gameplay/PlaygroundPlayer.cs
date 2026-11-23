@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Overtime
@@ -11,12 +12,17 @@ namespace Overtime
         [SerializeField] private GravityMotor _motor;
         [SerializeField] private GravityCamera _cameraRig;
         [SerializeField] private TemporalDirector _temporalDirector;
+        [SerializeField] private PlayerCombat _combat;
 
         private Vector3 _spawnPosition;
         private Quaternion _spawnRotation;
         private float _accumulator;
         private CapsuleCollider _capsule;
         private bool _capsuleWasTrigger;
+
+        internal event Action LegacyShotFired;
+        internal PlayerCombat Combat => _combat;
+        internal CapsuleCollider Capsule => _capsule;
 
         internal Ray AimRay => _cameraRig.AimRay;
         internal bool ReducedMotion => _cameraRig.ReducedMotion;
@@ -26,6 +32,8 @@ namespace Overtime
             _spawnPosition = transform.position;
             _spawnRotation = transform.rotation;
             _cameraRig.ResetView(_spawnRotation);
+            _input.UseCombatBindings(_combat != null);
+            _combat?.ResetState();
 
             if (_temporalDirector != null)
             {
@@ -41,7 +49,8 @@ namespace Overtime
             if (_temporalDirector != null)
             {
                 var look = _input.ReadLook(deltaTime);
-                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.TakeTemporalSelection(), _input.ResetPressed, _input.Focused);
+                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.TakeTemporalSelection(), _input.ResetPressed, _input.Focused, _input.FireHeld, _input.ReloadPressed, _input.RechargePressed);
+                _input.ClearCombatCommands();
                 if (!_temporalDirector.Advance(Time.unscaledDeltaTime, input))
                 {
                     _input.SuppressFire();
@@ -53,6 +62,11 @@ namespace Overtime
             if (_input.ResetPressed)
             {
                 ResetAtSpawn();
+            }
+
+            if (_input.FirePressed)
+            {
+                ConfirmLegacyShot();
             }
 
             _cameraRig.Look(_input.ReadLook(deltaTime));
@@ -68,6 +82,16 @@ namespace Overtime
                 _motor.Step(move, _cameraRig.Heading, _input.JumpHeld, StepDuration);
                 _accumulator -= StepDuration;
             }
+        }
+
+        internal void ConfirmLegacyShot()
+        {
+            LegacyShotFired?.Invoke();
+        }
+
+        internal void SetGameOver(bool active)
+        {
+            _input.SetGameOver(active);
         }
 
         internal void ResetAtSpawn()
@@ -91,13 +115,14 @@ namespace Overtime
 
         internal Snapshot Capture()
         {
-            return new Snapshot(_motor.Capture(), _cameraRig.Capture());
+            return new Snapshot(_motor.Capture(), _cameraRig.Capture(), _combat?.Capture() ?? default);
         }
 
         internal void Restore(in Snapshot snapshot)
         {
             _motor.Restore(snapshot.Motor);
             _cameraRig.Restore(snapshot.Camera);
+            _combat?.Restore(snapshot.Combat);
         }
 
         internal void Preview(in Snapshot older, float fraction)
@@ -128,10 +153,13 @@ namespace Overtime
             internal readonly GravityMotor.Snapshot Motor;
             internal readonly GravityCamera.Snapshot Camera;
 
-            internal Snapshot(GravityMotor.Snapshot motor, GravityCamera.Snapshot camera)
+            internal readonly PlayerCombat.Snapshot Combat;
+
+            internal Snapshot(GravityMotor.Snapshot motor, GravityCamera.Snapshot camera, PlayerCombat.Snapshot combat)
             {
                 Motor = motor;
                 Camera = camera;
+                Combat = combat;
             }
         }
     }

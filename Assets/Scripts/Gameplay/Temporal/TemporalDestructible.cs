@@ -16,7 +16,12 @@ namespace Overtime
             colliders.Add(_hitbox);
         }
 
-        internal bool TryHit(Collider hit)
+        internal bool TryHit(Ray aim)
+        {
+            return Physics.Raycast(aim, out var hit, 40f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore) && TryHit(hit.collider);
+        }
+
+        private bool TryHit(Collider hit)
         {
             if (!_alive || hit != _hitbox)
             {

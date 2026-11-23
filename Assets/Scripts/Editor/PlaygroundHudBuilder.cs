@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 namespace Overtime.Editor
 {
-    internal sealed class PlaygroundHudBuilder
+    internal sealed partial class PlaygroundHudBuilder
     {
         private static readonly Color s_ink = new(0.035f, 0.054f, 0.077f, 0.91f);
         private static readonly Color s_paper = new(0.91f, 0.95f, 0.97f);
@@ -66,7 +66,7 @@ namespace Overtime.Editor
             var panel = Panel("Temporal Timeline", root, lowerRight, Vector2.zero, new Vector2(386f, 116f), s_ink).rectTransform;
             panel.pivot = lowerRight;
             panel.anchoredPosition = new Vector2(-44f, 45f);
-            Label("Rewind Binding", panel, new Vector2(18f, 73f), new Vector2(214f, 32f), "Q — REWIND", 25f, s_paper);
+            Label("Rewind Binding", panel, new Vector2(18f, 73f), new Vector2(214f, 32f), "Q вЂ” REWIND", 25f, s_paper);
             var time = Label("History Seconds", panel, new Vector2(236f, 73f), new Vector2(132f, 32f), "0.00 s", 20f, s_paper);
             time.alignment = TextAlignmentOptions.MidlineRight;
             var status = Label("Playback Status", panel, new Vector2(18f, 15f), new Vector2(260f, 22f), "RECORDING", 14f, s_cyan);

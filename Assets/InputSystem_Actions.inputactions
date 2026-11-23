@@ -6,6 +6,33 @@
             "id": "df70fa95-8a34-4494-b137-73ab6b9c7d37",
             "actions": [
                 {
+                    "name": "Reload",
+                    "type": "Button",
+                    "id": "a522538e-4e98-4139-918f-84007be5b4b8",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "CombatRestart",
+                    "type": "Button",
+                    "id": "a57eb4db-23d8-4d51-ac4e-efd07fc4904a",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "RechargeChrono",
+                    "type": "Button",
+                    "id": "34fb24a7-2540-48e3-a44c-e22beec8ee8f",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "Move",
                     "type": "Value",
                     "id": "351f2ccd-1f9f-44bf-9bec-d62ac5c5f408",
@@ -124,6 +151,39 @@
                 }
             ],
             "bindings": [
+                {
+                    "name": "",
+                    "id": "e96b10e3-c5df-448d-a6f6-a2573562d7d8",
+                    "path": "<Keyboard>/r",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "Reload",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "e1363af9-4432-4b20-abe0-e636cc6acc31",
+                    "path": "<Keyboard>/f5",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "CombatRestart",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "6b47a288-e8d8-44fb-8896-b04dd556eec0",
+                    "path": "<Keyboard>/f",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "RechargeChrono",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
                 {
                     "name": "",
                     "id": "8fa9985f-2b88-40ae-9d39-2b9114bc286d",
