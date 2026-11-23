@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Overtime
@@ -25,6 +26,11 @@ namespace Overtime
         {
             _closedPosition = transform.localPosition;
             base.Initialize(capacity);
+        }
+
+        internal override void CollectColliders(List<Collider> colliders)
+        {
+            colliders.AddRange(GetComponentsInChildren<Collider>(true));
         }
 
         internal override void ResetState()

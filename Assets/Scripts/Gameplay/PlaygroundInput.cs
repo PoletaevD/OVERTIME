@@ -13,6 +13,12 @@ namespace Overtime
         private InputAction _jump;
         private InputAction _attack;
         private InputAction _rewind;
+        private InputAction _override;
+        private InputAction _recall;
+        private InputAction _bulletTime;
+        private InputActionMap _playerActions;
+        private TemporalSelection _temporalSelection;
+        private int _focusBlockedButtons;
         private bool _focused;
         private bool _captured;
         private bool _discardLook;
@@ -20,7 +26,7 @@ namespace Overtime
         internal Vector2 Move => _captured ? _move.ReadValue<Vector2>() : Vector2.zero;
         internal bool JumpPressed => _captured && _jump.WasPressedThisFrame();
         internal bool JumpHeld => _captured && _jump.IsPressed();
-        internal bool RewindHeld => _focused && _rewind.IsPressed();
+        internal bool Focused => _focused;
         internal bool FirePressed { get; private set; }
         internal bool ResetPressed => _focused && Keyboard.current?.rKey.wasPressedThisFrame == true;
         internal bool DebugPressed => _focused && Keyboard.current?.f3Key.wasPressedThisFrame == true;
@@ -35,11 +41,16 @@ namespace Overtime
             _look = map.FindAction("Look", true);
             _jump = map.FindAction("Jump", true);
             _attack = map.FindAction("Attack", true);
+            _playerActions = map;
             _rewind = map.FindAction("Rewind", true);
+            _override = map.FindAction("OverrideTime", true);
+            _recall = map.FindAction("RecallTime", true);
+            _bulletTime = map.FindAction("BulletTime", true);
         }
 
         private void OnEnable()
         {
+            _playerActions.actionTriggered += OnActionTriggered;
             _instance.Enable();
             _focused = Application.isFocused;
 #if !UNITY_WEBGL || UNITY_EDITOR
@@ -49,6 +60,9 @@ namespace Overtime
 
         private void OnDisable()
         {
+            _playerActions.actionTriggered -= OnActionTriggered;
+            _temporalSelection = default;
+            _focusBlockedButtons = 0;
             SetCapture(false);
             _instance.Disable();
         }
@@ -63,7 +77,37 @@ namespace Overtime
             _focused = focused;
             if (!focused)
             {
+                _focusBlockedButtons |= _temporalSelection.Held;
+                _temporalSelection = default;
                 SetCapture(false);
+            }
+        }
+
+        internal TemporalSelection TakeTemporalSelection()
+        {
+            var selection = _temporalSelection;
+            _temporalSelection.ClearReleases();
+            return selection;
+        }
+
+        private void OnActionTriggered(InputAction.CallbackContext context)
+        {
+            var action = context.action;
+            var mode = action == _rewind ? TemporalMode.Reset : action == _override ? TemporalMode.Override : action == _recall ? TemporalMode.Recall : action == _bulletTime ? TemporalMode.BulletTime : TemporalMode.Normal;
+            if (mode == TemporalMode.Normal || !_focused)
+            {
+                return;
+            }
+
+            var button = 1 << (int)mode;
+            if (context.canceled)
+            {
+                _focusBlockedButtons &= ~button;
+                _temporalSelection.Release(mode);
+            }
+            else if (context.performed && (_focusBlockedButtons & button) == 0)
+            {
+                _temporalSelection.Press(mode);
             }
         }
 

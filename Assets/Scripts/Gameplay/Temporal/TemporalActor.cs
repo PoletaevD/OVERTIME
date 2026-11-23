@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Overtime
@@ -10,7 +11,11 @@ namespace Overtime
         internal abstract void Capture(int slot);
         internal abstract void Restore(int slot);
 
-        internal virtual void Present(TemporalTimeline timeline, bool showTraces)
+        internal virtual void CollectColliders(List<Collider> colliders)
+        {
+        }
+
+        internal virtual void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
         {
         }
     }

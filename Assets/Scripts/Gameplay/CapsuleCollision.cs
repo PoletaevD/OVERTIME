@@ -14,6 +14,7 @@ namespace Overtime
 
         internal float Radius => _shape.radius;
         internal float Segment => _shape.height * 0.5f - _shape.radius;
+        internal TemporalCollision TemporalCollision { get; set; }
 
         internal CapsuleCollision(CapsuleCollider shape, LayerMask mask)
         {
@@ -30,7 +31,7 @@ namespace Overtime
             for (var i = 0; i < count; i++)
             {
                 var hit = _hits[i];
-                if (hit.collider == _shape || hit.distance >= best || Vector3.Dot(direction, hit.normal) > -0.001f)
+                if (hit.collider == _shape || hit.distance >= best || Vector3.Dot(direction, hit.normal) > -0.001f || TemporalCollision?.Ignores(hit.collider) == true)
                 {
                     continue;
                 }
@@ -78,7 +79,7 @@ namespace Overtime
                 for (var i = 0; i < count; i++)
                 {
                     var other = _overlaps[i];
-                    if (other == _shape || !Physics.ComputePenetration(_shape, center, orientation, other, other.transform.position, other.transform.rotation, out var direction, out var depth))
+                    if (other == _shape || TemporalCollision?.Ignores(other) == true || !Physics.ComputePenetration(_shape, center, orientation, other, other.transform.position, other.transform.rotation, out var direction, out var depth))
                     {
                         continue;
                     }

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using TMPro;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -56,6 +57,7 @@ namespace Overtime.Editor
             var volume = builder.BuildVolume();
             var effects = director.gameObject.AddComponent<TemporalEffects>();
             PlaygroundSceneBuilder.Wire(effects, "_director", director, "_cameraRig", rig, "_volume", volume, "_pulse", pulse);
+            builder.ConfigureModeDemos(director, effects);
 
             if (!EditorSceneManager.SaveScene(scene, ScenePath))
             {
@@ -66,6 +68,31 @@ namespace Overtime.Editor
             Array.Resize(ref scenes, scenes.Length + 1);
             scenes[^1] = new EditorBuildSettingsScene(ScenePath, true);
             EditorBuildSettings.scenes = scenes;
+        }
+
+        [MenuItem("OVERTIME/Update Temporal Playground")]
+        public static void UpdateStage02B()
+        {
+            var scene = SceneManager.GetActiveScene();
+            if (scene.path != ScenePath)
+            {
+                throw new InvalidOperationException("Open Temporal Playground before updating its demos.");
+            }
+
+            TemporalDirector director = null;
+            TemporalHud hud = null;
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                director ??= root.GetComponentInChildren<TemporalDirector>(true);
+                hud ??= root.GetComponentInChildren<TemporalHud>(true);
+            }
+
+            var movementHud = hud.GetComponentInParent<PlaygroundHud>();
+            var font = hud.transform.Find("Playback Status").GetComponent<TMP_Text>().font;
+            new PlaygroundHudBuilder(font).ConfigureTemporalReadouts(movementHud, hud);
+            var traceMaterial = AssetDatabase.LoadAssetAtPath<Material>($"{ArtPath}/Temporal Trace.mat");
+            Chamber.ConfigureModeDemos(director, director.GetComponent<TemporalEffects>(), traceMaterial);
+            EditorSceneManager.MarkSceneDirty(scene);
         }
 
         private sealed class Chamber
@@ -96,6 +123,46 @@ namespace Overtime.Editor
                 }
             }
 
+            internal void ConfigureModeDemos(TemporalDirector director, TemporalEffects effects)
+            {
+                ConfigureModeDemos(director, effects, _trace);
+            }
+
+            internal static void ConfigureModeDemos(TemporalDirector director, TemporalEffects effects, Material traceMaterial)
+            {
+                if (director.transform.Find("Recall Path") != null)
+                {
+                    return;
+                }
+
+                var room = director.transform.parent;
+                var trail = PlaygroundSceneBuilder.Child("Recall Path", director.transform);
+                var trace = Trace(trail.gameObject, 0.042f, traceMaterial);
+                var warm = TemporalEffects.ModeColor(TemporalMode.Recall);
+                trace.startColor = new Color(warm.r, warm.g, warm.b, 0.8f);
+                trace.endColor = new Color(warm.r, warm.g, warm.b, 0f);
+                Undo.RegisterCreatedObjectUndo(trail.gameObject, "Add Recall Path Trace");
+                Undo.RecordObject(effects, "Wire Recall Path Trace");
+                PlaygroundSceneBuilder.Wire(effects, "_playerTrace", trace);
+
+                SetDemoLabel(room, "Airlock 02A", "E  /  REWIND THE AIRLOCK", TemporalMode.Override);
+                var projectileHint = SetDemoLabel(room, "Projectile Lane Emitter", "SHIFT  /  SLOW PROJECTILES", TemporalMode.BulletTime);
+                Undo.RecordObject(projectileHint.transform, "Position Projectile Hint");
+                projectileHint.transform.localPosition += Vector3.right * 0.7f;
+                SetDemoLabel(room, "Destructible Test Target", "LMB  TEST SHOT  /  Q  RESTORE", TemporalMode.Reset);
+                var recallHint = PlaygroundArt.Label(room, "C  /  RECALL YOUR WALL RUN", new Vector3(4.35f, 4.36f, 3.68f), 0.24f, warm);
+                Undo.RegisterCreatedObjectUndo(recallHint.gameObject, "Add Recall Route Hint");
+            }
+
+            private static TMP_Text SetDemoLabel(Transform room, string demoObject, string text, TemporalMode mode)
+            {
+                var label = room.Find(demoObject).GetComponentInChildren<TMP_Text>();
+                Undo.RecordObject(label, "Update Temporal Demo Hint");
+                label.text = text;
+                label.color = TemporalEffects.ModeColor(mode);
+                return label;
+            }
+
             internal TemporalMovingTarget BuildMovingTarget(bool vertical)
             {
                 var root = Anchor(vertical ? "Vertical Track Target" : "Horizontal Track Target", new Vector3(vertical ? 4.5f : -4.1f, vertical ? 2.55f : 2f, 3.7f));
@@ -103,10 +170,10 @@ namespace Overtime.Editor
                 Block(root, "Rail", new Vector3(0f, 0f, 0.33f), vertical ? new Vector3(0.15f, 2.85f, 0.28f) : new Vector3(3.7f, 0.15f, 0.28f), _graphite);
                 Block(slider, "Target Plate", Vector3.zero, new Vector3(0.78f, 0.78f, 0.16f), _white).Rotate(0f, 0f, 45f);
                 Block(slider, "Cyan Core", Vector3.back * 0.11f, new Vector3(0.38f, 0.38f, 0.08f), _cyan).Rotate(0f, 0f, 45f);
-                _art.Label(root, vertical ? "VERTICAL TRACK" : "HORIZONTAL TRACK", new Vector3(0f, vertical ? -1.72f : -0.71f, -0.05f), 0.24f, Color.white);
+                PlaygroundArt.Label(root, vertical ? "VERTICAL TRACK" : "HORIZONTAL TRACK", new Vector3(0f, vertical ? -1.72f : -0.71f, -0.05f), 0.24f, Color.white);
 
                 var target = root.gameObject.AddComponent<TemporalMovingTarget>();
-                PlaygroundSceneBuilder.Wire(target, "_visual", slider, "_trace", Trace(root.gameObject, 0.058f));
+                PlaygroundSceneBuilder.Wire(target, "_visual", slider, "_trace", Trace(root.gameObject, 0.058f, _trace));
                 var data = new SerializedObject(target);
                 data.FindProperty("_travel").vector3Value = vertical ? Vector3.up * 1.05f : Vector3.right * 1.55f;
                 data.FindProperty("_period").floatValue = vertical ? 2.65f : 3.6f;
@@ -122,7 +189,7 @@ namespace Overtime.Editor
                 Block(frame, "Right Jamb", new Vector3(1.68f, 2.42f, 0f), new Vector3(0.4f, 4.84f, 0.85f), _graphite, true);
                 Block(frame, "Door Housing", new Vector3(0f, 3.87f, -0.34f), new Vector3(3.03f, 2.03f, 0.18f), _graphite, true);
                 Block(frame, "Airlock Marking", new Vector3(0f, 2.9f, -0.45f), new Vector3(3.03f, 0.06f, 0.035f), _orange);
-                _art.Label(frame, "AUTO AIRLOCK", new Vector3(0f, 3.24f, -0.46f), 0.26f, Color.white);
+                PlaygroundArt.Label(frame, "AUTO AIRLOCK", new Vector3(0f, 3.24f, -0.46f), 0.26f, Color.white);
                 var door = PlaygroundSceneBuilder.Child("Sliding Door", frame);
                 Block(door, "Door Leaf", new Vector3(0f, 1.19f, 0f), new Vector3(2.94f, 2.36f, 0.24f), _white, true);
                 Block(door, "Door Accent", new Vector3(0f, 0.35f, -0.13f), new Vector3(2.75f, 0.13f, 0.045f), _orange);
@@ -134,7 +201,7 @@ namespace Overtime.Editor
             {
                 var root = Anchor("Destructible Test Target", new Vector3(0f, 1.46f, 3.2f));
                 Block(root, "Mount Pedestal", new Vector3(0f, -1.06f, 0.32f), new Vector3(1.24f, 0.8f, 0.48f), _graphite);
-                _art.Label(root, "FRANGIBLE  /  LMB TEST", new Vector3(0f, -0.96f, 0.038f), 0.21f, Color.white);
+                PlaygroundArt.Label(root, "FRANGIBLE  /  LMB TEST", new Vector3(0f, -0.96f, 0.038f), 0.21f, Color.white);
                 var intact = Block(root, "Intact Target", Vector3.zero, new Vector3(1.26f, 1.15f, 0.22f), _orange, true);
                 Block(root, "Reference Frame", Vector3.forward * 0.2f, new Vector3(1.43f, 1.32f, 0.12f), _graphite);
                 var damaged = PlaygroundSceneBuilder.Child("Broken Target", root);
@@ -152,7 +219,7 @@ namespace Overtime.Editor
                 Block(root, "Emitter Plinth", new Vector3(0f, -0.58f, -0.5f), new Vector3(0.78f, 1.16f, 0.8f), _graphite);
                 Block(root, "Emitter Casing", new Vector3(0f, 0f, -0.4f), new Vector3(0.86f, 0.47f, 0.58f), _white);
                 Block(root, "Emitter Port", new Vector3(0f, 0f, -0.08f), new Vector3(0.28f, 0.28f, 0.10f), _orange);
-                _art.Label(root, "PROJECTILE LANE", new Vector3(0f, 0.55f, -0.03f), 0.22f, Color.white);
+                PlaygroundArt.Label(root, "PROJECTILE LANE", new Vector3(0f, 0.55f, -0.03f), 0.22f, Color.white);
                 Block(_room, "Projectile Lane Marking", new Vector3(-5.75f, 0.016f, 5.4f), new Vector3(0.075f, 0.022f, 11.5f), _cyan);
                 var slots = new Transform[8];
                 for (var slot = 0; slot < slots.Length; slot++)
@@ -163,7 +230,7 @@ namespace Overtime.Editor
                     projectile.transform.localScale = new Vector3(0.16f, 0.16f, 0.34f);
                     projectile.GetComponent<MeshRenderer>().sharedMaterial = _cyan;
                     Object.DestroyImmediate(projectile.GetComponent<SphereCollider>());
-                    Trace(projectile, 0.035f);
+                    Trace(projectile, 0.035f, _trace);
                     projectile.SetActive(false);
                     slots[slot] = projectile.transform;
                 }
@@ -197,10 +264,10 @@ namespace Overtime.Editor
                 return volume;
             }
 
-            private LineRenderer Trace(GameObject host, float width)
+            private static LineRenderer Trace(GameObject host, float width, Material material)
             {
                 var trace = host.AddComponent<LineRenderer>();
-                trace.sharedMaterial = _trace;
+                trace.sharedMaterial = material;
                 trace.useWorldSpace = true;
                 trace.startWidth = width;
                 trace.endWidth = width * 0.16f;

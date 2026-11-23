@@ -169,7 +169,7 @@ namespace Overtime.Editor
             Label(zone, title, new Vector3(0f, y + 0.015f, z - 0.13f), 0.49f, new Color(0.94f, 0.95f, 0.90f));
         }
 
-        internal void Label(Transform parent, string title, Vector3 position, float scale, Color color)
+        internal static TextMeshPro Label(Transform parent, string title, Vector3 position, float scale, Color color)
         {
             var label = PlaygroundSceneBuilder.Child(title, parent).gameObject.AddComponent<TextMeshPro>();
             label.transform.localPosition = position;
@@ -179,6 +179,7 @@ namespace Overtime.Editor
             label.alignment = TextAlignmentOptions.Center;
             label.textWrappingMode = TextWrappingModes.NoWrap;
             label.text = title;
+            return label;
         }
 
         internal GameObject BuildWeapon(int layer)

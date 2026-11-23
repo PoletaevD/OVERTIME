@@ -1,5 +1,5 @@
 {
     "name": "Overtime.Runtime",
     "rootNamespace": "Overtime",
-    "references": ["Unity.InputSystem", "Unity.Cinemachine", "Unity.TextMeshPro", "UnityEngine.UI", "Unity.RenderPipelines.Core.Runtime"]
+    "references": ["Unity.InputSystem", "Unity.Cinemachine", "Unity.TextMeshPro", "UnityEngine.UI", "Unity.RenderPipelines.Core.Runtime", "Unity.RenderPipelines.Universal.Runtime"]
 }

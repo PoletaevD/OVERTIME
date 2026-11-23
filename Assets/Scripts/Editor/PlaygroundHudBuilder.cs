@@ -1,4 +1,5 @@
 using TMPro;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -84,11 +85,7 @@ namespace Overtime.Editor
             var hud = panel.gameObject.AddComponent<TemporalHud>();
             PlaygroundSceneBuilder.Wire(hud, "_director", director, "_cameraRig", rig, "_track", track, "_recorded", recorded, "_depth", depth, "_cursor", cursor, "_status", status, "_time", time, "_activeLabel", accent);
             PlaygroundSceneBuilder.Wire(movementHud, "_temporalDirector", director);
-
-            var debugPanel = (RectTransform)root.Find("Debug Overlay");
-            debugPanel.sizeDelta = new Vector2(474f, 371f);
-            var debugText = (RectTransform)debugPanel.Find("Telemetry");
-            debugText.sizeDelta = new Vector2(438f, 347f);
+            ConfigureTemporalReadouts(movementHud, hud);
 
             var flash = Panel("RESET Screen Tint", root, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.27f, 0.82f, 1f, 0.13f)).rectTransform;
             flash.SetAsFirstSibling();
@@ -97,6 +94,52 @@ namespace Overtime.Editor
             pulse.alpha = 0f;
             pulse.blocksRaycasts = false;
             return pulse;
+        }
+
+        internal void ConfigureTemporalReadouts(PlaygroundHud movementHud, TemporalHud hud)
+        {
+            var panel = (RectTransform)hud.transform;
+            if (panel.Find("World Track") != null)
+            {
+                return;
+            }
+
+            Undo.RecordObject(panel, "Resize Temporal HUD");
+            panel.sizeDelta = new Vector2(386f, 154f);
+            var status = panel.Find("Playback Status").GetComponent<TMP_Text>();
+            var difference = panel.Find("History Seconds").GetComponent<TMP_Text>();
+            var player = panel.Find("Rewind Binding").GetComponent<TMP_Text>();
+            PlaceReadout(status, new Vector2(18f, 118f), new Vector2(234f, 26f), 19f, "NORMAL");
+            PlaceReadout(difference, new Vector2(253f, 118f), new Vector2(115f, 26f), 14f, "P-W  0.00 s");
+            PlaceReadout(player, new Vector2(18f, 91f), new Vector2(350f, 22f), 17f, "PLAYER  FWD   0.00 s");
+            var world = Label("World Readout", panel, new Vector2(18f, 47f), new Vector2(350f, 22f), "WORLD   FWD   0.00 s", 17f, s_paper);
+            var playerTrack = (RectTransform)panel.Find("History Track");
+            Undo.RecordObject(playerTrack, "Place Player History");
+            playerTrack.anchoredPosition = new Vector2(18f, 78f);
+            var worldTrack = Object.Instantiate(playerTrack, panel);
+            worldTrack.name = "World Track";
+            worldTrack.anchoredPosition = new Vector2(18f, 34f);
+            Undo.RegisterCreatedObjectUndo(world.gameObject, "Add World Readout");
+            Undo.RegisterCreatedObjectUndo(worldTrack.gameObject, "Add World History");
+            PlaygroundSceneBuilder.Wire(hud, "_playerReadout", player, "_worldReadout", world, "_worldTrack", worldTrack);
+
+            Label("Temporal Bindings", panel, new Vector2(18f, 7f), new Vector2(350f, 18f), "Q RESET   E OVERRIDE   C RECALL   SHIFT BULLET TIME", 13f, s_muted);
+            var debugPanel = (RectTransform)movementHud.transform.Find("Debug Overlay");
+            var debugText = (RectTransform)debugPanel.Find("Telemetry");
+            Undo.RecordObjects(new Object[] { debugPanel, debugText }, "Resize Temporal Diagnostics");
+            debugPanel.sizeDelta = new Vector2(490f, 422f);
+            debugText.sizeDelta = new Vector2(454f, 398f);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(debugPanel);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(debugText);
+        }
+
+        private void PlaceReadout(TMP_Text label, Vector2 position, Vector2 size, float fontSize, string text)
+        {
+            Undo.RecordObjects(new Object[] { label, label.rectTransform }, "Update Temporal Readout");
+            label.rectTransform.anchoredPosition = position;
+            label.rectTransform.sizeDelta = size;
+            label.fontSize = fontSize;
+            label.text = text;
         }
 
         private RectTransform[] BuildReticle(Transform parent)

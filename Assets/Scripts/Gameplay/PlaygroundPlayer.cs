@@ -15,6 +15,8 @@ namespace Overtime
         private Vector3 _spawnPosition;
         private Quaternion _spawnRotation;
         private float _accumulator;
+        private CapsuleCollider _capsule;
+        private bool _capsuleWasTrigger;
 
         internal Ray AimRay => _cameraRig.AimRay;
         internal bool ReducedMotion => _cameraRig.ReducedMotion;
@@ -39,7 +41,7 @@ namespace Overtime
             if (_temporalDirector != null)
             {
                 var look = _input.ReadLook(deltaTime);
-                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.RewindHeld, _input.ResetPressed);
+                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.TakeTemporalSelection(), _input.ResetPressed, _input.Focused);
                 if (!_temporalDirector.Advance(Time.unscaledDeltaTime, input))
                 {
                     _input.SuppressFire();
@@ -111,6 +113,14 @@ namespace Overtime
         internal void SetPlayback(bool active)
         {
             _cameraRig.SetPlayback(active);
+            _capsule.isTrigger = active || _capsuleWasTrigger;
+        }
+
+        internal void SetTemporalCollision(TemporalCollision collision)
+        {
+            _capsule = GetComponent<CapsuleCollider>();
+            _capsuleWasTrigger = _capsule.isTrigger;
+            _motor.SetTemporalCollision(collision);
         }
 
         internal readonly struct Snapshot

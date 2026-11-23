@@ -162,8 +162,8 @@ namespace Overtime
                 {
                     var player = _temporalDirector.PlayerTimeline;
                     var world = _temporalDirector.WorldTimeline;
-                    var progress = player.Duration > 0d ? player.Depth / player.Duration : 0d;
-                    readout += $"\n\nTEMPORAL TELEMETRY\nTemporal mode  {(_temporalDirector.IsRewinding ? "RESET" : "FORWARD")}\nPlayer timeline  {player.Position:F3} s    World timeline  {world.Position:F3} s\nRecorded history  {player.Duration:F2} s    Rewind progress  {progress:P0}\nSnapshots  P {player.Count} / W {world.Count}    Tick  {_temporalDirector.SimulationTick}";
+                    var collision = _temporalDirector.IsPlayerProtected ? "Playback / protected" : _motor.Obstructed ? "Obstructed" : "Active";
+                    readout += $"\n\nTEMPORAL TELEMETRY  /  {_temporalDirector.Mode}\nPlayer  {player.Direction} {player.Rate:0.##}x  /  Cursor {player.Cursor}\nWorld   {world.Direction} {world.Rate:0.##}x  /  Cursor {world.Cursor}\nHistory P {player.Duration:F2} s / W {world.Duration:F2} s\nDepth   P {player.Depth:F2} s / W {world.Depth:F2} s\nSteps/frame  P {_temporalDirector.PlayerSteps} / W {_temporalDirector.WorldSteps}\nCapsule  {collision}\nDynamic overlap {_temporalDirector.DynamicOverlaps} / Phased {_temporalDirector.PhasedColliders}";
                 }
 
                 _debug.SetText(readout);

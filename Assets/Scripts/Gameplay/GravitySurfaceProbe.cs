@@ -8,6 +8,9 @@ namespace Overtime
         private const float SeamTolerance = 0.08f;
 
         private readonly LayerMask _layers;
+        private readonly RaycastHit[] _hits = new RaycastHit[24];
+
+        internal TemporalCollision TemporalCollision { get; set; }
 
         internal GravitySurfaceProbe(LayerMask layers)
         {
@@ -40,7 +43,7 @@ namespace Overtime
             var approach = outer ? travel : -travel;
             var direction = outer ? -travel : travel;
             var start = foot + up * (outer ? -CornerInset : CornerInset);
-            if (!Physics.Raycast(start, direction, out var hit, distance, _layers, QueryTriggerInteraction.Ignore))
+            if (!Raycast(start, direction, distance, out var hit))
             {
                 return false;
             }
@@ -63,12 +66,12 @@ namespace Overtime
         private bool HasSeam(Vector3 point, Vector3 up, Vector3 supportPoint, float hysteresis)
         {
             var start = point + up * (CornerInset + 2f * SeamTolerance);
-            return Physics.Raycast(start, -up, out var hit, CornerInset * 2f + 3f * SeamTolerance, _layers, QueryTriggerInteraction.Ignore) && Vector3.Dot(hit.normal, up) >= hysteresis && Mathf.Abs(Vector3.Dot(hit.point - supportPoint, up)) <= SeamTolerance;
+            return Raycast(start, -up, CornerInset * 2f + 3f * SeamTolerance, out var hit) && Vector3.Dot(hit.normal, up) >= hysteresis && Mathf.Abs(Vector3.Dot(hit.point - supportPoint, up)) <= SeamTolerance;
         }
 
         private void ConsiderManual(Vector3 origin, Vector3 ray, Vector3 direction, Vector3 up, float distance, float sensitivity, float hysteresis, ref RaycastHit best, ref float score)
         {
-            if (!Physics.Raycast(origin, ray, out var hit, distance, _layers, QueryTriggerInteraction.Ignore))
+            if (!Raycast(origin, ray, distance, out var hit))
             {
                 return;
             }
@@ -85,6 +88,29 @@ namespace Overtime
                 score = candidateScore;
                 best = hit;
             }
+        }
+
+        private bool Raycast(Vector3 origin, Vector3 direction, float distance, out RaycastHit nearest)
+        {
+            if (TemporalCollision == null || TemporalCollision.PhasedCount == 0)
+            {
+                return Physics.Raycast(origin, direction, out nearest, distance, _layers, QueryTriggerInteraction.Ignore);
+            }
+
+            var count = Physics.RaycastNonAlloc(origin, direction, _hits, distance, _layers, QueryTriggerInteraction.Ignore);
+            nearest = default;
+            var best = float.PositiveInfinity;
+            for (var index = 0; index < count; index++)
+            {
+                var hit = _hits[index];
+                if (hit.distance < best && !TemporalCollision.Ignores(hit.collider))
+                {
+                    nearest = hit;
+                    best = hit.distance;
+                }
+            }
+
+            return nearest.collider != null;
         }
     }
 }

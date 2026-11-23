@@ -69,6 +69,33 @@
                     "initialStateCheck": false
                 },
                 {
+                    "name": "OverrideTime",
+                    "type": "Button",
+                    "id": "e2762fab-827a-45be-8122-d7200ebc2b67",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "RecallTime",
+                    "type": "Button",
+                    "id": "a4b8f55a-886b-4621-b8ba-a066a6d463d4",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "BulletTime",
+                    "type": "Button",
+                    "id": "b164b6df-934c-468a-9ee7-2bdcd666939e",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "Previous",
                     "type": "Button",
                     "id": "2776c80d-3c14-4091-8c56-d04ced07a2b0",
@@ -97,6 +124,39 @@
                 }
             ],
             "bindings": [
+                {
+                    "name": "",
+                    "id": "8fa9985f-2b88-40ae-9d39-2b9114bc286d",
+                    "path": "<Keyboard>/e",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "OverrideTime",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "7e196b7c-1959-451b-ae93-9d11ff6c4127",
+                    "path": "<Keyboard>/c",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "RecallTime",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "ddf5406a-b684-411e-8165-e9351d2d3780",
+                    "path": "<Keyboard>/leftShift",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": ";Keyboard&Mouse",
+                    "action": "BulletTime",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
                 {
                     "name": "",
                     "id": "fd78666b-ad46-4e65-9dc1-e8d184107052",

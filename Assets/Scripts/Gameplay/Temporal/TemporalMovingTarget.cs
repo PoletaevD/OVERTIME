@@ -37,12 +37,16 @@ namespace Overtime
             _visual.position = PositionAt(_phase);
         }
 
-        internal override void Present(TemporalTimeline timeline, bool showTraces)
+        internal override void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
         {
             var position = PositionAt(_phase);
             if (timeline.PreviewFraction > 0f)
             {
                 position = Vector3.Lerp(position, PositionAt(Read(timeline, timeline.Cursor - 1)), timeline.PreviewFraction);
+            }
+            else if (timeline.Direction == TemporalDirection.Forward)
+            {
+                position = PositionAt(_phase + timeline.ForwardFraction * (float)TemporalTimeline.TickDuration / _period);
             }
 
             _visual.position = position;
@@ -55,6 +59,9 @@ namespace Overtime
             _trace.enabled = timeline.Direction == TemporalDirection.Reverse && showTraces && samples > 1;
             if (_trace.enabled)
             {
+                var color = TemporalEffects.ModeColor(mode);
+                _trace.startColor = new Color(color.r, color.g, color.b, 0.73f);
+                _trace.endColor = new Color(color.r, color.g, color.b, 0f);
                 _trace.positionCount = samples;
                 _trace.SetPosition(0, position);
                 for (var sample = 1; sample < samples; sample++)

@@ -93,7 +93,7 @@ namespace Overtime
             }
         }
 
-        internal override void Present(TemporalTimeline timeline, bool showTraces)
+        internal override void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
         {
             for (var slot = 0; slot < _live.Length; slot++)
             {
@@ -113,18 +113,23 @@ namespace Overtime
                         position = Vector3.Lerp(position, older.Position, timeline.PreviewFraction);
                     }
                 }
+                else if (timeline.Direction == TemporalDirection.Forward)
+                {
+                    var fraction = timeline.ForwardFraction * (float)TemporalTimeline.TickDuration;
+                    position += transform.forward * (_speed * Mathf.Min(fraction, current.Remaining));
+                }
 
                 _projectiles[slot].position = position;
                 if (trace != null)
                 {
-                    PresentTrace(timeline, showTraces, slot, current, position, trace);
+                    PresentTrace(timeline, mode, showTraces, slot, current, position, trace);
                 }
             }
         }
 
-        private void PresentTrace(TemporalTimeline timeline, bool showTraces, int slot, in Projectile current, Vector3 position, LineRenderer trace)
+        private void PresentTrace(TemporalTimeline timeline, TemporalMode mode, bool showTraces, int slot, in Projectile current, Vector3 position, LineRenderer trace)
         {
-            if (timeline.Direction != TemporalDirection.Reverse || !showTraces)
+            if (!showTraces || (timeline.Direction != TemporalDirection.Reverse && mode != TemporalMode.BulletTime))
             {
                 trace.enabled = false;
                 return;
@@ -140,6 +145,9 @@ namespace Overtime
             trace.enabled = samples > 1;
             if (trace.enabled)
             {
+                var color = TemporalEffects.ModeColor(mode);
+                trace.startColor = new Color(color.r, color.g, color.b, 0.78f);
+                trace.endColor = new Color(color.r, color.g, color.b, 0f);
                 trace.positionCount = samples;
                 trace.SetPosition(0, position);
                 for (var sample = 1; sample < samples; sample++)

@@ -129,6 +129,12 @@ namespace Overtime
             return new Snapshot(this);
         }
 
+        internal void SetTemporalCollision(TemporalCollision collision)
+        {
+            _collision.TemporalCollision = collision;
+            _probe.TemporalCollision = collision;
+        }
+
         internal void Restore(in Snapshot snapshot)
         {
             snapshot.ApplyTo(this);

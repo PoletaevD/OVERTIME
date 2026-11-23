@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Overtime
@@ -9,6 +10,11 @@ namespace Overtime
         [SerializeField] private Collider _hitbox;
 
         private bool _alive;
+
+        internal override void CollectColliders(List<Collider> colliders)
+        {
+            colliders.Add(_hitbox);
+        }
 
         internal bool TryHit(Collider hit)
         {
