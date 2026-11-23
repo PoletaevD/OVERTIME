@@ -38,6 +38,13 @@ namespace Overtime
         private float _gravityKick;
         private float _fovOffset;
         private bool _moving;
+        private bool _simulationClock;
+        private bool _hasPreview;
+        private Vector3 _previewPosition;
+        private Quaternion _previewDisplay;
+        private float _previewYaw;
+        private float _previewPitch;
+        private float _motionWeight = 1f;
         private Tween _verticalTween;
         private Tween _gravityTween;
         private Tween _fovTween;
@@ -48,6 +55,8 @@ namespace Overtime
         internal float MovementWeight => _speed;
         internal float Lateral => _lateral;
         internal bool ReducedMotion { get; set; }
+        internal bool IsRewinding { get; private set; }
+        internal Ray AimRay => new(_motor.transform.position + _display * Vector3.up * _eyeHeight, (_display * LocalLook(_yaw, _pitch)) * Vector3.forward);
 
         private void OnEnable()
         {
@@ -67,6 +76,7 @@ namespace Overtime
         internal void ResetView(Quaternion rotation)
         {
             KillTweens();
+            ClearPreview();
             _yaw = 0f;
             _pitch = 0f;
             _transition = 1f;
@@ -90,33 +100,106 @@ namespace Overtime
             _pitch = Mathf.Clamp(_pitch - LookDelta.y, -88f, 88f);
         }
 
+        internal void UseSimulationClock()
+        {
+            _simulationClock = true;
+        }
+
+        internal void AdvanceView(float step)
+        {
+            _transition = Mathf.Min(1f, _transition + step / _gravitySmoothing);
+            _display = Quaternion.Slerp(_transitionStart, _reference, Mathf.SmoothStep(0f, 1f, _transition));
+        }
+
+        internal Snapshot Capture()
+        {
+            return new Snapshot(_reference, _display, _transitionStart, _transition, _yaw, _pitch);
+        }
+
+        internal void Restore(in Snapshot snapshot)
+        {
+            _reference = snapshot.Reference;
+            _display = snapshot.Display;
+            _transitionStart = snapshot.TransitionStart;
+            _transition = snapshot.Transition;
+            _yaw = snapshot.Yaw;
+            _pitch = snapshot.Pitch;
+            LookDelta = Vector2.zero;
+        }
+
+        internal void SetPlayback(bool active)
+        {
+            IsRewinding = active;
+            ClearPreview();
+            LookDelta = Vector2.zero;
+            KillTweens();
+
+            if (!active)
+            {
+                _verticalKick = 0f;
+                _gravityKick = 0f;
+                _fovOffset = 0f;
+                _moving = false;
+            }
+        }
+
+        internal void Preview(Vector3 olderPosition, in Snapshot older, float fraction)
+        {
+            _hasPreview = true;
+            _previewDisplay = Quaternion.Slerp(_display, older.Display, fraction);
+            _previewPosition = Vector3.Lerp(_motor.transform.position, olderPosition, fraction) + _previewDisplay * Vector3.up * _eyeHeight;
+            _previewYaw = Mathf.LerpAngle(_yaw, older.Yaw, fraction);
+            _previewPitch = Mathf.Lerp(_pitch, older.Pitch, fraction);
+        }
+
+        internal void ClearPreview()
+        {
+            _hasPreview = false;
+        }
+
+        private Quaternion LocalLook(float yaw, float pitch)
+        {
+            return Quaternion.AngleAxis(yaw, Vector3.up) * Quaternion.AngleAxis(pitch, Vector3.right);
+        }
+
         private void LateUpdate()
         {
             var deltaTime = Time.unscaledDeltaTime;
-            _transition = Mathf.Min(1f, _transition + deltaTime / _gravitySmoothing);
-            _display = Quaternion.Slerp(_transitionStart, _reference, Mathf.SmoothStep(0f, 1f, _transition));
+            if (!_simulationClock)
+            {
+                AdvanceView(deltaTime);
+            }
 
             var blend = 1f - Mathf.Exp(-deltaTime * 12f);
-            _speed = Mathf.Lerp(_speed, _motor.Grounded ? _motor.SpeedRatio : 0f, blend);
-            _phase = Mathf.Repeat(_phase + deltaTime * Mathf.Lerp(5f, 16f, _motor.SpeedRatio), Mathf.PI * 2f);
-            var right = Vector3.Cross(_motor.Up, Heading);
-            _lateral = Mathf.Lerp(_lateral, Mathf.Clamp(Vector3.Dot(_motor.Velocity, right) / 9f, -1f, 1f), blend);
+            _motionWeight = Mathf.Lerp(_motionWeight, IsRewinding ? 0f : 1f, blend);
+            _speed = Mathf.Lerp(_speed, _motor.Grounded && !IsRewinding ? _motor.SpeedRatio : 0f, blend);
+            if (!IsRewinding)
+            {
+                _phase = Mathf.Repeat(_phase + deltaTime * Mathf.Lerp(5f, 16f, _motor.SpeedRatio), Mathf.PI * 2f);
+            }
 
-            _gravityFrame.SetPositionAndRotation(_motor.transform.position + _display * Vector3.up * _eyeHeight, _display);
-            _yawPivot.localRotation = Quaternion.AngleAxis(_yaw, Vector3.up);
-            _pitchPivot.localRotation = Quaternion.AngleAxis(_pitch, Vector3.right);
+            var right = Vector3.Cross(_motor.Up, Heading);
+            var lateral = IsRewinding ? 0f : Mathf.Clamp(Vector3.Dot(_motor.Velocity, right) / 9f, -1f, 1f);
+            _lateral = Mathf.Lerp(_lateral, lateral, blend);
+
+            var position = _hasPreview ? _previewPosition : _motor.transform.position + _display * Vector3.up * _eyeHeight;
+            _gravityFrame.SetPositionAndRotation(position, _hasPreview ? _previewDisplay : _display);
+            var yaw = _hasPreview ? _previewYaw : _yaw;
+            var pitch = _hasPreview ? _previewPitch : _pitch;
+            _yawPivot.localRotation = Quaternion.AngleAxis(yaw, Vector3.up);
+            _pitchPivot.localRotation = Quaternion.AngleAxis(pitch, Vector3.right);
             ApplyEffects();
         }
 
         private void ApplyEffects()
         {
-            var weight = _motionEffects && !ReducedMotion ? 1f : 0f;
+            var weight = _motionEffects && !ReducedMotion ? _motionWeight : 0f;
             var bob = new Vector3(Mathf.Cos(_phase) * 0.38f, Mathf.Sin(_phase * 2f), 0f) * (_speed * _bobIntensity);
             _effectsPivot.localPosition = weight * (bob + Vector3.up * _verticalKick);
             _effectsPivot.localRotation = Quaternion.AngleAxis(weight * (-_lateral * _rollIntensity + _gravityKick), Vector3.forward);
 
             var moving = _moving ? _motor.SpeedRatio > 0.53f : _motor.SpeedRatio > 0.7f;
-            if (moving != _moving)
+            if (!IsRewinding && moving != _moving)
             {
                 _moving = moving;
                 _fovTween?.Kill();
@@ -155,6 +238,26 @@ namespace Overtime
             _gravityTween = DOTween.Sequence().SetUpdate(true)
                 .Append(DOTween.To(() => _gravityKick, value => _gravityKick = value, _gravityResponse, 0.045f).SetEase(Ease.OutQuad))
                 .Append(DOTween.To(() => _gravityKick, value => _gravityKick = value, 0f, 0.275f).SetEase(Ease.OutCubic));
+        }
+
+        internal readonly struct Snapshot
+        {
+            internal readonly Quaternion Reference;
+            internal readonly Quaternion Display;
+            internal readonly Quaternion TransitionStart;
+            internal readonly float Transition;
+            internal readonly float Yaw;
+            internal readonly float Pitch;
+
+            internal Snapshot(Quaternion reference, Quaternion display, Quaternion transitionStart, float transition, float yaw, float pitch)
+            {
+                Reference = reference;
+                Display = display;
+                TransitionStart = transitionStart;
+                Transition = transition;
+                Yaw = yaw;
+                Pitch = pitch;
+            }
         }
 
         private void KillTweens()

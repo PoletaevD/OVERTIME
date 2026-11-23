@@ -58,6 +58,47 @@ namespace Overtime.Editor
             PlaygroundSceneBuilder.Wire(hud, "_input", input, "_motor", motor, "_cameraRig", rig, "_movementPanel", movement, "_reticleArms", reticle, "_gravityIndicator", indicator, "_speedFill", fill, "_speed", speed, "_state", state, "_gravity", gravity, "_debug", debug, "_hints", group, "_debugPanel", debugPanel.gameObject);
         }
 
+        internal CanvasGroup BuildTemporal(PlaygroundHud movementHud, TemporalDirector director, GravityCamera rig)
+        {
+            var root = movementHud.transform;
+            var lowerRight = Vector2.right;
+            var panel = Panel("Temporal Timeline", root, lowerRight, Vector2.zero, new Vector2(386f, 116f), s_ink).rectTransform;
+            panel.pivot = lowerRight;
+            panel.anchoredPosition = new Vector2(-44f, 45f);
+            Label("Rewind Binding", panel, new Vector2(18f, 73f), new Vector2(214f, 32f), "Q — REWIND", 25f, s_paper);
+            var time = Label("History Seconds", panel, new Vector2(236f, 73f), new Vector2(132f, 32f), "0.00 s", 20f, s_paper);
+            time.alignment = TextAlignmentOptions.MidlineRight;
+            var status = Label("Playback Status", panel, new Vector2(18f, 15f), new Vector2(260f, 22f), "RECORDING", 14f, s_cyan);
+
+            var track = Panel("History Track", panel, Vector2.zero, new Vector2(18f, 49f), new Vector2(350f, 7f), new Color(0.13f, 0.23f, 0.28f)).rectTransform;
+            var right = new Vector2(1f, 0.5f);
+            var recorded = Panel("Recorded History", track, right, Vector2.zero, new Vector2(0f, 7f), new Color(0.18f, 0.55f, 0.63f)).rectTransform;
+            recorded.pivot = right;
+            var depth = Panel("Rewind Depth", track, right, Vector2.zero, new Vector2(0f, 7f), s_cyan).rectTransform;
+            depth.pivot = right;
+            var cursor = Panel("Timeline Cursor", track, right, Vector2.zero, new Vector2(3f, 17f), s_paper).rectTransform;
+            cursor.pivot = Vector2.one * 0.5f;
+            var accent = Panel("Playback Accent", panel, Vector2.zero, Vector2.zero, new Vector2(386f, 2f), s_cyan).gameObject.AddComponent<CanvasGroup>();
+            accent.alpha = 0f;
+
+            var hud = panel.gameObject.AddComponent<TemporalHud>();
+            PlaygroundSceneBuilder.Wire(hud, "_director", director, "_cameraRig", rig, "_track", track, "_recorded", recorded, "_depth", depth, "_cursor", cursor, "_status", status, "_time", time, "_activeLabel", accent);
+            PlaygroundSceneBuilder.Wire(movementHud, "_temporalDirector", director);
+
+            var debugPanel = (RectTransform)root.Find("Debug Overlay");
+            debugPanel.sizeDelta = new Vector2(474f, 371f);
+            var debugText = (RectTransform)debugPanel.Find("Telemetry");
+            debugText.sizeDelta = new Vector2(438f, 347f);
+
+            var flash = Panel("RESET Screen Tint", root, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.27f, 0.82f, 1f, 0.13f)).rectTransform;
+            flash.SetAsFirstSibling();
+            flash.anchorMax = Vector2.one;
+            var pulse = flash.gameObject.AddComponent<CanvasGroup>();
+            pulse.alpha = 0f;
+            pulse.blocksRaycasts = false;
+            return pulse;
+        }
+
         private RectTransform[] BuildReticle(Transform parent)
         {
             var center = Vector2.one * 0.5f;

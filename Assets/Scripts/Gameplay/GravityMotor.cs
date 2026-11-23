@@ -124,6 +124,114 @@ namespace Overtime
             transform.SetPositionAndRotation(_center, _orientation);
         }
 
+        internal Snapshot Capture()
+        {
+            return new Snapshot(this);
+        }
+
+        internal void Restore(in Snapshot snapshot)
+        {
+            snapshot.ApplyTo(this);
+            transform.SetPositionAndRotation(_center, _orientation);
+        }
+
+        internal readonly struct Snapshot
+        {
+            private readonly Quaternion _orientation;
+            private readonly Quaternion _rotationStart;
+            private readonly Quaternion _rotationTarget;
+            private readonly RaycastHit _lastSupport;
+            private readonly RaycastHit _manualCandidate;
+            private readonly RaycastHit _outerCorner;
+            private readonly RaycastHit _previousSupport;
+            private readonly Vector3 _heldCornerTravel;
+            private readonly float _rotationProgress;
+            private readonly float _rotationBlockedTime;
+            private readonly float _cornerReverseDelay;
+            private readonly float _timeWithoutGround;
+            private readonly float _jumpRemaining;
+            private readonly float _reattachRemaining;
+            private readonly float _holdTime;
+            private readonly float _magneticHoldTime;
+            private readonly bool _magnetic;
+            private readonly bool _holdingMagneticJump;
+            private readonly bool _waitForNewPress;
+            private readonly Vector3 _velocity;
+            private readonly Vector3 _up;
+            private readonly Vector3 _contactNormal;
+            private readonly Collider _surface;
+            private readonly Collider _automaticCandidate;
+            private readonly bool _jumpInFlight;
+            private readonly TransitionReason _transitionReason;
+            private readonly bool _obstructed;
+
+            internal Vector3 Position { get; }
+
+            internal Snapshot(GravityMotor motor)
+            {
+                Position = motor._center;
+                _orientation = motor._orientation;
+                _rotationStart = motor._rotationStart;
+                _rotationTarget = motor._rotationTarget;
+                _lastSupport = motor._lastSupport;
+                _manualCandidate = motor._manualCandidate;
+                _outerCorner = motor._outerCorner;
+                _previousSupport = motor._previousSupport;
+                _heldCornerTravel = motor._heldCornerTravel;
+                _rotationProgress = motor._rotationProgress;
+                _rotationBlockedTime = motor._rotationBlockedTime;
+                _cornerReverseDelay = motor._cornerReverseDelay;
+                _timeWithoutGround = motor._timeWithoutGround;
+                _jumpRemaining = motor._jumpRemaining;
+                _reattachRemaining = motor._reattachRemaining;
+                _holdTime = motor._holdTime;
+                _magneticHoldTime = motor._magneticHoldTime;
+                _magnetic = motor._magnetic;
+                _holdingMagneticJump = motor._holdingMagneticJump;
+                _waitForNewPress = motor._waitForNewPress;
+                _velocity = motor.Velocity;
+                _up = motor.Up;
+                _contactNormal = motor.ContactNormal;
+                _surface = motor.Surface;
+                _automaticCandidate = motor.AutomaticCandidate;
+                _jumpInFlight = motor.JumpInFlight;
+                _transitionReason = motor.CurrentTransitionReason;
+                _obstructed = motor.Obstructed;
+            }
+
+            internal void ApplyTo(GravityMotor motor)
+            {
+                motor._center = Position;
+                motor._orientation = _orientation;
+                motor._rotationStart = _rotationStart;
+                motor._rotationTarget = _rotationTarget;
+                motor._lastSupport = _lastSupport;
+                motor._manualCandidate = _manualCandidate;
+                motor._outerCorner = _outerCorner;
+                motor._previousSupport = _previousSupport;
+                motor._heldCornerTravel = _heldCornerTravel;
+                motor._rotationProgress = _rotationProgress;
+                motor._rotationBlockedTime = _rotationBlockedTime;
+                motor._cornerReverseDelay = _cornerReverseDelay;
+                motor._timeWithoutGround = _timeWithoutGround;
+                motor._jumpRemaining = _jumpRemaining;
+                motor._reattachRemaining = _reattachRemaining;
+                motor._holdTime = _holdTime;
+                motor._magneticHoldTime = _magneticHoldTime;
+                motor._magnetic = _magnetic;
+                motor._holdingMagneticJump = _holdingMagneticJump;
+                motor._waitForNewPress = _waitForNewPress;
+                motor.Velocity = _velocity;
+                motor.Up = _up;
+                motor.ContactNormal = _contactNormal;
+                motor.Surface = _surface;
+                motor.AutomaticCandidate = _automaticCandidate;
+                motor.JumpInFlight = _jumpInFlight;
+                motor.CurrentTransitionReason = _transitionReason;
+                motor.Obstructed = _obstructed;
+            }
+        }
+
         internal void QueueJump()
         {
             _waitForNewPress = false;

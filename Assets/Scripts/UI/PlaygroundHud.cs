@@ -20,6 +20,7 @@ namespace Overtime
         [SerializeField] private TMP_Text _debug;
         [SerializeField] private CanvasGroup _hints;
         [SerializeField] private GameObject _debugPanel;
+        [SerializeField] private TemporalDirector _temporalDirector;
 
         [Header("Motion")]
         [SerializeField, Min(0f)] private float _swayIntensity = 1.9f;
@@ -156,7 +157,16 @@ namespace Overtime
 
             if (_debugPanel.activeSelf)
             {
-                _debug.SetText($"MOTOR TELEMETRY\nGravity up  {up:F2}\nCurrent surface  {_motor.Surface?.name ?? "-"}\nManual candidate  {_motor.ManualCandidate?.name ?? "-"}\nManual attachment  {_motor.ManualAttachmentProgress:P0}\nAutomatic candidate  {_motor.AutomaticCandidate?.name ?? "-"}\nJump detached  {_motor.JumpInFlight}    Rotating  {_motor.Transitioning}\nTransition  {_motor.CurrentTransitionReason}\nVelocity  {_motor.Velocity:F2}    Collision  {_motor.Obstructed}");
+                var readout = $"MOTOR TELEMETRY\nGravity up  {up:F2}\nCurrent surface  {_motor.Surface?.name ?? "-"}\nManual candidate  {_motor.ManualCandidate?.name ?? "-"}\nManual attachment  {_motor.ManualAttachmentProgress:P0}\nAutomatic candidate  {_motor.AutomaticCandidate?.name ?? "-"}\nJump detached  {_motor.JumpInFlight}    Rotating  {_motor.Transitioning}\nTransition  {_motor.CurrentTransitionReason}\nVelocity  {_motor.Velocity:F2}    Collision  {_motor.Obstructed}";
+                if (_temporalDirector != null)
+                {
+                    var player = _temporalDirector.PlayerTimeline;
+                    var world = _temporalDirector.WorldTimeline;
+                    var progress = player.Duration > 0d ? player.Depth / player.Duration : 0d;
+                    readout += $"\n\nTEMPORAL TELEMETRY\nTemporal mode  {(_temporalDirector.IsRewinding ? "RESET" : "FORWARD")}\nPlayer timeline  {player.Position:F3} s    World timeline  {world.Position:F3} s\nRecorded history  {player.Duration:F2} s    Rewind progress  {progress:P0}\nSnapshots  P {player.Count} / W {world.Count}    Tick  {_temporalDirector.SimulationTick}";
+                }
+
+                _debug.SetText(readout);
             }
         }
 

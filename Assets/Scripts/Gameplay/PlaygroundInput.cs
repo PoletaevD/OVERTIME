@@ -12,6 +12,7 @@ namespace Overtime
         private InputAction _look;
         private InputAction _jump;
         private InputAction _attack;
+        private InputAction _rewind;
         private bool _focused;
         private bool _captured;
         private bool _discardLook;
@@ -19,6 +20,7 @@ namespace Overtime
         internal Vector2 Move => _captured ? _move.ReadValue<Vector2>() : Vector2.zero;
         internal bool JumpPressed => _captured && _jump.WasPressedThisFrame();
         internal bool JumpHeld => _captured && _jump.IsPressed();
+        internal bool RewindHeld => _focused && _rewind.IsPressed();
         internal bool FirePressed { get; private set; }
         internal bool ResetPressed => _focused && Keyboard.current?.rKey.wasPressedThisFrame == true;
         internal bool DebugPressed => _focused && Keyboard.current?.f3Key.wasPressedThisFrame == true;
@@ -33,6 +35,7 @@ namespace Overtime
             _look = map.FindAction("Look", true);
             _jump = map.FindAction("Jump", true);
             _attack = map.FindAction("Attack", true);
+            _rewind = map.FindAction("Rewind", true);
         }
 
         private void OnEnable()
@@ -89,6 +92,11 @@ namespace Overtime
             }
 
             FirePressed = _captured && _attack.WasPressedThisFrame();
+        }
+
+        internal void SuppressFire()
+        {
+            FirePressed = false;
         }
 
         internal Vector2 ReadLook(float deltaTime)

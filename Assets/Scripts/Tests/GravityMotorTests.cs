@@ -378,6 +378,141 @@ namespace Overtime.Tests
             Assert.That(_motor.Surface?.name, Is.EqualTo("Test floor"));
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RestoredMagneticJumpContinuesAtTheRecordedVelocityWithoutReplayingEvents(bool ceiling)
+        {
+            AttachNorthWall();
+            if (ceiling)
+            {
+                StepUntil(() => _motor.Up == Vector3.down, Vector2.up, false, 150);
+            }
+
+            Step(Vector2.zero, false, 30);
+            Assert.That(_motor.Grounded, Is.True);
+            var up = _motor.Up;
+            var position = _motor.transform.position;
+            var onSurface = _motor.Capture();
+            var jumps = 0;
+            var landings = 0;
+            var gravityChanges = 0;
+            _motor.Jumped += () => jumps++;
+            _motor.Landed += _ => landings++;
+            _motor.GravityChanged += _ => gravityChanges++;
+
+            _motor.QueueJump();
+            Step(Vector2.right, true, 10);
+            Step(Vector2.right, false, 3);
+            var inFlight = _motor.Capture();
+            var airbornePosition = _motor.transform.position;
+            var airborneVelocity = _motor.Velocity;
+            Step(Vector2.right, false, 12);
+            var nextPosition = _motor.transform.position;
+            var nextVelocity = _motor.Velocity;
+            StepUntil(() => _motor.Grounded, Vector2.zero, false, 120);
+            Assert.That(landings, Is.EqualTo(1));
+
+            _motor.Restore(onSurface);
+            Assert.That(_motor.Grounded, Is.True);
+            Assert.That(_motor.transform.position, Is.EqualTo(position));
+            _motor.Restore(inFlight);
+            Physics.SyncTransforms();
+            Assert.That(_motor.transform.position, Is.EqualTo(airbornePosition));
+            Assert.That(_motor.Velocity, Is.EqualTo(airborneVelocity));
+            Assert.That(_motor.Up, Is.EqualTo(up));
+            Assert.That(_motor.Magnetic && _motor.JumpInFlight && !_motor.Grounded, Is.True);
+
+            Step(Vector2.right, false, 12);
+            Assert.That(_motor.transform.position, Is.EqualTo(nextPosition));
+            Assert.That(_motor.Velocity, Is.EqualTo(nextVelocity));
+            Assert.That(jumps, Is.EqualTo(1));
+            Assert.That(landings, Is.EqualTo(1));
+            Assert.That(gravityChanges, Is.Zero);
+        }
+
+        [Test]
+        public void RestoresManualAttachmentDelayAndPartialCapsuleRotation()
+        {
+            Reset(new Vector3(0f, 0.88f, 3.8f));
+            _motor.QueueJump();
+            Step(Vector2.up, true, 8);
+            var hold = _motor.Capture();
+            var progress = _motor.ManualAttachmentProgress;
+            var approach = _heading;
+            Step(Vector2.up, true, HoldSteps - 8);
+
+            var rotation = _motor.Capture();
+            var rotatingHeading = _heading;
+            var partialRotation = _motor.transform.rotation;
+            Assert.That(_motor.Transitioning, Is.True);
+
+            Step(Vector2.up, false, 7);
+            var expectedRotation = _motor.transform.rotation;
+            var expectedVelocity = _motor.Velocity;
+            _motor.Restore(hold);
+            _heading = approach;
+            Physics.SyncTransforms();
+            Assert.That(_motor.ManualCandidate, Is.EqualTo(_northWall));
+            Assert.That(_motor.ManualAttachmentProgress, Is.EqualTo(progress));
+            Step(Vector2.up, true, HoldSteps - 8);
+            Assert.That(Quaternion.Angle(partialRotation, _motor.transform.rotation), Is.LessThan(0.01f));
+
+            _motor.Restore(rotation);
+            _heading = rotatingHeading;
+            Physics.SyncTransforms();
+            Assert.That(_motor.Transitioning, Is.True);
+            Step(Vector2.up, false, 7);
+            Assert.That(_motor.Velocity, Is.EqualTo(expectedVelocity));
+            Assert.That(Quaternion.Angle(expectedRotation, _motor.transform.rotation), Is.LessThan(0.01f));
+        }
+
+        [Test]
+        public void RestoresMagneticReleaseHoldAndReplaysTheSameDetachment()
+        {
+            AttachNorthWall();
+            Step(Vector2.zero, false, 30);
+            _motor.QueueJump();
+            Step(Vector2.zero, true, ReleaseSteps - 8);
+            var held = _motor.Capture();
+            var heading = _heading;
+            Assert.That(_motor.Magnetic, Is.True);
+            Step(Vector2.zero, true, 10);
+            var velocity = _motor.Velocity;
+            var position = _motor.transform.position;
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.ManualRelease));
+
+            _motor.Restore(held);
+            _heading = heading;
+            Physics.SyncTransforms();
+            Assert.That(_motor.Magnetic, Is.True);
+            Step(Vector2.zero, true, 10);
+            Assert.That(_motor.CurrentTransitionReason, Is.EqualTo(GravityMotor.TransitionReason.ManualRelease));
+            Assert.That(_motor.Velocity, Is.EqualTo(velocity));
+            Assert.That(_motor.transform.position, Is.EqualTo(position));
+        }
+
+        [Test]
+        public void RestoredOuterCornerRetainsItsSupportAndClearanceState()
+        {
+            CreateBox("Convex ledge", new Vector3(0f, 0.8f, -1f), new Vector3(5f, 1.6f, 4f));
+            Reset(new Vector3(0f, 0.88f, -4.2f));
+            Step(Vector2.up, true, HoldSteps);
+            StepUntil(() => _motor.CurrentTransitionReason == GravityMotor.TransitionReason.OuterCorner, Vector2.up, false, 130);
+            var corner = _motor.Capture();
+            var heading = _heading;
+            Assert.That(_motor.Transitioning, Is.True);
+            Step(Vector2.up, false, 22);
+            var position = _motor.transform.position;
+            var velocity = _motor.Velocity;
+
+            _motor.Restore(corner);
+            _heading = heading;
+            Physics.SyncTransforms();
+            Step(Vector2.up, false, 22);
+            Assert.That(_motor.transform.position, Is.EqualTo(position));
+            Assert.That(_motor.Velocity, Is.EqualTo(velocity));
+        }
+
         private void AssertLocalJump(Vector3 up, string surface, bool moving)
         {
             var input = moving ? Vector2.right : Vector2.zero;

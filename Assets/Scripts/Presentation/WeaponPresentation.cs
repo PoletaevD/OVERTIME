@@ -33,10 +33,13 @@ namespace Overtime
         private float _motionImpulse;
         private float _gravityImpulse;
         private float _recoil;
+        private float _resetKick;
+        private bool _wasRewinding;
         private Vector2 _sway;
         private Tween _motionTween;
         private Tween _gravityTween;
         private Tween _recoilTween;
+        private Tween _resetTween;
 
         private void OnEnable()
         {
@@ -53,6 +56,9 @@ namespace Overtime
             _motionTween?.Kill();
             _gravityTween?.Kill();
             _recoilTween?.Kill();
+            _resetTween?.Kill();
+            _resetKick = 0f;
+            _wasRewinding = false;
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
             _recoil = 0f;
@@ -61,6 +67,12 @@ namespace Overtime
 
         private void LateUpdate()
         {
+            if (_cameraRig.IsRewinding != _wasRewinding)
+            {
+                _wasRewinding = _cameraRig.IsRewinding;
+                SyncTemporalMotion();
+            }
+
             if (_input.FirePressed)
             {
                 Fire();
@@ -82,8 +94,33 @@ namespace Overtime
             _sway = Vector2.Lerp(_sway, Vector2.ClampMagnitude(_cameraRig.LookDelta * _mouseSway / Mathf.Max(deltaTime * 60f, 0.3f), 7f), blend);
             _swayPivot.localPosition = new Vector3(-_sway.x, -_sway.y, 0f) * (0.0045f * motion);
             _swayPivot.localRotation = Quaternion.Euler(_sway.y * motion, -_sway.x * motion, 0f);
-            _recoilPivot.localPosition = Vector3.back * (_recoil * _recoilDistance * motion);
-            _recoilPivot.localRotation = Quaternion.AngleAxis(-_recoil * _recoilAngle * motion, Vector3.right);
+            var temporal = _cameraRig.ReducedMotion ? 0f : _resetKick;
+            _recoilPivot.localPosition = Vector3.back * (_recoil * _recoilDistance * motion + temporal * 0.035f);
+            _recoilPivot.localRotation = Quaternion.AngleAxis(-_recoil * _recoilAngle * motion + temporal * 4f, Vector3.right);
+        }
+
+        private void SyncTemporalMotion()
+        {
+            _resetTween?.Kill();
+            if (!_wasRewinding)
+            {
+                _resetTween = DOTween.To(() => _resetKick, value => _resetKick = value, 0f, 0.2f).SetUpdate(true).SetEase(Ease.OutCubic);
+                return;
+            }
+
+            _motionTween?.Kill();
+            _gravityTween?.Kill();
+            _recoilTween?.Kill();
+            _motionImpulse = 0f;
+            _gravityImpulse = 0f;
+            _recoil = 0f;
+            _muzzleFlash.gameObject.SetActive(false);
+            if (!_cameraRig.ReducedMotion)
+            {
+                _resetTween = DOTween.Sequence().SetUpdate(true)
+                    .Append(DOTween.To(() => _resetKick, value => _resetKick = value, 1f, 0.10f).SetEase(Ease.OutQuad))
+                    .Append(DOTween.To(() => _resetKick, value => _resetKick = value, 0.32f, 0.26f).SetEase(Ease.OutCubic));
+            }
         }
 
         private void Fire()

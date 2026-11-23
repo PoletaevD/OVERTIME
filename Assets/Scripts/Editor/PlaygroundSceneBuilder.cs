@@ -37,7 +37,7 @@ namespace Overtime.Editor
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var art = new PlaygroundArt();
             art.BuildCourse();
-            AddLighting(art);
+            AddLighting(art, CreateFacilityProfile());
             var weapon = art.BuildWeapon(ViewmodelLayer);
             CreatePlayer(inputAsset, weapon);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -47,7 +47,7 @@ namespace Overtime.Editor
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) }.Concat(otherScenes).ToArray();
         }
 
-        private static TMPro.TMP_FontAsset TMPAsset()
+        internal static TMPro.TMP_FontAsset TMPAsset()
         {
             return AssetDatabase.LoadAssetAtPath<TMPro.TMP_FontAsset>("Assets/TextMesh Pro/Resources/Fonts & Materials/LiberationSans SDF.asset");
         }
@@ -122,7 +122,7 @@ namespace Overtime.Editor
             PrefabUtility.RecordPrefabInstancePropertyModifications(player.transform);
         }
 
-        private static void AddLighting(PlaygroundArt art)
+        internal static void AddLighting(PlaygroundArt art, VolumeProfile profile)
         {
             RenderSettings.ambientMode = AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = new Color(0.63f, 0.69f, 0.77f);
@@ -137,6 +137,11 @@ namespace Overtime.Editor
 
             var volume = Child("URP Volume", art.Root).gameObject.AddComponent<Volume>();
             volume.isGlobal = true;
+            volume.sharedProfile = profile;
+        }
+
+        private static VolumeProfile CreateFacilityProfile()
+        {
             var profile = ScriptableObject.CreateInstance<VolumeProfile>();
             var bloom = profile.Add<Bloom>();
             bloom.threshold.Override(1.2f);
@@ -148,7 +153,7 @@ namespace Overtime.Editor
             AssetDatabase.CreateAsset(profile, path);
             AssetDatabase.AddObjectToAsset(bloom, profile);
             AssetDatabase.AddObjectToAsset(tonemapping, profile);
-            volume.sharedProfile = profile;
+            return profile;
         }
 
         internal static Transform Child(string name, Transform parent)

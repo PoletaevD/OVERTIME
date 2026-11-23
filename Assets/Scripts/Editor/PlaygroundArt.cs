@@ -39,6 +39,23 @@ namespace Overtime.Editor
             Block(Root, "North Bulkhead", 0f, 5f, 80.7f, 15f, 11f, 1f, _graphite);
         }
 
+        internal Transform BuildTemporalRoom()
+        {
+            Root.name = "MERIDIAN | Temporal Test Facility";
+            var room = Hall("Temporal Testing Chamber", -10f, 14f, 7f, 0f, true);
+            Block(room, "South Bulkhead", 0f, 3.5f, -10.45f, 15f, 7f, 0.9f, _graphite);
+            Block(room, "North Bulkhead", 0f, 3.5f, 14.45f, 15f, 7f, 0.9f, _graphite);
+            Gate(room, "MERIDIAN  /  TEMPORAL TEST CHAMBER", 2f, 4.7f, _cyan);
+
+            for (var z = -3f; z <= 12f; z += 5f)
+            {
+                Block(room, "Wall Transit Marker", 6.98f, 3.5f, z, 0.034f, 6.9f, 0.12f, _cyan, false);
+                Block(room, "Ceiling Transit Marker", 0f, 6.98f, z, 13.9f, 0.034f, 0.12f, _cyan, false);
+            }
+
+            return room;
+        }
+
         private void BuildCalibration()
         {
             var zone = Hall("A | Movement Calibration", -11.5f, 8f, 7f, 0f, false);
@@ -152,7 +169,7 @@ namespace Overtime.Editor
             Label(zone, title, new Vector3(0f, y + 0.015f, z - 0.13f), 0.49f, new Color(0.94f, 0.95f, 0.90f));
         }
 
-        private void Label(Transform parent, string title, Vector3 position, float scale, Color color)
+        internal void Label(Transform parent, string title, Vector3 position, float scale, Color color)
         {
             var label = PlaygroundSceneBuilder.Child(title, parent).gameObject.AddComponent<TextMeshPro>();
             label.transform.localPosition = position;
@@ -208,7 +225,7 @@ namespace Overtime.Editor
             return prefab;
         }
 
-        private Transform Block(Transform parent, string name, float x, float y, float z, float width, float height, float depth, Material material, bool collision = true)
+        internal Transform Block(Transform parent, string name, float x, float y, float z, float width, float height, float depth, Material material, bool collision = true)
         {
             var block = GameObject.CreatePrimitive(PrimitiveType.Cube);
             block.name = name;
