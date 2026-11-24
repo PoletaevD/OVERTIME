@@ -21,7 +21,7 @@ namespace Overtime.Tests
         [Test]
         public void AuthoredRoomsHaveSocketsAndTypedEncounters()
         {
-            Assert.That(EditorBuildSettings.scenes.Any(scene => scene.enabled && scene.path == "Assets/Scenes/Security Route.unity"), Is.True);
+            Assert.That(EditorBuildSettings.scenes.Any(scene => scene.enabled && scene.path == "Assets/Scenes/Security Route Stage 05A.1.unity"), Is.True);
             Assert.That(_library.Select(room => room.Id).Distinct().Count(), Is.EqualTo(16));
             foreach (var room in _library)
             {

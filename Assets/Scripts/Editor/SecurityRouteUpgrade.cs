@@ -70,24 +70,24 @@ namespace Overtime.Editor
 
         public static void CreateStagePreview()
         {
-            const string previewPath = "Assets/Scenes/Security Route Stage 05A.1.unity";
-            if (System.IO.File.Exists(previewPath))
+            const string legacyScenePath = "Assets/Scenes/Security Route.unity";
+            if (System.IO.File.Exists(RouteScenePath))
             {
                 throw new InvalidOperationException("The preview scene already exists.");
             }
 
-            var source = SceneManager.GetSceneByPath(RouteScenePath);
+            var source = SceneManager.GetSceneByPath(legacyScenePath);
             if (!source.isLoaded)
             {
-                source = EditorSceneManager.OpenScene(RouteScenePath, OpenSceneMode.Additive);
+                source = EditorSceneManager.OpenScene(legacyScenePath, OpenSceneMode.Additive);
             }
 
-            if (!EditorSceneManager.SaveScene(source, previewPath, true))
+            if (!EditorSceneManager.SaveScene(source, RouteScenePath, true))
             {
                 throw new InvalidOperationException("Could not create a copy of Security Route.");
             }
 
-            var preview = EditorSceneManager.OpenScene(previewPath, OpenSceneMode.Additive);
+            var preview = EditorSceneManager.OpenScene(RouteScenePath, OpenSceneMode.Additive);
             var rooms = AssetDatabase.FindAssets("t:RoomDefinition", new[] { $"{RoutePrefabs}/Rooms" });
             var library = new RoomDefinition[rooms.Length];
             for (var index = 0; index < rooms.Length; index++)

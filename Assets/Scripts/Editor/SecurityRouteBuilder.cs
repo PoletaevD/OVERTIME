@@ -13,7 +13,7 @@ namespace Overtime.Editor
 {
     public sealed partial class SecuritySectorBuilder
     {
-        private const string RouteScenePath = "Assets/Scenes/Security Route.unity";
+        private const string RouteScenePath = "Assets/Scenes/Security Route Stage 05A.1.unity";
         private const string RoutePrefabs = "Assets/Prefabs/Security Route";
         private const string RouteArt = "Assets/Art/Security Route";
 

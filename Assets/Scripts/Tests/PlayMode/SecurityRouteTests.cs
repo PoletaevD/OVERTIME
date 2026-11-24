@@ -23,17 +23,7 @@ namespace Overtime.Tests
         [UnitySetUp]
         public IEnumerator LoadRoute()
         {
-#if UNITY_EDITOR
-            const string preview = "Assets/Scenes/Security Route Stage 05A.1.unity";
-            if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(preview) != null)
-            {
-                yield return UnityEditor.SceneManagement.EditorSceneManager.LoadSceneAsyncInPlayMode(preview, new LoadSceneParameters(LoadSceneMode.Single));
-            }
-            else
-#endif
-            {
-                yield return SceneManager.LoadSceneAsync("Security Route", LoadSceneMode.Single);
-            }
+            yield return SceneManager.LoadSceneAsync("Security Route Stage 05A.1", LoadSceneMode.Single);
             yield return null;
             Bind();
         }
@@ -233,7 +223,15 @@ namespace Overtime.Tests
         [UnityTest]
         public IEnumerator DirectiveRequiresFireEdgesAndSwitchCancelsAutomaticReload()
         {
-            StartRun(2);
+            var hud = Object.FindAnyObjectByType<WeaponSelectionHud>();
+            var selection = hud.transform.Find("Secondary Weapon Selection");
+            Assert.That(_route.SelectingSecondary, Is.True);
+            Assert.That(selection.gameObject.activeSelf, Is.True);
+            var buttons = selection.GetComponentsInChildren<Button>();
+            Assert.That(buttons, Has.Length.EqualTo(3));
+            buttons[2].onClick.Invoke();
+            Assert.That(_route.SelectingSecondary, Is.False);
+            Assert.That(_route.ConfirmUpgrade(0), Is.True);
             var gun = _player.Combat.Weapon;
             gun.DebugActivate(1);
             var specification = gun.Tuning(1);

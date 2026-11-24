@@ -21,8 +21,8 @@ EditorBuildSettings:
     path: Assets/Scenes/Security Sector.unity
     guid: 070e7e7a80f7d1345a51dfe0788ca618
   - enabled: 1
-    path: Assets/Scenes/Security Route.unity
-    guid: 39f347e681cc85f4eb27ec1ddc94585d
+    path: Assets/Scenes/Security Route Stage 05A.1.unity
+    guid: b424ea00692a14c439651e540d381886
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
   m_UseUCBPForAssetBundles: 0
