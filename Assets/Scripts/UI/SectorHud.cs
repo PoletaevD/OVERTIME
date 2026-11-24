@@ -95,7 +95,7 @@ namespace Overtime
             {
                 var player = _director.PlayerProjectiles;
                 var enemy = _route.EnemyProjectiles;
-                _debug.SetText("PROJECTILES  PLAYER {0:00} / ENEMY {1:00}   CAP {2:00}\nENCOUNTER {3:00}   LIVING {4:00}   WORLD ACTORS {5:00}", player.ActiveCount, enemy.ActiveCount, player.PoolCapacity + enemy.PoolCapacity, _roomIndex + 1, room.LivingEnemies, _director.WorldActorCount);
+                _debug.SetText("PROJECTILES  PLAYER {0:00} / ENEMY {1:00}   CAP {2:00}\nENCOUNTER {3:00}   ACTIVE {4:00}   PENDING {5:00}   WORLD ACTORS {6:00}", player.ActiveCount, enemy.ActiveCount, player.PoolCapacity + enemy.PoolCapacity, _roomIndex + 1, room.ActiveEnemies, room.PendingReinforcements, _director.WorldActorCount);
             }
         }
 

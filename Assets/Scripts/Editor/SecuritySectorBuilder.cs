@@ -151,7 +151,7 @@ namespace Overtime.Editor
             var definitions = new WeaponAssets().LoadOrCreate();
             var catalog = new RunUpgradeAssets().LoadOrCreate();
             PlaygroundSceneBuilder.Wire(route.GetComponent<RunProgression>(), "_catalog", catalog);
-            var options = new[] { definitions[1], definitions[2] };
+            var options = route.Generated ? new[] { definitions[1], definitions[2], definitions[3] } : new[] { definitions[1], definitions[2] };
             PlaygroundSceneBuilder.Wire(route, "_secondaryOptions", options);
             var weapon = player.Combat.Weapon;
             PlaygroundSceneBuilder.Wire(weapon, "_primary", definitions[0]);
@@ -235,7 +235,7 @@ namespace Overtime.Editor
             var energy = timeline.AddComponent<ChronoEnergy>();
             var route = timeline.AddComponent<SectorRoute>();
             var armory = new SecurityPlaygroundBuilder(_art, timeline.transform);
-            var pool = armory.BuildPool(director, 40, _violet);
+            var pool = armory.BuildPool(director, library == null ? 40 : 128, _violet);
             if (library == null)
             {
                 var rooms = new[]

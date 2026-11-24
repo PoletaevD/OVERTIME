@@ -31,6 +31,8 @@ namespace Overtime
         private float _transition = 1f;
         private float _yaw;
         private float _pitch;
+        private Vector2 _pendingRecoil;
+        private float _recoilRemaining;
         private float _phase;
         private float _speed;
         private float _lateral;
@@ -50,6 +52,9 @@ namespace Overtime
         private Tween _fovTween;
 
         internal Vector3 Heading => _reference * (Quaternion.AngleAxis(_yaw, Vector3.up) * Vector3.forward);
+        internal float Yaw => _yaw;
+        internal float Pitch => _pitch;
+        internal Vector2 PendingRecoil => _pendingRecoil;
         internal Vector2 LookDelta { get; private set; }
         internal float BobPhase => _phase;
         internal float MovementWeight => _speed;
@@ -80,6 +85,8 @@ namespace Overtime
             ClearPreview();
             _yaw = 0f;
             _pitch = 0f;
+            _pendingRecoil = Vector2.zero;
+            _recoilRemaining = 0f;
             _transition = 1f;
             _reference = rotation;
             _display = rotation;
@@ -97,8 +104,19 @@ namespace Overtime
         internal void Look(Vector2 input)
         {
             LookDelta = input * _mouseSensitivity;
-            _yaw = Mathf.Repeat(_yaw + LookDelta.x, 360f);
-            _pitch = Mathf.Clamp(_pitch - LookDelta.y, -88f, 88f);
+            ApplyLook(LookDelta);
+        }
+
+        internal void AddRecoil(Vector2 degrees, float duration)
+        {
+            _pendingRecoil += degrees;
+            _recoilRemaining = Mathf.Max(_recoilRemaining, duration);
+        }
+
+        private void ApplyLook(Vector2 degrees)
+        {
+            _yaw = Mathf.Repeat(_yaw + degrees.x, 360f);
+            _pitch = Mathf.Clamp(_pitch - degrees.y, -88f, 88f);
         }
 
         internal void UseSimulationClock()
@@ -108,13 +126,27 @@ namespace Overtime
 
         internal void AdvanceView(float step)
         {
+            if (_recoilRemaining > 0f)
+            {
+                var elapsed = Mathf.Min(step, _recoilRemaining);
+                var applied = _pendingRecoil * (elapsed / _recoilRemaining);
+                _recoilRemaining -= elapsed;
+                _pendingRecoil -= applied;
+                ApplyLook(applied);
+
+                if (_pitch <= -88f && _pendingRecoil.y > 0f)
+                {
+                    _pendingRecoil.y = 0f;
+                }
+            }
+
             _transition = Mathf.Min(1f, _transition + step / _gravitySmoothing);
             _display = Quaternion.Slerp(_transitionStart, _reference, Mathf.SmoothStep(0f, 1f, _transition));
         }
 
         internal Snapshot Capture()
         {
-            return new Snapshot(_reference, _display, _transitionStart, _transition, _yaw, _pitch);
+            return new Snapshot(_reference, _display, _transitionStart, _transition, _yaw, _pitch, _pendingRecoil, _recoilRemaining);
         }
 
         internal void Restore(in Snapshot snapshot)
@@ -125,6 +157,8 @@ namespace Overtime
             _transition = snapshot.Transition;
             _yaw = snapshot.Yaw;
             _pitch = snapshot.Pitch;
+            _pendingRecoil = snapshot.PendingRecoil;
+            _recoilRemaining = snapshot.RecoilRemaining;
             LookDelta = Vector2.zero;
         }
 
@@ -250,7 +284,10 @@ namespace Overtime
             internal readonly float Yaw;
             internal readonly float Pitch;
 
-            internal Snapshot(Quaternion reference, Quaternion display, Quaternion transitionStart, float transition, float yaw, float pitch)
+            internal readonly Vector2 PendingRecoil;
+            internal readonly float RecoilRemaining;
+
+            internal Snapshot(Quaternion reference, Quaternion display, Quaternion transitionStart, float transition, float yaw, float pitch, Vector2 pendingRecoil = default, float recoilRemaining = 0f)
             {
                 Reference = reference;
                 Display = display;
@@ -258,6 +295,8 @@ namespace Overtime
                 Transition = transition;
                 Yaw = yaw;
                 Pitch = pitch;
+                PendingRecoil = pendingRecoil;
+                RecoilRemaining = recoilRemaining;
             }
         }
 

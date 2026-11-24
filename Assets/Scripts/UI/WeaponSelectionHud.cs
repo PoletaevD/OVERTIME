@@ -68,6 +68,10 @@ namespace Overtime
             {
                 Choose(1);
             }
+            else if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame)
+            {
+                Choose(2);
+            }
         }
 
         private void Choose(int index)

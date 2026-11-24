@@ -97,6 +97,7 @@ namespace Overtime
 
         private void OnSwitch()
         {
+            _handling.Stop();
             _weapon.PlayOneShot(_swap, 0.29f);
         }
 

@@ -13,6 +13,8 @@ namespace Overtime
         [SerializeField] private TemporalProjectileEmitter _enemyProjectiles;
         [SerializeField] private RunProgression _progression;
         [SerializeField] private WeaponDefinition[] _secondaryOptions;
+        [SerializeField, Min(0f)] private float _lightEnemyEnergy = 10f;
+        [SerializeField, Min(0f)] private float _heavyEnemyEnergy = 17f;
 
         private readonly HashSet<int> _paidRooms = new();
         private readonly RouteNode[] _visited = new RouteNode[RoutePlan.RoomCount];
@@ -23,6 +25,14 @@ namespace Overtime
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private int _debugReward;
 #endif
+
+        internal RoomRuntime ActiveRoom => _activeRoom;
+        internal CombatWeapon Weapon => _player.Combat.Weapon;
+
+        internal float KillEnergy(SecurityEnemyKind kind)
+        {
+            return kind is SecurityEnemyKind.Auditor or SecurityEnemyKind.Enforcer ? _heavyEnemyEnergy : _lightEnemyEnergy;
+        }
 
         internal bool SelectingSecondary { get; private set; }
         internal WeaponDefinition[] SecondaryOptions => _secondaryOptions;
@@ -162,6 +172,7 @@ namespace Overtime
 
         private void ClearRoom(EncounterController room)
         {
+            _activeRoom?.DisableHazards();
             _director.SealHistory();
             var id = Generated ? CurrentNode.Id : RoomIndex + 1;
             var reward = Generated ? CurrentNode.Reward : RoomReward.None;
@@ -332,6 +343,7 @@ namespace Overtime
                 return false;
             }
 
+            Current.DebugReleaseAll();
             foreach (var enemy in Current.Enemies)
             {
                 if (enemy.Health.Alive)
@@ -371,7 +383,15 @@ namespace Overtime
 
         internal void Restart()
         {
-            SceneManager.LoadScene(gameObject.scene.buildIndex);
+            var scene = gameObject.scene;
+#if UNITY_EDITOR
+            if (scene.buildIndex < 0)
+            {
+                UnityEditor.SceneManagement.EditorSceneManager.LoadSceneAsyncInPlayMode(scene.path, new LoadSceneParameters(LoadSceneMode.Single));
+                return;
+            }
+#endif
+            SceneManager.LoadScene(scene.buildIndex);
         }
 
         private TemporalActor[] FixedRoomActors()

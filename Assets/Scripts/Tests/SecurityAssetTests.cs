@@ -7,6 +7,19 @@ namespace Overtime.Tests
 {
     public sealed class SecurityAssetTests
     {
+        [Test]
+        public void DirectiveSlideAndFlashAlignWithTheFrontOfTheViewmodel()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/ARC-00 Directive Viewmodel.prefab");
+            Assert.That(prefab, Is.Not.Null);
+            var model = prefab.GetComponent<WeaponViewmodel>();
+            Assert.That(model, Is.Not.Null);
+            var emitter = model.Slide.Find("Slide Emitter");
+            var rearSight = model.Slide.Find("Slide Rear Sight");
+            Assert.That(emitter.localPosition.z, Is.GreaterThan(rearSight.localPosition.z));
+            Assert.That(Vector3.Distance(emitter.localPosition, model.Flash.localPosition), Is.LessThan(0.012f));
+        }
+
         [TestCase("Security Unit", (int)SecurityEnemyKind.Guard, 70)]
         [TestCase("Surveillance Drone", (int)SecurityEnemyKind.Drone, 45)]
         [TestCase("Laser Auditor", (int)SecurityEnemyKind.Auditor, 90)]

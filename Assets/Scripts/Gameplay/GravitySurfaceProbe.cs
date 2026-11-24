@@ -94,7 +94,7 @@ namespace Overtime
         {
             if (TemporalCollision == null || TemporalCollision.PhasedCount == 0)
             {
-                return Physics.Raycast(origin, direction, out nearest, distance, _layers, QueryTriggerInteraction.Ignore);
+                return Physics.Raycast(origin, direction, out nearest, distance, _layers, QueryTriggerInteraction.Ignore) && TemporalCollision?.AllowsAttachment(nearest.collider) != false;
             }
 
             var count = Physics.RaycastNonAlloc(origin, direction, _hits, distance, _layers, QueryTriggerInteraction.Ignore);
@@ -110,7 +110,7 @@ namespace Overtime
                 }
             }
 
-            return nearest.collider != null;
+            return nearest.collider != null && TemporalCollision.AllowsAttachment(nearest.collider);
         }
     }
 }

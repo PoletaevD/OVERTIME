@@ -65,21 +65,24 @@ namespace Overtime.Tests
             Assert.That(_director.WorldTimeline.Cursor, Is.EqualTo(slow ? 30 : 120));
             Assert.That(_dummy.Health.Alive, Is.False);
 
+            var kicked = _player.CameraRig.Pitch;
+            Assert.That(kicked, Is.InRange(-8f, -6f));
             Tick(24);
             Assert.That(_weapon.Magazine, Is.EqualTo(20), "Releasing the trigger stops automatic fire.");
+            Assert.That(_player.CameraRig.Pitch, Is.EqualTo(kicked).Within(0.0001f));
         }
 
         [Test]
-        public void EmptyMagazineAndReloadDoNotPublishShots()
+        public void EmptyMagazineTriggersReloadAndHeldFireResumesOnlyAfterCompletion()
         {
             var presentation = _player.GetComponentInChildren<WeaponPresentation>();
             Tick(360, Input(fire: true));
             var remaining = presentation.ConfirmedShots;
             Assert.That(_weapon.Magazine, Is.Zero);
 
-            Tick(12, Input(fire: true));
-            Tick(1, Input(fire: true, reload: true));
-            Tick(179, Input(fire: true));
+            Assert.That(_weapon.IsReloading, Is.True);
+            var reloadTicks = (int)Math.Round(_weapon.Capture().ReloadRemaining / TemporalTimeline.TickDuration);
+            Tick(reloadTicks - 1, Input(fire: true));
             Assert.That(presentation.ConfirmedShots, Is.EqualTo(remaining));
             Assert.That(_weapon.Magazine, Is.Zero);
             Assert.That(_weapon.IsReloading, Is.True);

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.LowLevel;
@@ -22,7 +23,17 @@ namespace Overtime.Tests
         [UnitySetUp]
         public IEnumerator LoadRoute()
         {
-            yield return SceneManager.LoadSceneAsync("Security Route", LoadSceneMode.Single);
+#if UNITY_EDITOR
+            const string preview = "Assets/Scenes/Security Route Stage 05A.1.unity";
+            if (UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEditor.SceneAsset>(preview) != null)
+            {
+                yield return UnityEditor.SceneManagement.EditorSceneManager.LoadSceneAsyncInPlayMode(preview, new LoadSceneParameters(LoadSceneMode.Single));
+            }
+            else
+#endif
+            {
+                yield return SceneManager.LoadSceneAsync("Security Route", LoadSceneMode.Single);
+            }
             yield return null;
             Bind();
         }
@@ -80,8 +91,8 @@ namespace Overtime.Tests
                 }
             }
 
-            Assert.That(roomCount, Is.EqualTo(8));
-            Assert.That(variantCount, Is.EqualTo(23));
+            Assert.That(roomCount, Is.EqualTo(16));
+            Assert.That(variantCount, Is.EqualTo(47));
         }
 
         [UnityTest]
@@ -95,6 +106,19 @@ namespace Overtime.Tests
                 Assert.That(_route.ConfirmUpgrade(0), Is.True);
                 yield return null;
 
+                var routeHud = Object.FindAnyObjectByType<RouteSelectionHud>();
+                var overlay = routeHud.transform.Find("Route Selection");
+                var labels = overlay.GetComponentsInChildren<TMP_Text>(true);
+                foreach (var option in _route.RouteOptions)
+                {
+                    foreach (var label in labels)
+                    {
+                        Assert.That(label.text, Does.Not.Contain(option.Room.Title.ToUpperInvariant()));
+                    }
+                }
+
+                Assert.That(overlay.Find("Assignment 1/Arena Survey"), Is.Null);
+                Assert.That(overlay.Find("Assignment 2/Threat"), Is.Null);
                 var before = _director.SimulationTick;
                 var magazine = _player.Combat.Weapon.Magazine;
                 var energy = _director.Energy.Current;
@@ -206,6 +230,238 @@ namespace Overtime.Tests
             Assert.That(_director.Energy.Current, Is.EqualTo(_director.Energy.Maximum));
         }
 
+        [UnityTest]
+        public IEnumerator DirectiveRequiresFireEdgesAndSwitchCancelsAutomaticReload()
+        {
+            StartRun(2);
+            var gun = _player.Combat.Weapon;
+            gun.DebugActivate(1);
+            var specification = gun.Tuning(1);
+            Assert.That(gun.ActiveDefinition.Id, Is.EqualTo(WeaponId.Directive));
+            Assert.That(specification.Magazine, Is.EqualTo(12));
+            Assert.That(specification.Reserve, Is.EqualTo(96));
+            var held = new TemporalInput(default, default, false, false, false, default, fireHeld: true);
+            var press = new TemporalInput(default, default, false, false, true, default, fireHeld: true);
+            var rig = _player.CameraRig;
+            var initialAim = rig.AimRay.direction;
+            var shots = 0;
+            gun.ShotFired += () => shots++;
+
+            _director.Advance(TemporalTimeline.TickDuration, press);
+            Assert.That(rig.PendingRecoil.y, Is.GreaterThan(0f));
+            AdvanceFrames(0.28, held);
+            Assert.That(shots, Is.EqualTo(1));
+            Assert.That(gun.Magazine, Is.EqualTo(11));
+            Assert.That(Vector3.Angle(initialAim, rig.AimRay.direction), Is.GreaterThan(1.4f));
+
+            for (var index = 0; index < 11; index++)
+            {
+                _director.Advance(TemporalTimeline.TickDuration, press);
+                AdvanceFrames(index == 10 ? 0.06 : 0.27, held);
+            }
+
+            Assert.That(shots, Is.EqualTo(12));
+            Assert.That(gun.Magazine, Is.Zero);
+            Assert.That(gun.IsReloading, Is.True);
+            Assert.That(gun.Reserve, Is.EqualTo(96));
+            var lastAim = rig.AimRay.direction;
+            var swap = new TemporalInput(default, default, false, false, false, default, weaponSelection: WeaponSlotInput.Primary);
+            _director.Advance(TemporalTimeline.TickDuration, swap);
+            Assert.That(gun.IsReloading, Is.False);
+            Assert.That(gun.IsSwitching, Is.True);
+            AdvanceFrames(0.42, default);
+            Assert.That(gun.State(1).Magazine, Is.Zero);
+            Assert.That(gun.State(1).Reserve, Is.EqualTo(96));
+
+            swap = new TemporalInput(default, default, false, false, false, default, weaponSelection: WeaponSlotInput.Secondary);
+            _director.Advance(TemporalTimeline.TickDuration, swap);
+            AdvanceFrames(1.3, held);
+            Assert.That(gun.ActiveSlot, Is.EqualTo(1));
+            Assert.That(gun.Magazine, Is.EqualTo(12));
+            Assert.That(gun.Reserve, Is.EqualTo(84));
+            Assert.That(shots, Is.EqualTo(12));
+            Assert.That(Vector3.Distance(lastAim, rig.AimRay.direction), Is.LessThan(0.00001f));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ReinforcementsRewindAndHazardsFollowTheWorldClock()
+        {
+            StartRun(2);
+            var library = _route.DebugLibrary;
+            var index = Array.FindIndex(library, definition => definition.Id == "containment");
+            Assert.That(_route.DebugTravel(index, 2), Is.True);
+            yield return WaitForTransfer();
+            StartFight();
+            var room = _route.Current;
+            Assert.That(room.Enemies, Has.Length.EqualTo(24));
+            Assert.That(room.ActiveEnemies, Is.EqualTo(16));
+            Assert.That(room.PendingReinforcements, Is.EqualTo(8));
+            Assert.That(_route.EnemyProjectiles.PoolCapacity, Is.GreaterThanOrEqualTo(96));
+            var actors = _route.ActiveRoom.WorldActors;
+            var rotor = Array.Find(actors, actor => actor is ArenaMechanism) as ArenaMechanism;
+            var hazard = Array.Find(actors, actor => actor is ArenaHazard) as ArenaHazard;
+
+            MoveTo(_route.ActiveRoom.Entry.position);
+            foreach (var enemy in room.Enemies)
+            {
+                if (enemy.EncounterReady)
+                {
+                    Assert.That(_director.DamageTarget(enemy, enemy.Body, 1000f, out _).Killed, Is.True);
+                }
+            }
+
+            _director.Advance(0d, default);
+            Assert.That(room.State, Is.EqualTo(EncounterState.Active));
+            Assert.That(room.LivingEnemies, Is.EqualTo(8));
+            Tick(108);
+            Assert.That(room.PendingReinforcements, Is.EqualTo(8));
+            Tick(28);
+            Assert.That(room.PendingReinforcements, Is.EqualTo(4));
+            var position = rotor.transform.position;
+            var phase = rotor.Phase;
+
+            _director.Energy.Recharge();
+            Tick(26, TemporalMode.Override);
+            Assert.That(room.PendingReinforcements, Is.EqualTo(8));
+            Assert.That(rotor.Phase, Is.LessThan(phase));
+            Assert.That(Vector3.Distance(rotor.transform.position, position), Is.GreaterThan(0.001f));
+            var health = _player.Combat.Health.Current;
+
+            phase = rotor.Phase;
+            Tick(60, TemporalMode.Recall);
+            Assert.That(rotor.Phase, Is.GreaterThan(phase));
+            Assert.That(room.PendingReinforcements, Is.LessThan(8));
+            Assert.That(_player.Combat.Health.Current, Is.EqualTo(health));
+            phase = rotor.Phase;
+            Tick(60, TemporalMode.BulletTime);
+            var slowed = rotor.Phase - phase;
+            phase = rotor.Phase;
+            Tick(60);
+            Assert.That(slowed, Is.InRange(0.00001f, rotor.Phase - phase));
+            Tick(96);
+            Assert.That(hazard.Phase, Is.Not.EqualTo(HazardPhase.Dormant));
+
+            _director.Advance(0d, default);
+            ClearFight();
+            Assert.That(hazard.Phase, Is.EqualTo(HazardPhase.Dormant));
+        }
+
+        [UnityTest]
+        public IEnumerator CameraRecoilPersistsAndRestoresWithPlayerHistory()
+        {
+            StartRun(2);
+            var rig = _player.CameraRig;
+            var initialPitch = rig.Pitch;
+            Tick(24);
+            var press = new TemporalInput(default, default, false, false, true, default);
+            var startingTick = _director.PlayerTimeline.Cursor;
+            _director.Advance(TemporalTimeline.TickDuration, press);
+            Assert.That(rig.PendingRecoil.y, Is.GreaterThan(0f));
+            Tick(12);
+            var kicked = rig.Pitch;
+            Assert.That(kicked, Is.LessThan(initialPitch - 0.5f));
+            Tick(80);
+            Assert.That(rig.Pitch, Is.EqualTo(kicked).Within(0.00002f));
+            var compensation = new TemporalInput(default, new Vector2(0f, (kicked - initialPitch) / 0.105f), false, false, false, default);
+            _director.Advance(TemporalTimeline.TickDuration, compensation);
+            Assert.That(rig.Pitch, Is.EqualTo(initialPitch).Within(0.001f));
+
+            _director.Energy.Recharge();
+            Tick(8, TemporalMode.Recall);
+            Assert.That(rig.Pitch, Is.EqualTo(kicked).Within(0.00002f));
+            Tick(100, TemporalMode.Reset);
+            Assert.That(_director.PlayerTimeline.Cursor, Is.LessThanOrEqualTo(startingTick));
+            Assert.That(rig.Pitch, Is.EqualTo(initialPitch).Within(0.00002f));
+            Assert.That(rig.PendingRecoil, Is.EqualTo(Vector2.zero));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator DamageArcsTrackSeveralWorldDirectionsAndClearOnRecall()
+        {
+            StartRun(2);
+            var rig = _player.CameraRig;
+            var ray = rig.AimRay;
+            var right = Vector3.Cross(rig.AimUp, ray.direction);
+            var hud = _player.GetComponentInChildren<PlaygroundHud>();
+            var root = hud.transform.Find("Directional Damage Arcs");
+            Assert.That(root.childCount, Is.EqualTo(10));
+            var sources = new[] { ray.direction, right, -ray.direction, -right };
+            var expected = new[] { 0f, -90f, 180f, 90f };
+            Tick(40);
+            for (var index = 0; index < sources.Length; index++)
+            {
+                Assert.That(_director.DamagePlayer(2, ray.origin + sources[index] * 8f), Is.True);
+                var arc = root.GetChild(index).GetComponent<Image>();
+                Assert.That(arc.enabled, Is.True);
+                Assert.That(Mathf.Abs(Mathf.DeltaAngle(arc.rectTransform.localEulerAngles.z, expected[index])), Is.LessThan(0.05f));
+            }
+
+            rig.Look(new Vector2(90f / 0.105f, 0f));
+            yield return null;
+            var frontArc = (RectTransform)root.GetChild(0);
+            Assert.That(Mathf.Abs(Mathf.DeltaAngle(frontArc.localEulerAngles.z, 90f)), Is.LessThan(0.1f));
+            Tick(8, TemporalMode.Recall);
+            yield return null;
+            foreach (Transform child in root)
+            {
+                Assert.That(child.GetComponent<Image>().enabled, Is.False);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator LargestEncounterRecordsAt120HzDuringSustainedCombat()
+        {
+            StartRun(2);
+            var index = Array.FindIndex(_route.DebugLibrary, definition => definition.Id == "containment");
+            Assert.That(_route.DebugTravel(index, 2), Is.True);
+            yield return WaitForTransfer();
+            StartFight();
+            MoveTo(new Vector3(0f, 0.89f, 10f));
+            var pool = _route.EnemyProjectiles;
+            var peak = 0;
+            var warmUp = new TemporalInput(Vector2.right, Vector2.zero, false, false, false, default);
+            AdvanceFrames(0.18, warmUp);
+            var tick = _director.WorldTimeline.Cursor;
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            var managed = GC.GetAllocatedBytesForCurrentThread();
+            for (var frame = 0; frame < 480; frame++)
+            {
+                var move = frame % 120 < 60 ? Vector2.left : Vector2.right;
+                var input = new TemporalInput(move, Vector2.zero, frame % 144 == 0, false, false, default);
+                _player.Combat.Health.Restore(_player.Combat.Health.Maximum);
+                _director.Advance(TemporalTimeline.TickDuration, input);
+                peak = Mathf.Max(peak, pool.ActiveCount);
+            }
+
+            var allocated = GC.GetAllocatedBytesForCurrentThread() - managed;
+            watch.Stop();
+            Assert.That(_director.WorldTimeline.Cursor - tick, Is.EqualTo(480));
+            Assert.That(peak, Is.GreaterThanOrEqualTo(2));
+            Assert.That(peak, Is.LessThan(pool.PoolCapacity));
+            Assert.That(_director.WorldTimeline.Count, Is.GreaterThanOrEqualTo(480));
+            TestContext.Out.WriteLine($"24 planned, 16 deployed. 480 world ticks in {watch.Elapsed.TotalMilliseconds:0.0} ms; {allocated} managed bytes; hostile projectile peak {peak}/{pool.PoolCapacity}; history {_director.WorldTimeline.Count}/{_director.WorldTimeline.Capacity}.");
+            while (pool.ActiveCount < pool.PoolCapacity)
+            {
+                Assert.That(pool.TryLaunch(Vector3.zero, Vector3.forward, 11f, 2f, 0.13f, 4, false), Is.True);
+            }
+
+            var generation = pool.Generation;
+            Assert.That(pool.TryLaunch(Vector3.zero, Vector3.forward, 11f, 2f, 0.13f, 4, false), Is.False);
+            Assert.That(pool.Generation, Is.EqualTo(generation));
+            Assert.That(pool.ActiveCount, Is.EqualTo(pool.PoolCapacity));
+        }
+
+        private void AdvanceFrames(double seconds, in TemporalInput input)
+        {
+            var frames = Mathf.RoundToInt((float)(seconds * 120d));
+            for (var index = 0; index < frames; index++)
+            {
+                _director.Advance(TemporalTimeline.TickDuration, input);
+            }
+        }
+
         private IEnumerator CompleteRoute(int branch)
         {
             StartRun(branch);
@@ -292,9 +548,13 @@ namespace Overtime.Tests
                 if (index is 0 or 2)
                 {
                     Assert.That(_route.SelectingRoute, Is.True);
-                    expected = _route.RouteOptions[branch];
-                    Assert.That(_route.ConfirmRoute(branch), Is.True);
-                    Assert.That(_route.ConfirmRoute(1 - branch), Is.False);
+                    var first = _route.RouteOptions[0];
+                    var second = _route.RouteOptions[1];
+                    var safer = first.Room.Threat(first.Variant) < second.Room.Threat(second.Variant) ? 0 : 1;
+                    var choice = branch == 0 ? safer : 1 - safer;
+                    expected = _route.RouteOptions[choice];
+                    Assert.That(_route.ConfirmRoute(choice), Is.True);
+                    Assert.That(_route.ConfirmRoute(1 - choice), Is.False);
                 }
                 else
                 {
@@ -312,7 +572,14 @@ namespace Overtime.Tests
                 Assert.That(room == null, Is.True);
                 Assert.That(enemyBefore.HistoryCapacity, Is.Zero);
                 CollectionAssert.DoesNotContain(_director.WorldActors, enemyBefore);
-                Assert.That(_director.DynamicColliderCount, Is.InRange(_route.Current.Enemies.Length, _route.Current.Enemies.Length * 3));
+                var actors = _route.ActiveRoom.WorldActors;
+                var colliders = new List<Collider>();
+                foreach (var actor in actors)
+                {
+                    actor.CollectColliders(colliders);
+                }
+
+                Assert.That(_director.DynamicColliderCount, Is.InRange(_route.Current.Enemies.Length + colliders.Count, _route.Current.Enemies.Length * 3 + colliders.Count));
                 Assert.That(_route.EnemyProjectiles, Is.SameAs(enemyPool));
                 Assert.That(_director.PlayerProjectiles, Is.SameAs(pool));
                 Assert.That(_player.Combat.Health.Current, Is.EqualTo(health));
@@ -372,8 +639,15 @@ namespace Overtime.Tests
 
         private IEnumerator NewRun(int seed)
         {
+            var previous = _route;
             _route.Progression.DebugRestartWithSeed(seed);
-            yield return null;
+            var deadline = Time.realtimeSinceStartup + 5f;
+            while (previous != null && Time.realtimeSinceStartup < deadline)
+            {
+                yield return null;
+            }
+
+            Assert.That(previous == null, Is.True, "The previous scene must unload before checking the seeded run.");
             yield return null;
             Bind();
             Assert.That(_route.Progression.Seed, Is.EqualTo(seed));
@@ -409,9 +683,13 @@ namespace Overtime.Tests
 
         private void KillEnemies(EncounterController room)
         {
+            room.DebugReleaseAll();
             foreach (var enemy in room.Enemies)
             {
-                Assert.That(_director.DamageTarget(enemy, enemy.Body, 1000f, out _).Killed, Is.True);
+                if (enemy.Health.Alive)
+                {
+                    Assert.That(_director.DamageTarget(enemy, enemy.Body, 1000f, out _).Killed, Is.True);
+                }
             }
         }
 

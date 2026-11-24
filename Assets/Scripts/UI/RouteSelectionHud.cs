@@ -12,13 +12,8 @@ namespace Overtime
     {
         [SerializeField] private Button _button;
         [SerializeField] private CanvasGroup _group;
-        [SerializeField] private RawImage _thumbnail;
         [SerializeField] private Image _accent;
         [SerializeField] private TMP_Text _title;
-        [SerializeField] private TMP_Text _description;
-        [SerializeField] private TMP_Text _geometry;
-        [SerializeField] private TMP_Text _threat;
-        [SerializeField] private TMP_Text _hostiles;
         [SerializeField] private TMP_Text _reward;
         [SerializeField] private RawImage _rewardIcon;
 
@@ -28,24 +23,26 @@ namespace Overtime
 
         internal Button Button => _button;
 
-        internal void Present(RouteNode node, int index, bool reduced)
+        internal void Present(RoomReward reward, CombatWeapon weapon, int index, bool reduced)
         {
             Stop();
-            var room = node.Room;
-            var threat = room.Threat(node.Variant);
-            var variant = room.Variants[node.Variant];
-            _thumbnail.texture = room.Thumbnail;
-            _title.SetText(room.Title.ToUpperInvariant());
-            _description.SetText(room.Description);
-            _geometry.SetText(GeometryLabel(room.Geometry));
-            _hostiles.SetText(HostileLabel(room, variant));
-            _threat.SetText($"{(threat < 4.5f ? "MODERATE" : threat < 5.5f ? "ELEVATED" : "HIGH")}  /  TIER {variant.Difficulty}  /  {threat:0.#}");
-            _reward.SetText(RewardText(node.Reward));
-            _rewardIcon.enabled = node.Reward != RoomReward.None;
-            var frame = (int)node.Reward - 1;
+            _title.SetText(RewardTitle(reward));
+            _reward.SetText(RewardEffect(reward, weapon));
+            _rewardIcon.enabled = reward != RoomReward.None;
+            var frame = (int)reward - 1;
             _rewardIcon.uvRect = new Rect((frame & 1) * 0.5f, frame < 2 ? 0.5f : 0f, 0.5f, 0.5f);
-            _accent.color = threat < 5.5f ? new Color(0.25f, 0.85f, 0.88f) : new Color(1f, 0.48f, 0.22f);
-            _threat.color = _accent.color;
+            _accent.color = reward switch
+            {
+                RoomReward.MedicalSupplies => new Color(0.43f, 0.91f, 0.66f),
+                RoomReward.ChronoCache => new Color(0.25f, 0.85f, 0.88f),
+                RoomReward.AmmunitionCache => new Color(1f, 0.65f, 0.31f),
+                RoomReward.PriorityProtocol => new Color(0.75f, 0.57f, 1f),
+                _ => Color.white
+            };
+            var buttonColors = _button.colors;
+            buttonColors.highlightedColor = _accent.color * 0.72f;
+            buttonColors.selectedColor = buttonColors.highlightedColor;
+            _button.colors = buttonColors;
             _group.transform.localScale = Vector3.one;
             _group.alpha = reduced ? 1f : 0f;
             if (!reduced)
@@ -78,43 +75,33 @@ namespace Overtime
             _hovered = false;
         }
 
-        private string GeometryLabel(RoomGeometry tags)
+        internal static string RewardText(RoomReward reward, CombatWeapon weapon = null)
         {
-            var text = tags.ToString().Replace("CloseQuarters", "Close Quarters").Replace("CoverHeavy", "Cover Heavy").Replace("LongRange", "Long Range").Replace("DroneHeavy", "Drone Heavy");
-            return text.Replace(", ", "  /  ").ToUpperInvariant();
+            return $"{RewardTitle(reward)}   {RewardEffect(reward, weapon)}";
         }
 
-        private string HostileLabel(RoomDefinition room, EncounterVariant variant)
-        {
-            Span<bool> kinds = stackalloc bool[4];
-            kinds.Clear();
-            foreach (var index in variant.Markers)
-            {
-                kinds[(int)room.Prefab.Markers[index].Enemy.Kind] = true;
-            }
-
-            var names = new System.Collections.Generic.List<string>(4);
-            var labels = new[] { "Security Unit", "Surveillance Drone", "Laser Auditor", "Compliance Enforcer" };
-            for (var index = 0; index < labels.Length; index++)
-            {
-                if (kinds[index])
-                {
-                    names.Add(labels[index]);
-                }
-            }
-
-            return string.Join("  /  ", names);
-        }
-
-        internal static string RewardText(RoomReward reward)
+        private static string RewardTitle(RoomReward reward)
         {
             return reward switch
             {
-                RoomReward.MedicalSupplies => "MEDICAL SUPPLIES   +25 HP",
-                RoomReward.ChronoCache => "CHRONO CACHE   +35 ENERGY",
-                RoomReward.AmmunitionCache => "AMMUNITION CACHE   +45 / +12 / +6",
-                RoomReward.PriorityProtocol => "PRIORITY PROTOCOL   RARITY BOOST",
+                RoomReward.MedicalSupplies => "MEDICAL SUPPLIES",
+                RoomReward.ChronoCache => "CHRONO CACHE",
+                RoomReward.AmmunitionCache => "AMMUNITION CACHE",
+                RoomReward.PriorityProtocol => "PRIORITY PROTOCOL",
                 _ => "STANDARD RESUPPLY"
+            };
+        }
+
+        private static string RewardEffect(RoomReward reward, CombatWeapon weapon)
+        {
+            return reward switch
+            {
+                RoomReward.MedicalSupplies => "+25 HP",
+                RoomReward.ChronoCache => "+35 ENERGY",
+                RoomReward.AmmunitionCache when weapon?.HasSecondary == true => $"+{weapon.CacheRounds(0)} PRIMARY / +{weapon.CacheRounds(1)} SECONDARY",
+                RoomReward.AmmunitionCache => "+45 PRIMARY RESERVE",
+                RoomReward.PriorityProtocol => "Increased upgrade rarity",
+                _ => "Standard room reward"
             };
         }
     }
@@ -204,7 +191,7 @@ namespace Overtime
 
             for (var index = 0; index < _cards.Length; index++)
             {
-                _cards[index].Present(_route.RouteOptions[index], index, reduced);
+                _cards[index].Present(_route.RouteOptions[index].Reward, _route.Weapon, index, reduced);
             }
 
             DrawMap();
@@ -224,9 +211,10 @@ namespace Overtime
                 {
                     var label = _mapLabels[node.Id - 1];
                     var visited = _route.Visited[depth] == node;
-                    var status = depth == _route.RoomIndex && visited ? "CURRENT" : visited ? "CLEARED" : depth == _route.RoomIndex + 1 ? "AVAILABLE" : depth < _route.RoomIndex ? "BYPASSED" : depth == 4 ? "FINAL" : "UPCOMING";
+                    var status = depth == _route.RoomIndex && visited ? "CURRENT" : visited ? "CLEARED" : depth == _route.RoomIndex + 1 ? "AVAILABLE" : depth < _route.RoomIndex ? "BYPASSED" : "UPCOMING";
                     label.gameObject.SetActive(true);
-                    label.SetText($"{status}\n{node.Room.Title.ToUpperInvariant()}");
+                    var name = visited ? node.Room.Title.ToUpperInvariant() : "UNKNOWN ROOM";
+                    label.SetText($"{depth + 1:00}  /  {status}\n{name}");
                     label.color = status switch
                     {
                         "CURRENT" => new Color(1f, 0.60f, 0.32f),

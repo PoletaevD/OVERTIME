@@ -25,11 +25,23 @@ MonoBehaviour:
   _variants:
   - _title: Data Watch
     _difficulty: 2
-    _markers: 000000000100000002000000
+    _markers: 000000000100000002000000030000000400000005000000060000000700000008000000090000000a0000000b000000
+    _initialActive: 7
+    _reinforcementThreshold: 4
+    _reinforcementBatch: 2
+    _hazardMask: -1
   - _title: Server Sweep
-    _difficulty: 3
-    _markers: 00000000010000000300000004000000
+    _difficulty: 2
+    _markers: 0c0000000d0000000e0000000f000000100000001100000012000000130000001400000015000000160000001700000018000000
+    _initialActive: 8
+    _reinforcementThreshold: 5
+    _reinforcementBatch: 3
+    _hazardMask: -1
   - _title: Restricted Access
-    _difficulty: 3
-    _markers: 01000000020000000500000006000000
+    _difficulty: 4
+    _markers: 190000001a0000001b0000001c0000001d0000001e0000001f0000002000000021000000220000002300000024000000250000002600000027000000
+    _initialActive: 9
+    _reinforcementThreshold: 6
+    _reinforcementBatch: 3
+    _hazardMask: -1
   _rewards: 0100000002000000

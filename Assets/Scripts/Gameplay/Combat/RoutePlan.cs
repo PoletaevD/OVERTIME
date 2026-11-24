@@ -57,9 +57,9 @@ namespace Overtime
             {
                 Candidates(2, 2, 3, false),
                 Candidates(3, 2, 3, false),
-                Candidates(4, 3, 4, false),
-                Candidates(5, 3, 4, false),
-                Candidates(6, 4, 5, true)
+                Candidates(4, 2, 4, false),
+                Candidates(5, 2, 5, false),
+                Candidates(6, 3, 5, true)
             };
 
             // Keep five distinct assignments even if a branch in a custom library has to collapse.
@@ -76,8 +76,8 @@ namespace Overtime
 
             // A reduced library can still supply five legal assignments without the risk/reward contrast.
             candidates[0] = Candidates(2, 2, 3, false, true);
-            candidates[2] = Candidates(4, 3, 4, false, true);
-            candidates[3] = Candidates(5, 3, 5, false, true);
+            candidates[2] = Candidates(4, 2, 5, false, true);
+            candidates[3] = Candidates(5, 2, 5, false, true);
             var reserved = new HashSet<string>(StringComparer.Ordinal) { nodes[0].Room.Id, nodes[6].Room.Id };
             if (Fill(1, (1 << 2) | (1 << 5), candidates, nodes, reserved))
             {
@@ -89,13 +89,8 @@ namespace Overtime
 
         private RoutePlan Assemble(RouteNode[] nodes)
         {
-            if (nodes[2] != null && nodes[1].Room.Threat(nodes[1].Variant) > nodes[2].Room.Threat(nodes[2].Variant))
-            {
-                var safe = nodes[2];
-                var risky = nodes[1];
-                nodes[1] = new RouteNode(2, 2, safe.Room, safe.Variant, safe.Reward);
-                nodes[2] = new RouteNode(3, 2, risky.Room, risky.Variant, risky.Reward);
-            }
+            ShuffleBranch(nodes, 1);
+            ShuffleBranch(nodes, 4);
 
             return new RoutePlan(new[]
             {
@@ -105,6 +100,17 @@ namespace Overtime
                 Branch(nodes[4], nodes[5]),
                 new[] { nodes[6] }
             });
+        }
+
+        private void ShuffleBranch(RouteNode[] nodes, int index)
+        {
+            if (nodes[index + 1] != null && _random.Next(2) == 0)
+            {
+                var first = nodes[index];
+                var second = nodes[index + 1];
+                nodes[index] = new RouteNode(first.Id, first.Depth, second.Room, second.Variant, second.Reward);
+                nodes[index + 1] = new RouteNode(second.Id, second.Depth, first.Room, first.Variant, first.Reward);
+            }
         }
 
         private RouteNode Endpoint(int id, RoomCategory category, int depth)
@@ -157,7 +163,7 @@ namespace Overtime
                 {
                     var tier = room.Variants[index].Difficulty;
                     var threat = room.Threat(index);
-                    if (tier < minTier || tier > maxTier || (!fallback && ((id == 5 && threat >= 5.5f) || (id == 6 && threat < 5.5f))))
+                    if (tier < minTier || tier > maxTier || (!fallback && ((id == 5 && threat >= 25f) || (id == 6 && threat < 24f))))
                     {
                         continue;
                     }
@@ -193,7 +199,12 @@ namespace Overtime
 
             foreach (var candidate in candidates[index - 1])
             {
-                if (index == 2 && (candidate.Reward == nodes[1].Reward || candidate.Room.Threat(candidate.Variant) == nodes[1].Room.Threat(nodes[1].Variant) || candidate.Room.Geometry == nodes[1].Room.Geometry || candidate.Room.HostileKinds(candidate.Variant) == nodes[1].Room.HostileKinds(nodes[1].Variant)))
+                if (index == 2 && (candidate.Reward == nodes[1].Reward || candidate.Room.Threat(candidate.Variant) == nodes[1].Room.Threat(nodes[1].Variant) || candidate.Room.Geometry == nodes[1].Room.Geometry))
+                {
+                    continue;
+                }
+
+                if (index == 5 && candidate.Room.Threat(candidate.Variant) <= nodes[4].Room.Threat(nodes[4].Variant))
                 {
                     continue;
                 }

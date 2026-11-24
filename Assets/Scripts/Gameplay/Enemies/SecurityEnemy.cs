@@ -64,6 +64,7 @@ namespace Overtime
 
         private SecurityEnemy[] _neighbors;
         private bool _encounterReady = true;
+        private bool _stagedEncounter;
         private AiState _state;
         private Vector3 _home;
         private Quaternion _homeRotation;
@@ -105,7 +106,9 @@ namespace Overtime
         {
             RestoreState(new Snapshot(_home, _homeRotation, _health.Maximum, new AiState
             {
-                Aim = _homeRotation * Vector3.forward
+                Aim = _homeRotation * Vector3.forward,
+                Cooldown = _stagedEncounter ? 0.10f + (_rewardId * 37 % 19) * 0.048f : 0f,
+                SightRemaining = _stagedEncounter ? (_rewardId * 11 % 7) * 0.009f : 0f
             }));
         }
 
@@ -114,14 +117,37 @@ namespace Overtime
             _director = director;
             _projectiles = projectiles;
             _rewardId = rewardId;
+            _stagedEncounter = true;
             _patrol = patrol;
             _flightHalfExtents = flightHalfExtents;
         }
 
         internal void SetEncounterReady(bool ready)
         {
+            if (_encounterReady == ready)
+            {
+                return;
+            }
+
             _encounterReady = ready;
             SetHitboxes(ready && _health.Alive);
+            if (_stagedEncounter)
+            {
+                _presentation.SetDeployed(ready);
+            }
+        }
+
+        internal bool HasClearDeployment(Vector3 player)
+        {
+            if ((transform.position - player).sqrMagnitude < 2.3f * 2.3f)
+            {
+                return false;
+            }
+
+            var body = (BoxCollider)_body;
+            var box = body.transform;
+            var extent = body.size * 0.5f - Vector3.one * 0.026f;
+            return !Physics.CheckBox(box.TransformPoint(body.center), extent, box.rotation, _geometry, QueryTriggerInteraction.Ignore);
         }
 
         internal void SetNeighbors(SecurityEnemy[] neighbors)
@@ -146,7 +172,7 @@ namespace Overtime
         DamageResult ICombatDamageable.Hit(Collider collider, float amount, bool reducedMotion, out bool weakPoint)
         {
             weakPoint = _weakPoint != null && collider == _weakPoint;
-            if (!weakPoint && collider != _body)
+            if ((_stagedEncounter && !_encounterReady) || (!weakPoint && collider != _body))
             {
                 return default;
             }
@@ -194,7 +220,13 @@ namespace Overtime
             var target = capsule.transform.TransformPoint(capsule.center);
             var toPlayer = target - AttackOrigin;
             var sawPlayer = _state.SeesPlayer;
-            _state.SeesPlayer = _director.HasLivingPlayer && toPlayer.sqrMagnitude <= _detectionRange * _detectionRange && !Physics.Linecast(AttackOrigin, target, _geometry, QueryTriggerInteraction.Ignore);
+            _state.SightRemaining -= step;
+            if (_state.SightRemaining <= 0f)
+            {
+                _state.SightRemaining = _stagedEncounter ? 0.052f : 0f;
+                var range = _stagedEncounter ? _detectionRange * 1.35f : _detectionRange;
+                _state.SeesPlayer = _director.HasLivingPlayer && toPlayer.sqrMagnitude <= range * range && !Physics.Linecast(AttackOrigin, target, _geometry, QueryTriggerInteraction.Ignore);
+            }
 
             if (_kind == SecurityEnemyKind.Auditor)
             {
@@ -230,7 +262,7 @@ namespace Overtime
             if (!sawPlayer)
             {
                 _state.State = SecurityEnemyState.Alert;
-                _state.PhaseRemaining = _reactionSeconds;
+                _state.PhaseRemaining = _stagedEncounter ? _reactionSeconds * (0.52f + (_rewardId % 5) * 0.085f) : _reactionSeconds;
             }
 
             if (_state.State == SecurityEnemyState.Alert && _state.PhaseRemaining > 0f)
@@ -243,7 +275,14 @@ namespace Overtime
                 _state.State = SecurityEnemyState.Recovering;
                 if (_kind == SecurityEnemyKind.Guard)
                 {
-                    MoveOnRoute(step);
+                    if (_stagedEncounter)
+                    {
+                        RepositionGuard(toPlayer, step);
+                    }
+                    else
+                    {
+                        MoveOnRoute(step);
+                    }
                 }
                 else if (_kind == SecurityEnemyKind.Drone)
                 {
@@ -449,6 +488,18 @@ namespace Overtime
             return delta;
         }
 
+        private void RepositionGuard(Vector3 toTarget, float step)
+        {
+            toTarget.y = 0f;
+            var radial = toTarget.normalized;
+            var tangent = Vector3.Cross(Vector3.up, radial) * ((_rewardId + _state.Attacks / 3) % 2 == 0 ? 1f : -1f);
+            var steer = radial * Mathf.Clamp((toTarget.magnitude - _preferredRange) * 0.2f, -0.65f, 0.75f);
+            if (!TryMove((steer + tangent).normalized, step) && !TryMove((steer - tangent).normalized, step))
+            {
+                MoveOnRoute(step);
+            }
+        }
+
         private void MoveDrone(Vector3 target, float step)
         {
             var toTarget = target - transform.position;
@@ -459,7 +510,7 @@ namespace Overtime
             }
 
             var radial = toTarget / distance;
-            var tangent = Vector3.Cross(Vector3.up, radial);
+            var tangent = Vector3.Cross(Vector3.up, radial) * (_stagedEncounter && _rewardId % 2 == 0 ? -1f : 1f);
             var steer = radial * Mathf.Clamp((distance - _preferredRange) / 2f, -1f, 1f);
             steer.y += Mathf.Clamp(toTarget.y + 0.45f, -1f, 1f) * 0.6f;
             if (TryMove(LimitFlight((steer + tangent * 0.8f).normalized), step))
@@ -522,7 +573,7 @@ namespace Overtime
 
             foreach (var neighbor in _neighbors)
             {
-                if (neighbor == this || !neighbor.Health.Alive)
+                if (neighbor == this || !neighbor.EncounterReady || !neighbor.Health.Alive)
                 {
                     continue;
                 }
@@ -541,6 +592,11 @@ namespace Overtime
 
         internal override void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
         {
+            if (_stagedEncounter && !_encounterReady)
+            {
+                return;
+            }
+
             var aiming = _kind == SecurityEnemyKind.Auditor && _state.State == SecurityEnemyState.Aiming;
             var firing = _kind == SecurityEnemyKind.Auditor && _state.State == SecurityEnemyState.Attacking;
             var charge = aiming ? 1f - _state.PhaseRemaining / _aimSeconds : 0f;
@@ -574,7 +630,7 @@ namespace Overtime
             if (_shield != null)
             {
                 _shield.enabled = alive;
-                _shield.gameObject.SetActive(_health.Alive);
+                _shield.gameObject.SetActive(_health.Alive && (!_stagedEncounter || _encounterReady));
             }
         }
 
@@ -603,6 +659,7 @@ namespace Overtime
             internal int Waypoint;
             internal int ShotsRemaining;
             internal float PhaseRemaining;
+            internal float SightRemaining;
             internal float InstabilityRemaining;
             internal float InstabilityMagnitude;
             internal float Cooldown;

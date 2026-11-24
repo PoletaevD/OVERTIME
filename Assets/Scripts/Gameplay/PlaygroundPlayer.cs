@@ -11,6 +11,8 @@ namespace Overtime
         [SerializeField] private PlaygroundInput _input;
         [SerializeField] private GravityMotor _motor;
         [SerializeField] private GravityCamera _cameraRig;
+
+        internal GravityCamera CameraRig => _cameraRig;
         [SerializeField] private TemporalDirector _temporalDirector;
         [SerializeField] private PlayerCombat _combat;
 

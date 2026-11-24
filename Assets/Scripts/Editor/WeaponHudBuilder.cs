@@ -45,7 +45,7 @@ namespace Overtime.Editor
             BuildSecondarySelection(root, route, director, options);
         }
 
-        private void BuildSecondarySelection(Transform root, SectorRoute route, TemporalDirector director, WeaponDefinition[] options)
+        internal void BuildSecondarySelection(Transform root, SectorRoute route, TemporalDirector director, WeaponDefinition[] options, WeaponSelectionHud existing = null)
         {
             var overlay = Panel("Secondary Weapon Selection", root, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.018f, 0.031f, 0.049f, 0.96f));
             overlay.rectTransform.anchorMax = Vector2.one;
@@ -61,7 +61,7 @@ namespace Overtime.Editor
             {
                 var definition = options[index];
                 var tint = definition.Type == WeaponType.Scatter ? s_orange : s_cyan;
-                var card = Panel(definition.DisplayName, overlay.transform, center, new Vector2((index * 2 - 1) * 286f, -36f), new Vector2(540f, 430f), new Color(0.064f, 0.11f, 0.148f));
+                var card = Panel(definition.DisplayName, overlay.transform, center, new Vector2((index - (options.Length - 1) * 0.5f) * 564f, -36f), new Vector2(540f, 430f), new Color(0.064f, 0.11f, 0.148f));
                 card.rectTransform.pivot = center;
                 Panel("Accent", card.transform, Vector2.zero, new Vector2(0f, 427f), new Vector2(540f, 3f), tint);
                 Panel("Inspection Plate", card.transform, Vector2.zero, new Vector2(22f, 198f), new Vector2(496f, 207f), new Color(0.037f, 0.078f, 0.105f));
@@ -70,7 +70,7 @@ namespace Overtime.Editor
                 image.preserveAspect = true;
                 Label("Weapon Name", card.transform, new Vector2(24f, 154f), new Vector2(492f, 40f), definition.DisplayName, 32f, s_paper).fontStyle = FontStyles.Bold;
                 var tuning = definition.Tuning;
-                var feature = definition.Type == WeaponType.Scatter ? $"{tuning.Pellets} × {tuning.Damage} DMG    /    {tuning.Magazine} MAG    /    {tuning.Spread:0}° SPREAD" : $"{tuning.Damage} DMG    /    {tuning.Magazine} MAG    /    {tuning.Targets} TARGETS";
+                var feature = definition.Type == WeaponType.Scatter ? $"{tuning.Pellets} Р“вЂ” {tuning.Damage} DMG    /    {tuning.Magazine} MAG    /    {tuning.Spread:0}Р’В° SPREAD" : definition.Type == WeaponType.SemiAutomatic ? $"{tuning.Damage} DMG    /    {tuning.Magazine} MAG    /    SEMI-AUTO" : $"{tuning.Damage} DMG    /    {tuning.Magazine} MAG    /    {tuning.Targets} TARGETS";
                 Label("Weapon Specs", card.transform, new Vector2(24f, 117f), new Vector2(492f, 32f), feature, 20f, tint);
                 var description = Label("Weapon Role", card.transform, new Vector2(24f, 67f), new Vector2(492f, 46f), definition.Description, 19f, s_muted);
                 description.textWrappingMode = TextWrappingModes.Normal;
@@ -86,7 +86,7 @@ namespace Overtime.Editor
                 CenterLabel("Equip Label", plate.transform, Vector2.zero, new Vector2(480f, 39f), $"{index + 1}   /   EQUIP IN SLOT 2", 18f, s_paper).characterSpacing = 2f;
             }
 
-            var controller = root.gameObject.AddComponent<WeaponSelectionHud>();
+            var controller = existing != null ? existing : root.gameObject.AddComponent<WeaponSelectionHud>();
             PlaygroundSceneBuilder.Wire(controller, "_route", route, "_director", director, "_overlay", group, "_buttons", buttons);
         }
     }

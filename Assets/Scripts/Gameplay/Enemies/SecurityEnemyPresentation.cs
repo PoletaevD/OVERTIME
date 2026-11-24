@@ -51,6 +51,20 @@ namespace Overtime
             _hitFlash?.Kill();
         }
 
+        internal void SetDeployed(bool deployed)
+        {
+            Toggle(_model, deployed);
+            if (!deployed)
+            {
+                Toggle(_wreck, false);
+                Toggle(_rupture, false);
+                if (_beam != null)
+                {
+                    _beam.enabled = false;
+                }
+            }
+        }
+
         internal void ReactToHit(bool reducedMotion)
         {
             _flashPeak = reducedMotion ? 0.42f : 0.86f;

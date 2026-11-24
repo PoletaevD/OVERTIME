@@ -36,13 +36,10 @@ namespace Overtime
         [SerializeField] private Button _restart;
         [SerializeField] private SecurityEnemy[] _enemies;
         [SerializeField] private TMP_Text _remainingLabel;
-        [SerializeField] private CanvasGroup _damageDirection;
-        [SerializeField] private TMP_Text _damageArrow;
-        [SerializeField] private Camera _view;
+        [SerializeField] private Sprite _damageArc;
 
-        private Tween _directionPulse;
+        private DamageIndicators _indicators;
         private Tween _remainingPulse;
-        private Vector3 _damageSource;
         private int _remaining = -1;
 
         private Tween _healthPulse;
@@ -88,9 +85,16 @@ namespace Overtime
             {
                 _weaponPulse = _weaponIcon.rectTransform.DOScale(1f, 0.20f).From(0.84f, false).SetAutoKill(false).SetUpdate(true).Pause();
             }
-            if (_damageDirection != null)
+            var legacy = transform.Find("Directional Damage");
+            if (legacy != null)
             {
-                _directionPulse = BuildPulse(0.55f, value => _damageDirection.alpha = value * 0.85f);
+                legacy.gameObject.SetActive(false);
+            }
+
+            var arc = _damageArc != null ? _damageArc : Resources.Load<Sprite>("Damage Arc");
+            if (arc != null)
+            {
+                _indicators = new DamageIndicators(transform, arc);
             }
 
             if (_remainingLabel != null)
@@ -117,6 +121,7 @@ namespace Overtime
             _director.DirectionalDamage -= OnDirectionalDamage;
             _hitPulse.Pause();
             _hitGroup.alpha = 0f;
+            _indicators?.Clear();
         }
 
         private void OnDestroy()
@@ -129,8 +134,8 @@ namespace Overtime
             _stationTween?.Kill();
             _weaponPulse?.Kill();
             _deathTween?.Kill();
-            _directionPulse?.Kill();
             _remainingPulse?.Kill();
+            _indicators?.Dispose();
         }
 
         private void LateUpdate()
@@ -145,9 +150,13 @@ namespace Overtime
                 RefreshEncounter();
             }
 
-            if (_damageDirection != null && _damageDirection.alpha > 0f)
+            if (_director.CanAffectWorld)
             {
-                OrientDamageArrow();
+                _indicators?.Orient(_player.CameraRig);
+            }
+            else
+            {
+                _indicators?.Clear();
             }
         }
 
@@ -173,30 +182,9 @@ namespace Overtime
             _remaining = remaining;
         }
 
-        private void OnDirectionalDamage(Vector3 source)
+        private void OnDirectionalDamage(Vector3 source, int damage)
         {
-            if (_damageDirection == null)
-            {
-                return;
-            }
-
-            _damageSource = source;
-            OrientDamageArrow();
-            _damageDirection.alpha = 0.85f;
-            _directionPulse.Restart();
-        }
-
-        private void OrientDamageArrow()
-        {
-            var bearing = _view.transform.InverseTransformPoint(_damageSource);
-            var screen = new Vector2(bearing.x, bearing.y);
-            if (screen.sqrMagnitude < 0.01f)
-            {
-                screen = bearing.z < 0f ? Vector2.down : Vector2.up;
-            }
-
-            _damageArrow.rectTransform.anchoredPosition = screen.normalized * 87f;
-            _damageArrow.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(-screen.x, screen.y) * Mathf.Rad2Deg);
+            _indicators?.Signal(_player.CameraRig, source, damage, _player.ReducedMotion);
         }
 
         private void RefreshHealth(CombatHealth health)
@@ -426,11 +414,7 @@ namespace Overtime
                 _hitWindow = 0f;
                 _hitPulse.Pause();
                 _hitGroup.alpha = 0f;
-                if (_damageDirection != null)
-                {
-                    _directionPulse.Pause();
-                    _damageDirection.alpha = 0f;
-                }
+                _indicators?.Clear();
             }
         }
 

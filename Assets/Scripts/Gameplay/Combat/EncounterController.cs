@@ -21,6 +21,35 @@ namespace Overtime
         [SerializeField] private EncounterGate _gate;
         [SerializeField] private int _reserveReward = 30;
 
+        private EncounterReinforcements _reinforcements;
+
+        internal int PendingReinforcements => _reinforcements?.Pending ?? 0;
+        internal int ActiveEnemies
+        {
+            get
+            {
+                var count = 0;
+                foreach (var enemy in _enemies)
+                {
+                    count += enemy.EncounterReady && enemy.Health.Alive ? 1 : 0;
+                }
+
+                return count;
+            }
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        internal void DebugReleaseAll()
+        {
+            _reinforcements?.DebugReleaseAll();
+        }
+#endif
+
+        internal void SetReinforcements(EncounterReinforcements reinforcements)
+        {
+            _reinforcements = reinforcements;
+        }
+
         internal string RoomName => _roomName;
         internal Vector3 Exit => _gate.transform.position;
         internal EncounterState State { get; private set; }
@@ -86,15 +115,22 @@ namespace Overtime
             switch (State)
             {
                 case EncounterState.Waiting when director.HasLivingPlayer && _combatZone.bounds.Contains(position):
-                    foreach (var enemy in _enemies)
+                    if (_reinforcements != null)
                     {
-                        enemy.SetEncounterReady(true);
+                        _reinforcements.Begin();
+                    }
+                    else
+                    {
+                        foreach (var enemy in _enemies)
+                        {
+                            enemy.SetEncounterReady(true);
+                        }
                     }
 
-                    director.SealHistory();
                     State = EncounterState.Active;
+                    director.SealHistory();
                     break;
-                case EncounterState.Active when director.HasLivingPlayer && LivingEnemies == 0:
+                case EncounterState.Active when director.HasLivingPlayer && LivingEnemies == 0 && PendingReinforcements == 0:
                     State = EncounterState.RewardSelection;
                     break;
                 case EncounterState.Cleared when _exitZone.bounds.Contains(position):

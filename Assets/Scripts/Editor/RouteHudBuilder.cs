@@ -7,20 +7,20 @@ namespace Overtime.Editor
 {
     internal sealed partial class PlaygroundHudBuilder
     {
-        internal void BuildRouteHud(PlaygroundHud movement, SectorRoute route, TemporalDirector director)
+        internal void BuildRouteHud(PlaygroundHud movement, SectorRoute route, TemporalDirector director, RouteSelectionHud existing = null, RouteTransfer existingTransfer = null)
         {
             var root = movement.transform;
             var overlay = Panel("Route Selection", root, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.017f, 0.029f, 0.045f, 0.98f));
             overlay.rectTransform.anchorMax = Vector2.one;
             overlay.raycastTarget = true;
             var group = AddOverlayGroup(overlay.gameObject);
-            var header = CenterLabel("Assignment Title", overlay.transform, new Vector2(0f, 405f), new Vector2(1140f, 73f), "SELECT NEXT ASSIGNMENT", 55f, s_paper);
+            var header = CenterLabel("Assignment Title", overlay.transform, new Vector2(0f, 405f), new Vector2(1140f, 73f), "SELECT NEXT REWARD", 55f, s_paper);
             header.fontStyle = FontStyles.Bold;
             header.characterSpacing = 2.7f;
             CenterLabel("Dispatch", overlay.transform, new Vector2(0f, 456f), new Vector2(900f, 30f), "MERIDIAN   /   SECURITY DISPATCH", 19f, s_cyan).characterSpacing = 2.3f;
 
             var map = RouteMap(overlay.transform);
-            var controller = root.gameObject.AddComponent<RouteSelectionHud>();
+            var controller = existing != null ? existing : root.gameObject.AddComponent<RouteSelectionHud>();
             PlaygroundSceneBuilder.Wire(controller, "_route", route, "_director", director, "_overlay", group, "_mapLabels", map);
             var serialized = new SerializedObject(controller);
             var entries = serialized.FindProperty("_cards");
@@ -38,7 +38,7 @@ namespace Overtime.Editor
             var transferGroup = transition.gameObject.AddComponent<CanvasGroup>();
             transferGroup.alpha = 0f;
             transferGroup.blocksRaycasts = false;
-            var transfer = route.gameObject.AddComponent<RouteTransfer>();
+            var transfer = existingTransfer != null ? existingTransfer : route.gameObject.AddComponent<RouteTransfer>();
             PlaygroundSceneBuilder.Wire(transfer, "_overlay", transferGroup);
             PlaygroundSceneBuilder.Wire(route, "_transfer", transfer);
         }
@@ -77,28 +77,21 @@ namespace Overtime.Editor
         private void BuildRouteCard(Transform root, SerializedProperty card, int index)
         {
             var center = Vector2.one * 0.5f;
-            var panel = Panel($"Assignment {index + 1}", root, center, Vector2.zero, new Vector2(535f, 558f), new Color(0.065f, 0.105f, 0.143f));
+            var panel = Panel($"Assignment {index + 1}", root, center, Vector2.zero, new Vector2(535f, 334f), new Color(0.065f, 0.105f, 0.143f));
             panel.rectTransform.pivot = center;
             panel.rectTransform.anchoredPosition = new Vector2((2 * index - 1) * 280f, -85f);
             var body = panel.transform;
             var group = body.gameObject.AddComponent<CanvasGroup>();
-            var accent = Panel("Threat Accent", body, Vector2.zero, new Vector2(0f, 554f), new Vector2(535f, 4f), s_cyan);
-            var thumbnail = Rect("Arena Survey", body, Vector2.zero, new Vector2(18f, 330f), new Vector2(499f, 210f)).gameObject.AddComponent<RawImage>();
-            thumbnail.raycastTarget = false;
-            var title = Label("Assignment Name", body, new Vector2(22f, 283f), new Vector2(490f, 42f), string.Empty, 31f, s_paper);
+            var accent = Panel("Reward Accent", body, Vector2.zero, new Vector2(0f, 330f), new Vector2(535f, 4f), s_cyan);
+            var icon = Rect("Reward Icon", body, Vector2.zero, new Vector2(218f, 222f), new Vector2(99f, 99f)).gameObject.AddComponent<RawImage>();
+            icon.texture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Security Route/MERIDIAN Reward Icons.png");
+            icon.raycastTarget = false;
+            var title = Label("Reward Name", body, new Vector2(29f, 156f), new Vector2(480f, 54f), string.Empty, 34f, s_paper);
+            title.alignment = TextAlignmentOptions.Center;
             title.fontStyle = FontStyles.Bold;
-            var description = Label("Field Notes", body, new Vector2(22f, 237f), new Vector2(490f, 46f), string.Empty, 19f, s_muted);
-            description.textWrappingMode = TextWrappingModes.Normal;
-            var geometry = Label("Geometry", body, new Vector2(22f, 206f), new Vector2(490f, 27f), string.Empty, 17f, s_cyan);
-            var threat = Label("Threat", body, new Vector2(22f, 172f), new Vector2(490f, 26f), string.Empty, 19f, s_cyan);
-            var hostiles = Label("Hostiles", body, new Vector2(22f, 129f), new Vector2(490f, 44f), string.Empty, 17f, s_muted);
-            hostiles.textWrappingMode = TextWrappingModes.Normal;
-            var rewardPlate = Panel("Supply Bonus", body, Vector2.zero, new Vector2(18f, 72f), new Vector2(499f, 47f), new Color(0.11f, 0.18f, 0.22f));
-            var rewardIcon = Rect("Reward Icon", rewardPlate.transform, Vector2.zero, new Vector2(7f, 2f), new Vector2(43f, 43f)).gameObject.AddComponent<RawImage>();
-            rewardIcon.texture = AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Art/Security Route/MERIDIAN Reward Icons.png");
-            rewardIcon.raycastTarget = false;
-            var reward = Label("Reward", rewardPlate.transform, new Vector2(56f, 0f), new Vector2(428f, 47f), string.Empty, 18f, s_paper);
-            var choice = Panel("Confirm Assignment", body, Vector2.zero, new Vector2(18f, 16f), new Vector2(499f, 45f), new Color(0.18f, 0.33f, 0.38f));
+            var reward = Label("Reward Effect", body, new Vector2(29f, 111f), new Vector2(480f, 44f), string.Empty, 23f, s_muted);
+            reward.alignment = TextAlignmentOptions.Center;
+            var choice = Panel("Confirm Assignment", body, Vector2.zero, new Vector2(18f, 25f), new Vector2(499f, 61f), new Color(0.18f, 0.33f, 0.38f));
             choice.raycastTarget = true;
             var button = choice.gameObject.AddComponent<Button>();
             button.targetGraphic = choice;
@@ -106,19 +99,14 @@ namespace Overtime.Editor
             colors.highlightedColor = new Color(0.55f, 0.95f, 0.97f);
             colors.pressedColor = s_cyan;
             button.colors = colors;
-            CenterLabel("Confirm Label", choice.transform, Vector2.zero, new Vector2(492f, 42f), $"{index + 1}   /   ACCEPT ASSIGNMENT", 18f, s_paper).characterSpacing = 1.3f;
+            CenterLabel("Confirm Label", choice.transform, Vector2.zero, new Vector2(492f, 42f), $"{index + 1}   /   SELECT REWARD", 18f, s_paper).characterSpacing = 1.3f;
 
             card.FindPropertyRelative("_button").objectReferenceValue = button;
             card.FindPropertyRelative("_group").objectReferenceValue = group;
             card.FindPropertyRelative("_accent").objectReferenceValue = accent;
-            card.FindPropertyRelative("_thumbnail").objectReferenceValue = thumbnail;
             card.FindPropertyRelative("_title").objectReferenceValue = title;
-            card.FindPropertyRelative("_description").objectReferenceValue = description;
-            card.FindPropertyRelative("_geometry").objectReferenceValue = geometry;
-            card.FindPropertyRelative("_threat").objectReferenceValue = threat;
-            card.FindPropertyRelative("_hostiles").objectReferenceValue = hostiles;
             card.FindPropertyRelative("_reward").objectReferenceValue = reward;
-            card.FindPropertyRelative("_rewardIcon").objectReferenceValue = rewardIcon;
+            card.FindPropertyRelative("_rewardIcon").objectReferenceValue = icon;
         }
     }
 }

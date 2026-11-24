@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -73,7 +74,15 @@ namespace Overtime.Editor
                 BuildAssignment("atrium", "Central Atrium", "Long outlooks from the galleries overlook a split central concourse.", RoomCategory.Operations, RoomGeometry.Open | RoomGeometry.Vertical | RoomGeometry.LongRange, 2, 4, 3, new Vector3(24f, 10.5f, 33f), _cyan, AtriumGeometry, AtriumMarkers(), new[] { Variant("Gallery Watch", 2, 0, 1, 2, 3), Variant("Crossfire", 3, 0, 2, 3, 4), Variant("Atrium Lockdown", 5, 0, 2, 3, 4, 5) }, RoomReward.ChronoCache, RoomReward.AmmunitionCache, RoomReward.PriorityProtocol),
                 BuildAssignment("cargo", "Cargo Inspection", "Stacked containers alternate narrow lanes with broad inspection bays.", RoomCategory.Logistics, RoomGeometry.CoverHeavy | RoomGeometry.CloseQuarters | RoomGeometry.Shielded, 2, 4, 3, new Vector3(22f, 8.8f, 29f), _orange, CargoGeometry, CargoMarkers(), new[] { Variant("Containment Team", 2, 0, 1, 3), Variant("Guard Patrol", 3, 0, 1, 2, 4), Variant("Heavy Inspection", 5, 3, 4, 5, 6) }, RoomReward.MedicalSupplies, RoomReward.AmmunitionCache, RoomReward.PriorityProtocol),
                 BuildAssignment("power", "Power Distribution", "Circle the reactor housing. Side routes keep moving builds in motion.", RoomCategory.Operations, RoomGeometry.Open | RoomGeometry.Vertical | RoomGeometry.Shielded, 3, 4, 4, new Vector3(22f, 9.4f, 27f), _violet, PowerGeometry, PowerMarkers(), new[] { Variant("Circuit Watch", 3, 0, 1, 2, 3), Variant("Protected Relay", 4, 0, 1, 2, 4), Variant("Emergency Distribution", 5, 1, 2, 3, 4, 5) }, RoomReward.ChronoCache, RoomReward.MedicalSupplies, RoomReward.PriorityProtocol),
-                BuildAssignment("tactical", "Tactical Assessment", "Thread staggered covers and climb shallow ramps to line up shots.", RoomCategory.Assessment, RoomGeometry.LongRange | RoomGeometry.CoverHeavy | RoomGeometry.Vertical, 3, 4, 4, new Vector3(21f, 8.3f, 32f), _orange, TacticalGeometry, TacticalMarkers(), new[] { Variant("Live-Fire Drill", 3, 0, 1, 3, 5), Variant("Firing Line", 4, 0, 1, 2, 3, 4), Variant("Combined Assessment", 5, 0, 1, 3, 5, 6) }, RoomReward.AmmunitionCache, RoomReward.MedicalSupplies, RoomReward.PriorityProtocol)
+                BuildAssignment("tactical", "Tactical Assessment", "Thread staggered covers and climb shallow ramps to line up shots.", RoomCategory.Assessment, RoomGeometry.LongRange | RoomGeometry.CoverHeavy | RoomGeometry.Vertical, 3, 4, 4, new Vector3(21f, 8.3f, 32f), _orange, TacticalGeometry, TacticalMarkers(), new[] { Variant("Live-Fire Drill", 3, 0, 1, 3, 5), Variant("Firing Line", 4, 0, 1, 2, 3, 4), Variant("Combined Assessment", 5, 0, 1, 3, 5, 6) }, RoomReward.AmmunitionCache, RoomReward.MedicalSupplies, RoomReward.PriorityProtocol),
+                BuildExpansion("processing", "Processing Hall", "Parallel production lines flank two moving service blocks.", RoomCategory.Operations, RoomGeometry.Open | RoomGeometry.CoverHeavy, 2, new Vector3(30f, 10f, 40f), _cyan, ProcessingGeometry),
+                BuildExpansion("junction", "Gravity Junction", "Offset bridge decks meet above a clear junction.", RoomCategory.Operations, RoomGeometry.Vertical | RoomGeometry.DroneHeavy, 2, new Vector3(24f, 15f, 31f), _violet, JunctionGeometry),
+                BuildExpansion("transit", "Transit Exchange", "A long two-track freight interchange with mobile containers.", RoomCategory.Logistics, RoomGeometry.LongRange | RoomGeometry.CoverHeavy, 2, new Vector3(27f, 11f, 45f), _orange, TransitGeometry),
+                BuildExpansion("live-wire", "Live Wire", "Cycling power panels threaten the floor, wall and ceiling.", RoomCategory.Operations, RoomGeometry.Vertical | RoomGeometry.CloseQuarters, 2, new Vector3(19f, 8f, 26f), _violet, WireGeometry),
+                BuildExpansion("inspection-maze", "Inspection Maze", "Three connected screening cells with clear overpass routes.", RoomCategory.Assessment, RoomGeometry.CloseQuarters | RoomGeometry.CoverHeavy, 2, new Vector3(17f, 8.2f, 24f), _orange, MazeGeometry),
+                BuildExpansion("turbine", "Turbine Chamber", "A ring route around active turbine machinery.", RoomCategory.Operations, RoomGeometry.Open | RoomGeometry.Vertical, 3, new Vector3(28f, 13f, 34f), _violet, TurbineGeometry),
+                BuildExpansion("observatory", "Crossfire Observatory", "Staggered observation decks overlook a long shooting gallery.", RoomCategory.Assessment, RoomGeometry.LongRange | RoomGeometry.Vertical | RoomGeometry.DroneHeavy, 3, new Vector3(30f, 15f, 39f), _cyan, ObservatoryGeometry),
+                BuildExpansion("lockdown", "Emergency Lockdown", "Alternating shutters leave flanking lanes through a partitioned arena.", RoomCategory.Logistics, RoomGeometry.CoverHeavy | RoomGeometry.Shielded, 3, new Vector3(29f, 11f, 37f), _orange, LockdownGeometry)
             };
             return rooms;
         }
@@ -111,8 +120,12 @@ namespace Overtime.Editor
 
                 var runtime = room.gameObject.AddComponent<RoomRuntime>();
                 PlaygroundSceneBuilder.Wire(runtime, "_encounter", encounter, "_entry", entry, "_exit", exit);
-                WriteMarkers(runtime, markers);
-                var thumbnail = CaptureSurvey(room, id, size);
+                AddRoomMechanisms(runtime, id);
+                Physics.SyncTransforms();
+                var roster = new List<SpawnSpec>(72);
+                variants = ExpandEncounter(id, size, markers, variants, roster);
+                WriteMarkers(runtime, roster.ToArray());
+                var thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>($"{RouteArt}/Surveys/{id}.png");
                 var prefab = PrefabUtility.SaveAsPrefabAsset(room.gameObject, $"{RoutePrefabs}/Rooms/{title}.prefab");
                 if (prefab == null)
                 {
@@ -163,6 +176,11 @@ namespace Overtime.Editor
                 data.FindPropertyRelative("_enemy").objectReferenceValue = armory.GetPrefab(marker.Kind).GetComponent<SecurityEnemy>();
                 data.FindPropertyRelative("_point").objectReferenceValue = point;
                 data.FindPropertyRelative("_flightHalfExtents").vector3Value = marker.Volume;
+                var signal = PlaygroundSceneBuilder.Child("Reinforcement Warning", point);
+                Block(signal, "Amber Arrival Beacon", new Vector3(0f, 0.32f, 0f), new Vector3(0.14f, 1.18f, 0.14f), _orange, false);
+                Block(signal, "Dock Signal", Vector3.down * 0.24f, new Vector3(0.68f, 0.065f, 0.68f), _violet, false);
+                signal.gameObject.SetActive(false);
+                data.FindPropertyRelative("_warning").objectReferenceValue = signal.gameObject;
                 var patrol = data.FindPropertyRelative("_patrol");
                 patrol.arraySize = marker.Patrol.Length;
                 for (var step = 0; step < marker.Patrol.Length; step++)
@@ -204,6 +222,10 @@ namespace Overtime.Editor
                 var data = entries.GetArrayElementAtIndex(index);
                 data.FindPropertyRelative("_title").stringValue = variant.Title;
                 data.FindPropertyRelative("_difficulty").intValue = variant.Difficulty;
+                data.FindPropertyRelative("_initialActive").intValue = variant.Initial;
+                data.FindPropertyRelative("_reinforcementThreshold").intValue = variant.Threshold;
+                data.FindPropertyRelative("_reinforcementBatch").intValue = variant.Batch;
+                data.FindPropertyRelative("_hazardMask").intValue = variant.HazardMask;
                 var markers = data.FindPropertyRelative("_markers");
                 markers.arraySize = variant.Markers.Length;
                 for (var marker = 0; marker < variant.Markers.Length; marker++)

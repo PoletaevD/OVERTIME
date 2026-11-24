@@ -77,14 +77,14 @@ namespace Overtime.Editor
             remaining.alignment = TextAlignmentOptions.Center;
 
             PlaygroundSceneBuilder.Wire(hud, "_enemies", enemies, "_remainingLabel", remaining);
-            BuildDamageDirection(root, hud, view);
+            InstallDamageArcs(root, hud);
         }
 
         internal void BuildSector(PlaygroundHud movement, CombatHud combat, PlaygroundPlayer player, TemporalDirector director, SectorRoute route, Camera view)
         {
             var root = movement.transform;
             root.Find("Controls/Bindings").GetComponent<TMP_Text>().text = "WASD  MOVE   MOUSE  LOOK\nSPACE  JUMP / GRAVITY   LMB  FIRE\nR  RELOAD   F5  RETRY SECTOR\nQ  RESET   E  OVERRIDE   C  RECALL\nSHIFT  BULLET TIME   ESC  RELEASE\nF3  DEBUG   F4  MOTION   H  HINTS";
-            BuildDamageDirection(root, combat, view);
+            InstallDamageArcs(root, combat);
             var top = new Vector2(0.5f, 1f);
             var card = Panel("Sector Encounter", root, top, Vector2.zero, new Vector2(357f, 113f), s_ink);
             card.rectTransform.pivot = top;
@@ -117,12 +117,20 @@ namespace Overtime.Editor
             PlaygroundSceneBuilder.Wire(sector, "_route", route, "_director", director, "_player", player, "_view", view, "_roomNumber", room, "_roomTitle", title, "_status", state, "_exitArrow", arrow, "_intro", intro, "_introText", announcement, "_success", success, "_stats", stats, "_debug", debug);
         }
 
-        private void BuildDamageDirection(Transform root, CombatHud hud, Camera view)
+        internal void InstallDamageArcs(Transform root, CombatHud hud)
         {
-            var damageDirection = Rect("Directional Damage", root, Vector2.one * 0.5f, Vector2.zero, Vector2.zero);
-            var arrow = CenterLabel("Impact Direction", damageDirection, new Vector2(0f, 86f), new Vector2(64f, 34f), "^", 32f, s_orange);
-            var directionGroup = AddOverlayGroup(damageDirection.gameObject);
-            PlaygroundSceneBuilder.Wire(hud, "_damageDirection", directionGroup, "_damageArrow", arrow, "_view", view);
+            var path = "Assets/Resources/Damage Arc.png";
+            var importer = (UnityEditor.TextureImporter)UnityEditor.AssetImporter.GetAtPath(path);
+            if (importer.textureType != UnityEditor.TextureImporterType.Sprite)
+            {
+                importer.textureType = UnityEditor.TextureImporterType.Sprite;
+                importer.spriteImportMode = UnityEditor.SpriteImportMode.Single;
+                importer.alphaIsTransparency = true;
+                importer.mipmapEnabled = false;
+                importer.SaveAndReimport();
+            }
+
+            PlaygroundSceneBuilder.Wire(hud, "_damageArc", UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(path));
         }
 
         private Image Meter(string name, Transform parent, float y, float height, Color color)

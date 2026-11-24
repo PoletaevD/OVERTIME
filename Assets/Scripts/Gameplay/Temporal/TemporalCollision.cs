@@ -7,6 +7,7 @@ namespace Overtime
     {
         private readonly CapsuleCollider _player;
         private readonly Entry[] _entries;
+        private readonly HashSet<Collider> _nonMagnetic = new();
 
         internal int Count => _entries.Length;
         internal int OverlapCount { get; private set; }
@@ -18,7 +19,15 @@ namespace Overtime
             var colliders = new List<Collider>();
             foreach (var actor in actors)
             {
+                var start = colliders.Count;
                 actor.CollectColliders(colliders);
+                if (!actor.AllowsGravityAttachment)
+                {
+                    for (var index = start; index < colliders.Count; index++)
+                    {
+                        _nonMagnetic.Add(colliders[index]);
+                    }
+                }
             }
 
             _entries = new Entry[colliders.Count];
@@ -70,6 +79,8 @@ namespace Overtime
                 }
             }
         }
+
+        internal bool AllowsAttachment(Collider collider) => !_nonMagnetic.Contains(collider);
 
         internal bool Ignores(Collider collider)
         {

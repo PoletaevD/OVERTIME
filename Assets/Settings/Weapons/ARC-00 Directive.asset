@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d91308995dcfa6d4d94c08448f4af948, type: 3}
+  m_Name: ARC-00 Directive
+  m_EditorClassIdentifier: Overtime.Runtime::Overtime.WeaponDefinition
+  _id: 3
+  _type: 3
+  _displayName: ARC-00  /  Directive
+  _description: A compact semi-automatic sidearm with fast reloads and high bolt
+    velocity.
+  _icon: {fileID: 21300000, guid: dba2139f0eae4174895a95751740f9b3, type: 3}
+  _viewmodel: {fileID: 4405777601770367885, guid: 100d8134f78b00d42b512c4756259255, type: 3}
+  _tuning:
+    _roundsPerMinute: 240
+    _postShotDelay: 0
+    _magazine: 12
+    _reserve: 96
+    _magazinePerLevel: 3
+    _roomReserve: 20
+    _damage: 28
+    _reload: 0.85
+    _speed: 75
+    _radius: 0.035
+    _lifetime: 0.85
+    _range: 60
+    _pellets: 1
+    _spread: 0
+    _charge: 0
+    _targets: 1
+    _penetrationRetention: 0.85
+    _muzzle: {x: 0.29, y: -0.22, z: 0.7}
+  _recoil: {x: 0.08, y: 9, z: 0.13}
+  _cameraRecoil:
+    _vertical: 1.8
+    _horizontal: 0.3
+    _verticalVariation: 0.09
+    _duration: 0.03
+    _sustainedPerShot: 0
+    _maximumMultiplier: 1.35
+    _pattern:
+    - {x: -0.5, y: -0.2}
+    - {x: -0.2, y: 0.6}
+    - {x: 0.55, y: 0.2}
+    - {x: 0.25, y: -0.7}
+  _viewmodelRecoil:
+    _positionStiffness: 950
+    _positionDamping: 42
+    _rotationStiffness: 826.5
+    _rotationDamping: 35.7
+    _positionImpulse: {x: 0.23, y: 0.9, z: -3.5}
+    _rotationImpulse: {x: -450, y: 68, z: 73}
+    _maxPosition: 0.18
+    _maxRotation: 22
+    _shotVariation: 0.14
+  _shot: {fileID: 8300000, guid: 3726698dd5d4bca46ab9927b469c68cd, type: 3}
+  _reload: {fileID: 8300000, guid: 64d363d2d1064ee48a900210e5316d71, type: 3}
+  _charge: {fileID: 0}

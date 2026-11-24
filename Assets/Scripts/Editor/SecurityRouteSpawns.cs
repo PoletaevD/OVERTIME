@@ -27,12 +27,20 @@ namespace Overtime.Editor
             internal string Title { get; }
             internal int Difficulty { get; }
             internal int[] Markers { get; }
+            internal int Initial { get; }
+            internal int Threshold { get; }
+            internal int Batch { get; }
+            internal int HazardMask { get; }
 
-            internal VariantSpec(string title, int difficulty, int[] markers)
+            internal VariantSpec(string title, int difficulty, int[] markers, int initial = 0, int threshold = 0, int batch = 3, int hazardMask = -1)
             {
                 Title = title;
                 Difficulty = difficulty;
                 Markers = markers;
+                Initial = initial;
+                Threshold = threshold;
+                Batch = batch;
+                HazardMask = hazardMask;
             }
         }
 

@@ -72,7 +72,7 @@ namespace Overtime
         internal event Action<TemporalMode> ModeChanged;
         internal event Action<TemporalMode, Vector3> AbilityStarted;
         internal event Action<TemporalMode, Vector3> AbilityCompleted;
-        internal event Action<Vector3> DirectionalDamage;
+        internal event Action<Vector3, int> DirectionalDamage;
         internal event Action<ProjectileImpact> ProjectileHit;
         internal event Action<Vector3> AuditorCharging;
         internal TemporalProjectileEmitter PlayerProjectiles => _playerProjectiles;
@@ -575,11 +575,22 @@ namespace Overtime
 
         private void SimulateWorld()
         {
-            _progression?.SimulateWorld(Step);
-            Physics.SyncTransforms();
             foreach (var actor in _worldActors)
             {
-                actor.Simulate(Step);
+                if (actor is ArenaMechanism)
+                {
+                    actor.Simulate(Step);
+                }
+            }
+
+            Physics.SyncTransforms();
+            _progression?.SimulateWorld(Step);
+            foreach (var actor in _worldActors)
+            {
+                if (actor is not ArenaMechanism)
+                {
+                    actor.Simulate(Step);
+                }
             }
         }
 
@@ -593,7 +604,7 @@ namespace Overtime
                 }
 
                 var generation = _playerProjectiles.Generation;
-                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, _player.AimUp, _playerProjectiles, Mode, _pendingWeapon, fireHeld);
+                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire, _pendingReload, CanAffectWorld, _player.AimRay, _player.AimUp, _playerProjectiles, Mode, _pendingWeapon, fireHeld, _player.CameraRig);
                 _worldChangedBetweenSteps |= generation != _playerProjectiles.Generation;
                 return;
             }
@@ -618,7 +629,8 @@ namespace Overtime
             _worldChangedBetweenSteps |= damage.Amount > 0;
             if (damage.Killed)
             {
-                _energy?.Reward(target.RewardId);
+                var reward = _sector?.Generated == true && target is SecurityEnemy enemy ? _sector.KillEnergy(enemy.Kind) : (float?)null;
+                _energy?.Reward(target.RewardId, reward);
             }
 
             return damage;
@@ -638,7 +650,14 @@ namespace Overtime
 
         internal bool DamagePlayer(int amount, Vector3? source = null)
         {
-            if (!CanDamagePlayer || !_player.Combat.TakeDamage(amount))
+            if (!CanDamagePlayer)
+            {
+                return false;
+            }
+
+            var health = _player.Combat.Health;
+            var previous = health.Current;
+            if (!_player.Combat.TakeDamage(amount))
             {
                 return false;
             }
@@ -646,7 +665,7 @@ namespace Overtime
             _playerChangedBetweenSteps = true;
             if (source.HasValue)
             {
-                DirectionalDamage?.Invoke(source.Value);
+                DirectionalDamage?.Invoke(source.Value, previous - health.Current);
             }
 
             return true;

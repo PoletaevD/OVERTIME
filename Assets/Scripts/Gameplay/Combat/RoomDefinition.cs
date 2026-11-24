@@ -40,10 +40,18 @@ namespace Overtime
         [SerializeField] private string _title;
         [SerializeField] private int _difficulty;
         [SerializeField] private int[] _markers;
+        [SerializeField] private int _initialActive;
+        [SerializeField] private int _reinforcementThreshold;
+        [SerializeField] private int _reinforcementBatch = 3;
+        [SerializeField] private int _hazardMask = -1;
 
         internal string Title => _title;
         internal int Difficulty => _difficulty;
         internal int[] Markers => _markers;
+        internal int InitialActive => _initialActive > 0 ? _initialActive : _markers.Length;
+        internal int ReinforcementThreshold => _reinforcementThreshold;
+        internal int ReinforcementBatch => _reinforcementBatch;
+        internal int HazardMask => _hazardMask;
     }
 
     internal sealed class RoomDefinition : ScriptableObject
@@ -101,7 +109,8 @@ namespace Overtime
                 };
             }
 
-            return threat;
+            var encounter = _variants[variant];
+            return threat + encounter.InitialActive * 0.35f + (encounter.Markers.Length - encounter.InitialActive) * 0.12f + _prefab.HazardCount(encounter.HazardMask) * 1.3f;
         }
     }
 }

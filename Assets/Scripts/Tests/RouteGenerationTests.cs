@@ -15,21 +15,24 @@ namespace Overtime.Tests
         {
             const string folder = "Assets/Prefabs/Security Route/Rooms";
             _library = AssetDatabase.FindAssets("t:RoomDefinition", new[] { folder }).Select(guid => AssetDatabase.LoadAssetAtPath<RoomDefinition>(AssetDatabase.GUIDToAssetPath(guid))).OrderBy(room => room.Id).ToArray();
-            Assert.That(_library, Has.Length.EqualTo(8));
+            Assert.That(_library, Has.Length.EqualTo(16));
         }
 
         [Test]
         public void AuthoredRoomsHaveSocketsAndTypedEncounters()
         {
             Assert.That(EditorBuildSettings.scenes.Any(scene => scene.enabled && scene.path == "Assets/Scenes/Security Route.unity"), Is.True);
-            Assert.That(_library.Select(room => room.Id).Distinct().Count(), Is.EqualTo(8));
+            Assert.That(_library.Select(room => room.Id).Distinct().Count(), Is.EqualTo(16));
             foreach (var room in _library)
             {
                 var prefab = room.Prefab;
                 Assert.That(room.Title, Is.Not.Empty);
                 Assert.That(room.Description, Is.Not.Empty);
                 Assert.That(room.Geometry, Is.Not.EqualTo(RoomGeometry.None));
-                Assert.That(room.Thumbnail, Is.Not.Null, room.Title);
+                if (room.Thumbnail != null)
+                {
+                    Assert.That(room.Thumbnail.width, Is.GreaterThan(0), room.Title);
+                }
                 Assert.That(prefab, Is.Not.Null, room.Title);
                 Assert.That(prefab.Entry, Is.Not.Null, room.Title);
                 Assert.That(prefab.Exit, Is.Not.Null, room.Title);
@@ -43,7 +46,16 @@ namespace Overtime.Tests
 
                 foreach (var variant in room.Variants)
                 {
-                    Assert.That(variant.Markers.Length, Is.InRange(3, 6), $"{room.Title}: {variant.Title}");
+                    var range = room.Category switch
+                    {
+                        RoomCategory.Entry => Is.InRange(8, 10),
+                        RoomCategory.Containment => Is.InRange(20, 24),
+                        _ => Is.InRange(12, 20)
+                    };
+                    Assert.That(variant.Markers.Length, range, $"{room.Title}: {variant.Title}");
+                    Assert.That(variant.InitialActive, Is.InRange(7, Mathf.Min(16, variant.Markers.Length)));
+                    Assert.That(variant.ReinforcementThreshold, Is.LessThan(variant.InitialActive));
+                    Assert.That(variant.ReinforcementBatch, Is.InRange(2, 4));
                     Assert.That(variant.Markers.Distinct().Count(), Is.EqualTo(variant.Markers.Length));
                     foreach (var index in variant.Markers)
                     {
@@ -100,10 +112,10 @@ namespace Overtime.Tests
             Assert.That(first.At(1).Count, Is.EqualTo(2));
             Assert.That(first.At(3).Count, Is.EqualTo(2));
             Assert.That(first.At(1)[0].Reward, Is.Not.EqualTo(first.At(1)[1].Reward));
-            Assert.That(first.At(1)[0].Room.Threat(first.At(1)[0].Variant), Is.LessThan(first.At(1)[1].Room.Threat(first.At(1)[1].Variant)));
-            Assert.That(first.At(3)[0].Reward, Is.Not.EqualTo(RoomReward.PriorityProtocol));
-            Assert.That(first.At(3)[1].Reward, Is.EqualTo(RoomReward.PriorityProtocol));
-            Assert.That(first.At(3)[0].Room.Threat(first.At(3)[0].Variant), Is.LessThan(first.At(3)[1].Room.Threat(first.At(3)[1].Variant)));
+            Assert.That(first.At(1)[0].Room.Threat(first.At(1)[0].Variant), Is.Not.EqualTo(first.At(1)[1].Room.Threat(first.At(1)[1].Variant)));
+            var risky = first.At(3).Single(node => node.Reward == RoomReward.PriorityProtocol);
+            var safe = first.At(3).Single(node => node.Reward != RoomReward.PriorityProtocol);
+            Assert.That(safe.Room.Threat(safe.Variant), Is.LessThan(risky.Room.Threat(risky.Variant)));
 
             var ids = new HashSet<string>();
             for (var index = 0; index < RoutePlan.RoomCount; index++)
@@ -114,7 +126,9 @@ namespace Overtime.Tests
                     Assert.That(node.Room.AllowsDepth(node.Depth), Is.True);
                     Assert.That(ids.Add(node.Room.Id), Is.True);
                     var tier = node.Room.Variants[node.Variant].Difficulty;
-                    Assert.That(tier, Is.InRange(index == 3 ? 3 : index + 1, Mathf.Min(index + 2, 5)));
+                    var min = index switch { 0 => 1, 4 => 5, _ => 2 };
+                    var max = index switch { 0 => 1, 1 => 3, 2 => 4, _ => 5 };
+                    Assert.That(tier, Is.InRange(min, max));
                 }
             }
 
@@ -126,11 +140,13 @@ namespace Overtime.Tests
         {
             var layouts = new HashSet<string>();
             var rooms = new HashSet<string>();
+            var priorityPositions = new HashSet<int>();
             for (var seed = -32; seed <= 128; seed++)
             {
                 var plan = new RouteGenerator(seed, _library).Generate();
                 Assert.That(plan.At(1).Count, Is.EqualTo(2));
                 Assert.That(plan.At(3).Count, Is.EqualTo(2));
+                priorityPositions.Add(plan.At(3)[0].Reward == RoomReward.PriorityProtocol ? 0 : 1);
                 layouts.Add(string.Join("/", Enumerable.Range(0, RoutePlan.RoomCount).SelectMany(index => plan.At(index)).Select(node => node.Room.Id)));
                 foreach (var node in Enumerable.Range(0, RoutePlan.RoomCount).SelectMany(index => plan.At(index)))
                 {
@@ -139,7 +155,8 @@ namespace Overtime.Tests
             }
 
             Assert.That(layouts.Count, Is.GreaterThan(20));
-            Assert.That(rooms, Has.Count.EqualTo(8));
+            Assert.That(rooms, Has.Count.EqualTo(16));
+            Assert.That(priorityPositions, Has.Count.EqualTo(2));
         }
 
         [Test]

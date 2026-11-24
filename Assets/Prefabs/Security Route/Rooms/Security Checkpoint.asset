@@ -25,8 +25,16 @@ MonoBehaviour:
   _variants:
   - _title: Credential Patrol
     _difficulty: 1
-    _markers: 000000000100000002000000
+    _markers: 0000000001000000020000000300000004000000050000000600000007000000
+    _initialActive: 8
+    _reinforcementThreshold: 5
+    _reinforcementBatch: 2
+    _hazardMask: -1
   - _title: Secondary Screening
     _difficulty: 1
-    _markers: 030000000400000002000000
+    _markers: 08000000090000000a0000000b0000000c0000000d0000000e0000000f0000001000000011000000
+    _initialActive: 7
+    _reinforcementThreshold: 4
+    _reinforcementBatch: 3
+    _hazardMask: -1
   _rewards: 0200000001000000

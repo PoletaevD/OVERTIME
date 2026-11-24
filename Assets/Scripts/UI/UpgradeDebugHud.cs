@@ -19,6 +19,8 @@ namespace Overtime
         private bool _showActors;
         private bool _showMarkers;
         private Vector2 _scroll;
+        private Vector2 _weaponScroll;
+        private bool _tuneRecoil;
 
         internal void Initialize(SectorRoute route, TemporalDirector director, PlaygroundPlayer player)
         {
@@ -125,9 +127,11 @@ namespace Overtime
             var gun = _player.Combat.Weapon;
             var energy = _director.Energy;
             var buffs = progression.PlayerEffects.State;
-            var rect = new Rect(14f, _route.Generated ? 320f : Screen.height * 0.32f, 540f, 220f);
+            var y = _route.Generated ? 320f : Screen.height * 0.32f;
+            var rect = new Rect(14f, y, Mathf.Min(540f, Screen.width - 28f), Mathf.Min(470f, Screen.height - y - 10f));
             GUI.Box(rect, "WEAPONS & RUN PROTOCOLS   /   QA");
             GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 25f, rect.width - 24f, rect.height - 26f));
+            _weaponScroll = GUILayout.BeginScrollView(_weaponScroll);
             GUILayout.Label($"{definition.Title}   {progression.Build.Level(definition.Id)}/{definition.MaxLevel}    SEED {progression.Seed}");
             GUILayout.Label($"DMG {gun.EffectiveDamage}   RPM {gun.RoundsPerMinute(_director.Mode):0}   MAG {gun.MagazineCapacity}   RELOAD {gun.ReloadSeconds:0.00}s   BOLT {gun.ProjectileSpeed(_director.Mode):0.0}m/s");
             GUILayout.Label($"CHRONO {energy.Current:0.0}/{energy.Maximum:0}   Q {energy.Cost(TemporalMode.Reset):0.##}   E {energy.Cost(TemporalMode.Override):0.##}   C {energy.Cost(TemporalMode.Recall):0.##}   SHIFT {energy.Cost(TemporalMode.BulletTime):0.##}");
@@ -148,7 +152,69 @@ namespace Overtime
             GUILayout.Label($"POOL {pool.ActiveCount}/{pool.PoolCapacity}   MAX PENETRATIONS {penetrations}   MAX RICOCHETS {ricochets}");
             GUILayout.Label("F9 / F10 / F11  Equip   HOME  Slot   END  Restock");
             GUILayout.Label("PGUP/DOWN  Browse   ENTER  Grant   O  Offer   F5  Restart");
+            DrawRecoil(gun);
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
+        }
+
+        private void DrawRecoil(CombatWeapon gun)
+        {
+            var camera = _player.CameraRig;
+            GUILayout.Label($"YAW {camera.Yaw:0.00}   PITCH {camera.Pitch:0.00}   IMPULSE {camera.PendingRecoil}   PATTERN {gun.State(gun.ActiveSlot).RecoilIndex}");
+            GUILayout.BeginHorizontal();
+            if (_route.SecondaryOptions is { Length: > 2 } && GUILayout.Button("Equip ARC-00"))
+            {
+                foreach (var option in _route.SecondaryOptions)
+                {
+                    if (option.Id == WeaponId.Directive)
+                    {
+                        gun.DebugEquip(option);
+                        _director.SealHistory();
+                        break;
+                    }
+                }
+            }
+
+            var ray = camera.AimRay;
+            var right = Vector3.Cross(camera.AimUp, ray.direction).normalized;
+            DamageButton("Front", ray.origin + ray.direction * 7f);
+            DamageButton("Right", ray.origin + right * 7f);
+            DamageButton("Rear", ray.origin - ray.direction * 7f);
+            DamageButton("Left", ray.origin - right * 7f);
+            GUILayout.EndHorizontal();
+
+            _tuneRecoil = GUILayout.Toggle(_tuneRecoil, "Tune recoil in Play Mode");
+            if (!_tuneRecoil || gun.ActiveDefinition is not { } definition)
+            {
+                return;
+            }
+
+            var gameplay = definition.GameplayRecoil;
+            gameplay.DebugVertical = Slider("Camera vertical (degrees)", gameplay.DebugVertical, 0f, 8f);
+            gameplay.DebugHorizontal = Slider("Camera horizontal (degrees)", gameplay.DebugHorizontal, 0f, 2f);
+            gameplay.DebugDuration = Slider("Impulse duration (s)", gameplay.DebugDuration, 0.008f, 0.14f);
+            var visual = definition.VisualRecoil;
+            visual.DebugKick = Slider("Viewmodel kick (m/s)", visual.DebugKick, 0f, 12f);
+            visual.DebugPitch = Slider("Viewmodel pitch (degrees/s)", visual.DebugPitch, 0f, 850f);
+            visual.DebugStiffness = Slider("Position stiffness", visual.DebugStiffness, 75f, 1400f);
+            visual.DebugDamping = Slider("Position damping", visual.DebugDamping, 7f, 70f);
+        }
+
+        private void DamageButton(string label, Vector3 source)
+        {
+            if (GUILayout.Button(label))
+            {
+                _director.DamagePlayer(1, source);
+            }
+        }
+
+        private float Slider(string label, float value, float minimum, float maximum)
+        {
+            GUILayout.BeginHorizontal();
+            GUILayout.Label($"{label}  {value:0.###}", GUILayout.Width(238f));
+            var result = GUILayout.HorizontalSlider(value, minimum, maximum);
+            GUILayout.EndHorizontal();
+            return result;
         }
 
         private void DrawRoute()
@@ -197,7 +263,9 @@ namespace Overtime
 
             GUILayout.EndHorizontal();
             var variant = room.Variants[_variant];
-            GUILayout.Label($"{room.Title}   /   {variant.Title} ({variant.Difficulty})");
+            GUILayout.Label($"{room.Title}   /   {variant.Title} ({variant.Difficulty})   PLAN {variant.Markers.Length} / START {variant.InitialActive}");
+            var encounter = _route.Current;
+            GUILayout.Label($"CURRENT   ACTIVE {encounter.ActiveEnemies}  /  PENDING {encounter.PendingReinforcements}  /  TOTAL ALIVE {encounter.LivingEnemies}");
 
             GUILayout.BeginHorizontal();
             var enabled = GUI.enabled;
@@ -229,7 +297,8 @@ namespace Overtime
             var paid = _route.RewardClaimed(node.Id) ? "PAID" : "PENDING";
             GUILayout.Label($"{paid}   {RouteCard.RewardText(node.Reward)}");
             GUILayout.Label($"History  P {_director.PlayerTimeline.Count} / W {_director.WorldTimeline.Count} / Max {_director.WorldTimeline.Capacity}");
-            GUILayout.Label($"Actors {_director.WorldActorCount}   Colliders {_director.DynamicColliderCount}   Bolts {_director.PlayerProjectiles.ActiveCount + _route.EnemyProjectiles.ActiveCount}");
+            var enemyPool = _route.EnemyProjectiles;
+            GUILayout.Label($"Actors {_director.WorldActorCount}   Colliders {_director.DynamicColliderCount}   Hostile bolts {enemyPool.ActiveCount}/{enemyPool.PoolCapacity}");
 
             _showActors = GUILayout.Toggle(_showActors, "World actors and Reward IDs");
             if (_showActors)
@@ -241,6 +310,14 @@ namespace Overtime
                     {
                         var id = ((ICombatDamageable)enemy).RewardId;
                         GUILayout.Label($"{enemy.Kind}   {id}{(ids.Add(id) ? string.Empty : "  DUPLICATE")}");
+                    }
+                    else if (actor is ArenaHazard hazard)
+                    {
+                        GUILayout.Label($"{hazard.Kind}   {hazard.Phase}   COOLDOWN {hazard.DamageCooldown:0.00}");
+                    }
+                    else if (actor is ArenaMechanism mechanism)
+                    {
+                        GUILayout.Label($"{mechanism.name}   PHASE {mechanism.Phase:0.00}");
                     }
                     else
                     {

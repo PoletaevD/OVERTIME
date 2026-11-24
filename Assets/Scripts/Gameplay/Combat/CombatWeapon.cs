@@ -15,6 +15,7 @@ namespace Overtime
         [SerializeField, Min(0.05f)] private float _switchSeconds = 0.3f;
 
         private readonly WeaponTuning _fallback = new();
+        private readonly CameraRecoil _fallbackRecoil = new();
         private Snapshot _state;
         private WeaponDefinition _secondary;
         private RunUpgradeState _upgrades;
@@ -103,12 +104,22 @@ namespace Overtime
             _state.Secondary.ChargeElapsed = 0d;
         }
 
+        internal int CacheRounds(int slot)
+        {
+            return slot == 0 ? 45 : _secondary?.Id switch
+            {
+                WeaponId.Deadline => 6,
+                WeaponId.Directive => 30,
+                _ => 12
+            };
+        }
+
         internal void GrantAmmoCache()
         {
-            _state.Primary.Reserve += 45;
+            _state.Primary.Reserve += CacheRounds(0);
             if (HasSecondary)
             {
-                _state.Secondary.Reserve += _secondary.Id == WeaponId.Deadline ? 6 : 12;
+                _state.Secondary.Reserve += CacheRounds(1);
             }
         }
 
@@ -130,7 +141,7 @@ namespace Overtime
             LastShotBoosted = false;
         }
 
-        internal void Simulate(double step, bool fire, bool reload, bool canShoot, Ray aim, Vector3 aimUp, TemporalProjectileEmitter projectiles, TemporalMode mode = TemporalMode.Normal, WeaponSlotInput selection = WeaponSlotInput.None, bool fireHeld = false)
+        internal void Simulate(double step, bool fire, bool reload, bool canShoot, Ray aim, Vector3 aimUp, TemporalProjectileEmitter projectiles, TemporalMode mode = TemporalMode.Normal, WeaponSlotInput selection = WeaponSlotInput.None, bool fireHeld = false, GravityCamera camera = null)
         {
             if (mode == TemporalMode.Override)
             {
@@ -143,6 +154,12 @@ namespace Overtime
             weapon.Cooldown = Math.Max(0d, cooldown - step);
             ref var stowed = ref StateAt(1 - oldSlot);
             stowed.Cooldown = Math.Max(0d, stowed.Cooldown - step);
+
+            weapon.RecoilIdle = Mathf.Max(0f, weapon.RecoilIdle - (float)step);
+            if (weapon.RecoilIdle <= 0f)
+            {
+                weapon.RecoilIndex = 0;
+            }
 
             if (AdvanceSwitch(step, selection))
             {
@@ -158,7 +175,7 @@ namespace Overtime
                     weapon.ReloadRemaining = 0d;
                 }
             }
-            else if (reload && weapon.Magazine < Capacity(oldSlot) && weapon.Reserve > 0)
+            else if (canShoot && (reload || weapon.Magazine == 0) && weapon.Magazine < Capacity(oldSlot) && weapon.Reserve > 0)
             {
                 weapon.ChargeElapsed = 0d;
                 weapon.ReloadDuration = ReloadFor(oldSlot);
@@ -166,7 +183,12 @@ namespace Overtime
             }
 
             var tuning = Tuning(oldSlot);
-            var trigger = tuning.Charge > 0f ? fireHeld : fire;
+            var trigger = ActiveType switch
+            {
+                WeaponType.Charged => fireHeld,
+                WeaponType.SemiAutomatic => fire,
+                _ => fire || fireHeld
+            };
             if (!canShoot || !trigger || IsReloading || weapon.Magazine <= 0)
             {
                 weapon.ChargeElapsed = 0d;
@@ -191,6 +213,10 @@ namespace Overtime
             weapon.Magazine--;
             LastShotBoosted = HasQueuedBoost;
             _effects?.ConfirmShot();
+            var recoil = ActiveDefinition?.GameplayRecoil ?? _fallbackRecoil;
+            camera?.AddRecoil(recoil.Impulse(weapon.RecoilIndex), recoil.Duration);
+            weapon.RecoilIndex++;
+            weapon.RecoilIdle = Mathf.Max(0.38f, (float)tuning.Interval + tuning.Charge + 0.15f);
             ShotFired?.Invoke();
         }
 

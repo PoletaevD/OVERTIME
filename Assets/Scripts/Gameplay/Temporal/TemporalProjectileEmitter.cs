@@ -656,6 +656,7 @@ namespace Overtime
 
             return projectile.Ballistics.Weapon switch
             {
+                WeaponId.Directive => new Color(0.38f, 2.55f, 1.78f),
                 WeaponId.Termination => new Color(2.2f, 0.7f, 0.25f),
                 WeaponId.Deadline => new Color(0.65f, 1.6f, 3f),
                 _ => new Color(0.08f, 1.45f, 1.8f)

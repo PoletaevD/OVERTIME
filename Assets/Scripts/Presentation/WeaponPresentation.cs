@@ -24,10 +24,9 @@ namespace Overtime
         [SerializeField, Min(0f)] private float _landingOffset = 0.055f;
         [SerializeField, Min(0f)] private float _gravityLean = 5f;
 
-        [Header("Fire")]
-        [SerializeField, Min(0f)] private float _recoilDistance = 0.075f;
-        [SerializeField, Min(0f)] private float _recoilAngle = 8f;
-        [SerializeField, Min(0.01f)] private float _recoveryTime = 0.16f;
+        private const float SpringStep = 1f / 240f;
+
+        private readonly ViewmodelRecoil _fallbackRecoil = new();
 
         private static readonly int s_emission = Shader.PropertyToID("_EmissionColor");
 
@@ -45,9 +44,11 @@ namespace Overtime
         private float _airOffset;
         private float _motionImpulse;
         private float _gravityImpulse;
-        private float _recoil;
-        private float _recoilRoll;
-        private float _kick;
+        private Vector3 _recoilPosition;
+        private Vector3 _recoilVelocity;
+        private Vector3 _recoilAngles;
+        private Vector3 _recoilAngularVelocity;
+        private float _springCredit;
         private float _flashTime;
         private uint _confirmedShots;
         private PlaygroundPlayer _player;
@@ -57,7 +58,6 @@ namespace Overtime
         private Vector2 _sway;
         private Tween _motionTween;
         private Tween _gravityTween;
-        private Tween _recoilTween;
         private Tween _resetTween;
 
         internal uint ConfirmedShots => _confirmedShots;
@@ -85,7 +85,6 @@ namespace Overtime
                 _player.LegacyShotFired += Fire;
             }
 
-            _recoilTween = DOVirtual.Float(1f, 0f, _recoveryTime, value => _recoil = value * _kick).SetAutoKill(false).SetUpdate(true).SetEase(Ease.OutCubic).Pause();
             _motor.Jumped += OnJumped;
             _motor.Landed += OnLanded;
             _motor.GravityChanged += OnGravityChanged;
@@ -108,13 +107,12 @@ namespace Overtime
             SetChargeGlow(0f, false);
             _motionTween?.Kill();
             _gravityTween?.Kill();
-            _recoilTween?.Kill();
             _resetTween?.Kill();
             _resetKick = 0f;
             _wasRewinding = false;
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
-            _recoil = 0f;
+            ClearRecoil();
             _flashTime = 0f;
             _activeFlash.gameObject.SetActive(false);
         }
@@ -130,7 +128,7 @@ namespace Overtime
             SyncViewmodel();
             var charge = _weapon?.ChargeProgress ?? 0f;
             var energized = _weapon?.LastShotBoosted == true && _flashTime > 0f;
-            SetChargeGlow(Mathf.Max(charge, _displayedWeapon == WeaponId.Deadline ? Mathf.Clamp01(_recoil) * 0.65f : 0f), _weapon?.HasQueuedBoost == true || energized);
+            SetChargeGlow(Mathf.Max(charge, _displayedWeapon == WeaponId.Deadline ? Mathf.Clamp01(-_recoilPosition.z * 8f) * 0.65f : 0f), _weapon?.HasQueuedBoost == true || energized);
             var deltaTime = Time.unscaledDeltaTime;
             if (_flashTime > 0f)
             {
@@ -168,10 +166,21 @@ namespace Overtime
                 module.localPosition = rest + new Vector3(0.014f, -0.14f, -0.043f) * ActionDip(reload, 0.48f, 0.55f) * motion;
             }
 
-            var style = _weapon?.ActiveDefinition?.Recoil ?? new Vector3(_recoilDistance, _recoilAngle, _recoveryTime);
+            var style = _weapon?.ActiveDefinition?.VisualRecoil ?? _fallbackRecoil;
+            _springCredit += Mathf.Min(deltaTime, 0.1f);
+            while (_springCredit >= SpringStep)
+            {
+                style.Advance(SpringStep, ref _recoilPosition, ref _recoilVelocity, ref _recoilAngles, ref _recoilAngularVelocity);
+                _springCredit -= SpringStep;
+            }
+
+            if (_viewmodel?.Slide != null)
+            {
+                _viewmodel.Slide.localPosition = Vector3.back * Mathf.Clamp(-_recoilPosition.z * 0.54f, 0f, 0.046f);
+            }
             var vibration = new Vector3(Mathf.Sin(Time.unscaledTime * 119f), Mathf.Cos(Time.unscaledTime * 103f), 0f) * (charge * motion * 0.0022f);
-            _recoilPivot.localPosition = Vector3.back * (_recoil * style.x * motion + temporal * 0.035f) + Vector3.down * (action * 0.27f) + vibration;
-            _recoilPivot.localRotation = Quaternion.Euler(-_recoil * style.y * motion + temporal * 4f + action * 28f, -action * 9f, _recoil * _recoilRoll * motion + action * 7f);
+            _recoilPivot.localPosition = _recoilPosition * motion + Vector3.back * (temporal * 0.035f) + Vector3.down * (action * 0.27f) + vibration;
+            _recoilPivot.localRotation = Quaternion.Euler(_recoilAngles * motion + new Vector3(temporal * 4f + action * 28f, -action * 9f, action * 7f));
         }
 
         private float ActionDip(float progress, float downEnd, float upStart)
@@ -190,16 +199,19 @@ namespace Overtime
 
             SetChargeGlow(0f, false);
             _activeFlash.gameObject.SetActive(false);
-            _recoilTween.Pause();
-            _recoil = 0f;
+            ClearRecoil();
             _flashTime = 0f;
             _displayedWeapon = id;
-            _viewmodel = id == WeaponId.Compliance || _alternatives == null ? null : _alternatives[(int)id - 1];
+            var index = (int)id - 1;
+            _viewmodel = _alternatives != null && index >= 0 && index < _alternatives.Length ? _alternatives[index] : null;
             if (_alternatives != null)
             {
                 foreach (var alternative in _alternatives)
                 {
-                    alternative.gameObject.SetActive(alternative == _viewmodel);
+                    if (alternative != null)
+                    {
+                        alternative.gameObject.SetActive(alternative == _viewmodel);
+                    }
                 }
             }
 
@@ -250,11 +262,10 @@ namespace Overtime
 
             _motionTween?.Kill();
             _gravityTween?.Kill();
-            _recoilTween?.Pause();
             _flashTime = 0f;
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
-            _recoil = 0f;
+            ClearRecoil();
             _activeFlash.gameObject.SetActive(false);
             if (!_cameraRig.ReducedMotion)
             {
@@ -274,16 +285,24 @@ namespace Overtime
             }
 
             _confirmedShots++;
-            var variation = (_confirmedShots % 5) * 0.04f;
-            _recoilRoll = (_confirmedShots % 3 - 1f) * 1.4f;
-            _kick = Mathf.Min(1.35f, _recoil + 0.84f + variation);
-            _recoil = _kick;
-            var recovery = _weapon?.ActiveDefinition?.Recoil.z ?? _recoveryTime;
-            _recoilTween.timeScale = _recoveryTime / Mathf.Max(0.01f, recovery);
-            _recoilTween.Restart();
+            var style = _weapon?.ActiveDefinition?.VisualRecoil ?? _fallbackRecoil;
+            var variation = (_confirmedShots % 5 - 2f) * style.ShotVariation * 0.5f;
+            var side = _confirmedShots % 3 - 1f;
+            _recoilVelocity += Vector3.Scale(style.PositionImpulse, new Vector3(side, 1f + variation, 1f + variation));
+            _recoilAngularVelocity += Vector3.Scale(style.RotationImpulse, new Vector3(1f + variation, side, -side));
             _flashTime = _cameraRig.ReducedMotion ? 0.02f : _displayedWeapon == WeaponId.Termination ? 0.055f : 0.032f;
             _activeFlash.localScale = _flashRest * (_cameraRig.ReducedMotion ? 0.55f : 0.85f + variation);
             _activeFlash.gameObject.SetActive(true);
+        }
+
+        private void ClearRecoil()
+        {
+            _recoilPosition = _recoilVelocity = _recoilAngles = _recoilAngularVelocity = Vector3.zero;
+            _springCredit = 0f;
+            if (_viewmodel?.Slide != null)
+            {
+                _viewmodel.Slide.localPosition = Vector3.zero;
+            }
         }
 
         private void OnJumped()

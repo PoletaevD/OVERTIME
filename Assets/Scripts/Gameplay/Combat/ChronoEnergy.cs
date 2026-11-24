@@ -42,11 +42,11 @@ namespace Overtime
             _current = Maximum;
         }
 
-        internal void Reward(int id)
+        internal void Reward(int id, float? amount = null)
         {
             if (id > 0 && _paidTargets.Add(id))
             {
-                AddEnergy(_targetReward + (_upgrades?.Bonus(UpgradeId.PerformanceBonus) ?? 0f));
+                AddEnergy((amount ?? _targetReward) + (_upgrades?.Bonus(UpgradeId.PerformanceBonus) ?? 0f));
             }
         }
 

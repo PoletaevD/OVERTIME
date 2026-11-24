@@ -37,7 +37,28 @@ MonoBehaviour:
     _targets: 1
     _penetrationRetention: 0.85
     _muzzle: {x: 0.31, y: -0.24, z: 1}
-  _recoil: {x: 0.133, y: 13, z: 0.31}
+  _cameraRecoil:
+    _vertical: 4.2
+    _horizontal: 0.65
+    _verticalVariation: 0.09
+    _duration: 0.052
+    _sustainedPerShot: 0
+    _maximumMultiplier: 1.35
+    _pattern:
+    - {x: 0.85, y: -0.2}
+    - {x: 0.34, y: 0.6}
+    - {x: -0.93, y: 0.2}
+    - {x: -0.43, y: -0.7}
+  _viewmodelRecoil:
+    _positionStiffness: 520
+    _positionDamping: 30
+    _rotationStiffness: 452.4
+    _rotationDamping: 25.5
+    _positionImpulse: {x: 0.5, y: 1.7, z: -6.1}
+    _rotationImpulse: {x: -490, y: 82, z: 130}
+    _maxPosition: 0.18
+    _maxRotation: 22
+    _shotVariation: 0.14
   _shot: {fileID: 8300000, guid: 9fe3c5a2916c6634d856e3ef40eaae5c, type: 3}
   _reload: {fileID: 8300000, guid: 954248a4e9f11914aad3db450094550e, type: 3}
   _charge: {fileID: 0}

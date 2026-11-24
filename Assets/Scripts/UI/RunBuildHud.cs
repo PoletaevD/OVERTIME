@@ -131,7 +131,7 @@ namespace Overtime
                 var tuning = gun.Tuning(slot);
                 if (tuning.Pellets > 1)
                 {
-                    _stats.Append(tuning.Pellets).Append(" × ");
+                    _stats.Append(tuning.Pellets).Append(" Г— ");
                 }
 
                 _stats.AppendFormat("{0:0.#}", gun.DamageFor(slot));
@@ -139,6 +139,10 @@ namespace Overtime
                 if (tuning.Charge > 0f)
                 {
                     _stats.AppendFormat("    {0:0.00}s CHARGE", gun.ChargeSeconds(slot, _mode));
+                }
+                else if (gun.Definition(slot)?.Type == WeaponType.SemiAutomatic)
+                {
+                    _stats.Append("    SEMI-AUTO");
                 }
 
                 _stats.AppendLine();
