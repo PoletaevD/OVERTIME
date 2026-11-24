@@ -1,4 +1,5 @@
 using TMPro;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -80,6 +81,56 @@ namespace Overtime.Editor
             return card;
         }
 
+        internal void ExtendRunInspection(PlaygroundHud movement)
+        {
+            var hud = movement.GetComponent<RunBuildHud>();
+            var data = new SerializedObject(hud);
+            var icons = data.FindProperty("_icons");
+            var levels = data.FindProperty("_levels");
+            var previous = icons.arraySize;
+            if (previous >= (int)UpgradeId.Count)
+            {
+                return;
+            }
+
+            var strip = movement.transform.Find("Acquired Run Protocols");
+            icons.arraySize = levels.arraySize = (int)UpgradeId.Count;
+            for (var index = previous; index < icons.arraySize; index++)
+            {
+                var position = new Vector2(index % 9 * 42f, index / 9 * 35f);
+                var icon = Panel($"Run Protocol {index + 1}", strip, Vector2.zero, position, new Vector2(28f, 28f), s_paper);
+                var level = Label("Level", icon.transform, new Vector2(27f, 0f), new Vector2(12f, 17f), string.Empty, 13f, s_paper);
+                icons.GetArrayElementAtIndex(index).objectReferenceValue = icon;
+                levels.GetArrayElementAtIndex(index).objectReferenceValue = level;
+            }
+
+            var timers = data.FindProperty("_timers");
+            for (var index = 0; index < timers.arraySize; index++)
+            {
+                var timer = (TMP_Text)timers.GetArrayElementAtIndex(index).objectReferenceValue;
+                timer.rectTransform.anchoredPosition += Vector2.up * 32f;
+            }
+
+            timers.arraySize = 7;
+            timers.GetArrayElementAtIndex(6).objectReferenceValue = Label("Exchange Timer", strip, new Vector2(0f, 147f), new Vector2(108f, 19f), string.Empty, 14f, s_cyan);
+            var weapon = (TMP_Text)data.FindProperty("_weaponStats").objectReferenceValue;
+            weapon.name = "Effective Weapon Stats";
+            weapon.fontSize = 18f;
+            weapon.rectTransform.anchoredPosition = new Vector2(28f, 611f);
+            weapon.rectTransform.sizeDelta = new Vector2(1184f, 51f);
+            var chrono = (TMP_Text)data.FindProperty("_chronoStats").objectReferenceValue;
+            chrono.fontSize = 18f;
+            chrono.rectTransform.anchoredPosition = new Vector2(28f, 581f);
+            ((RectTransform)weapon.transform.parent.Find("Build Divider")).anchoredPosition = new Vector2(28f, 568f);
+            var columns = data.FindProperty("_columns");
+            for (var index = 0; index < columns.arraySize; index++)
+            {
+                ((TMP_Text)columns.GetArrayElementAtIndex(index).objectReferenceValue).fontSize = 15f;
+            }
+
+            data.ApplyModifiedPropertiesWithoutUndo();
+        }
+
         private void BuildRunInspection(Transform root, RunProgression progression, TemporalDirector director, PlaygroundPlayer player)
         {
             var strip = Rect("Acquired Run Protocols", root, Vector2.zero, new Vector2(44f, 348f), new Vector2(382f, 65f));
@@ -92,10 +143,10 @@ namespace Overtime.Editor
                 levels[index] = Label("Level", icons[index].transform, new Vector2(27f, 0f), new Vector2(12f, 17f), string.Empty, 13f, s_paper);
             }
 
-            var timers = new TMP_Text[6];
+            var timers = new TMP_Text[7];
             for (var index = 0; index < timers.Length; index++)
             {
-                timers[index] = Label($"Protocol Timer {index + 1}", strip, new Vector2(index % 3 * 110f, 75f + index / 3 * 20f), new Vector2(108f, 19f), string.Empty, 14f, s_cyan);
+                timers[index] = Label($"Protocol Timer {index + 1}", strip, new Vector2(index % 3 * 110f, 107f + index / 3 * 20f), new Vector2(108f, 19f), string.Empty, 14f, s_cyan);
             }
 
             var protection = Rect("Temporal Protection", root, Vector2.zero, Vector2.zero, Vector2.zero);
@@ -113,13 +164,13 @@ namespace Overtime.Editor
             var group = AddOverlayGroup(panel.gameObject);
             Panel("Build Accent", panel.transform, Vector2.zero, new Vector2(0f, 728f), new Vector2(1240f, 4f), s_cyan);
             Label("Current Build Title", panel.transform, new Vector2(28f, 661f), new Vector2(530f, 48f), "RUN PROTOCOLS", 38f, s_paper).fontStyle = FontStyles.Bold;
-            var weapon = Label("Effective ARC-01 Stats", panel.transform, new Vector2(28f, 625f), new Vector2(1184f, 31f), string.Empty, 20f, s_cyan);
-            var chrono = Label("Effective Chrono Stats", panel.transform, new Vector2(28f, 591f), new Vector2(1184f, 31f), string.Empty, 20f, s_muted);
-            Panel("Build Divider", panel.transform, Vector2.zero, new Vector2(28f, 579f), new Vector2(1184f, 2f), new Color(0.18f, 0.32f, 0.38f));
+            var weapon = Label("Effective Weapon Stats", panel.transform, new Vector2(28f, 611f), new Vector2(1184f, 51f), string.Empty, 18f, s_cyan);
+            var chrono = Label("Effective Chrono Stats", panel.transform, new Vector2(28f, 581f), new Vector2(1184f, 25f), string.Empty, 18f, s_muted);
+            Panel("Build Divider", panel.transform, Vector2.zero, new Vector2(28f, 568f), new Vector2(1184f, 2f), new Color(0.18f, 0.32f, 0.38f));
             var columns = new TMP_Text[2];
             for (var index = 0; index < columns.Length; index++)
             {
-                var column = Label($"Acquired Protocols Column {index + 1}", panel.transform, new Vector2(28f + index * 595f, 16f), new Vector2(585f, 545f), string.Empty, 16f, s_muted);
+                var column = Label($"Acquired Protocols Column {index + 1}", panel.transform, new Vector2(28f + index * 595f, 16f), new Vector2(585f, 545f), string.Empty, 15f, s_muted);
                 column.alignment = TextAlignmentOptions.TopLeft;
                 columns[index] = column;
             }

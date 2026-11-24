@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d91308995dcfa6d4d94c08448f4af948, type: 3}
+  m_Name: ARC-03 Deadline
+  m_EditorClassIdentifier: Overtime.Runtime::Overtime.WeaponDefinition
+  _id: 2
+  _type: 2
+  _displayName: ARC-03  /  Deadline
+  _description: Charge a precision bolt and line up targets in BULLET TIME.
+  _icon: {fileID: 21300000, guid: d58f5a2af805249408205e38b059540e, type: 3}
+  _viewmodel: {fileID: 8828574701406277040, guid: 56f22518440d4de40af1785734d9f256, type: 3}
+  _tuning:
+    _roundsPerMinute: 600
+    _postShotDelay: 0.55
+    _magazine: 4
+    _reserve: 16
+    _magazinePerLevel: 1
+    _roomReserve: 4
+    _damage: 90
+    _reload: 2.2
+    _speed: 100
+    _radius: 0.052
+    _lifetime: 1.1
+    _range: 100
+    _pellets: 1
+    _spread: 0
+    _charge: 0.7
+    _targets: 3
+    _penetrationRetention: 0.85
+    _muzzle: {x: 0.31, y: -0.24, z: 1.08}
+  _recoil: {x: 0.16, y: 10, z: 0.2}
+  _shot: {fileID: 8300000, guid: 829527025f450c845937af4594ff4af1, type: 3}
+  _reload: {fileID: 8300000, guid: 148574ae32c3937408d14f9220e91c01, type: 3}
+  _charge: {fileID: 8300000, guid: 8bd0164270bf1bc4da95dc406828ddc3, type: 3}

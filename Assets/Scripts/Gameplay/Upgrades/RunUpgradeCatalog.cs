@@ -23,7 +23,15 @@ namespace Overtime
         Hypervelocity = 15,
         ExtendedBattery = 16,
         PerformanceBonus = 17,
-        Count = 18
+        PenetrationProtocol = 18,
+        RicochetMatrix = 19,
+        TwinOutput = 20,
+        TerminalBallistics = 21,
+        CloseQuarters = 22,
+        VerticalAdvantage = 23,
+        TacticalExchange = 24,
+        LastWord = 25,
+        Count = 26
     }
 
     internal enum UpgradeCategory
@@ -57,6 +65,7 @@ namespace Overtime
         [SerializeField, Min(0f)] private float _magnitude;
         [SerializeField, Min(0f)] private float _seconds;
         [SerializeField, Min(0f)] private float _radius;
+        [SerializeField, Min(0f)] private float _limit;
         [SerializeField] private Sprite _icon;
 
         internal UpgradeId Id => _id;
@@ -69,6 +78,7 @@ namespace Overtime
         internal float Magnitude => Mathf.Max(0f, _magnitude);
         internal float Seconds => Mathf.Max(0f, _seconds);
         internal float Radius => Mathf.Max(0f, _radius);
+        internal float Limit => Mathf.Max(0f, _limit);
         internal Sprite Icon => _icon;
     }
 

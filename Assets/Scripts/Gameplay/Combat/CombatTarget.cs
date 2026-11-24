@@ -41,12 +41,12 @@ namespace Overtime
             _flash?.Kill();
         }
 
-        DamageResult ICombatDamageable.Hit(Collider collider, int amount, bool reducedMotion, out bool weakPoint)
+        DamageResult ICombatDamageable.Hit(Collider collider, float amount, bool reducedMotion, out bool weakPoint)
         {
             return Hit(collider, amount, reducedMotion, out weakPoint);
         }
 
-        internal DamageResult Hit(Collider collider, int amount, bool reducedMotion, out bool weakPoint)
+        internal DamageResult Hit(Collider collider, float amount, bool reducedMotion, out bool weakPoint)
         {
             weakPoint = _weakPoint != null && collider == _weakPoint;
             if (collider != _body && !weakPoint)
@@ -54,7 +54,7 @@ namespace Overtime
                 return default;
             }
 
-            var result = _health.ApplyDamage(weakPoint ? Mathf.RoundToInt(amount * _weakPointMultiplier) : amount);
+            var result = _health.ApplyDamage(Mathf.RoundToInt(amount * (weakPoint ? _weakPointMultiplier : 1f)));
             if (result.Amount > 0)
             {
                 ApplyAlive();

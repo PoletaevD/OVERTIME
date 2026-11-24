@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d91308995dcfa6d4d94c08448f4af948, type: 3}
+  m_Name: ARC-01 Compliance
+  m_EditorClassIdentifier: Overtime.Runtime::Overtime.WeaponDefinition
+  _id: 0
+  _type: 0
+  _displayName: ARC-01  /  Compliance
+  _description: Automatic carbine for mobile mid-range engagements.
+  _icon: {fileID: 21300000, guid: ac7be01a2f783f84d88cc0b3b5827505, type: 3}
+  _viewmodel: {fileID: 2906241137462258544, guid: d34704391e9cd21429599c07fc31e327, type: 3}
+  _tuning:
+    _roundsPerMinute: 600
+    _postShotDelay: 0
+    _magazine: 30
+    _reserve: 180
+    _magazinePerLevel: 10
+    _roomReserve: 30
+    _damage: 12
+    _reload: 1.5
+    _speed: 45
+    _radius: 0.045
+    _lifetime: 1.8
+    _range: 80
+    _pellets: 1
+    _spread: 0
+    _charge: 0
+    _targets: 1
+    _penetrationRetention: 0.85
+    _muzzle: {x: 0.31, y: -0.23, z: 0.99}
+  _recoil: {x: 0.075, y: 8, z: 0.16}
+  _shot: {fileID: 8300000, guid: de92464ac3b15ba42bcf0a2118f92b94, type: 3}
+  _reload: {fileID: 8300000, guid: b663f7c8628a821418751ae955c35d74, type: 3}
+  _charge: {fileID: 0}

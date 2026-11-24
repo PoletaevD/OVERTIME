@@ -12,6 +12,7 @@ namespace Overtime
         [SerializeField] private Transform _recoilPivot;
         [SerializeField] private Transform _muzzleFlash;
         [SerializeField] private Renderer[] _chargeStrips;
+        [SerializeField] private WeaponViewmodel[] _alternatives;
 
         [Header("Motion")]
         [SerializeField, Min(0f)] private float _idleSway = 0.005f;
@@ -31,7 +32,15 @@ namespace Overtime
         private static readonly int s_emission = Shader.PropertyToID("_EmissionColor");
 
         private MaterialPropertyBlock _chargeProperties;
-        private bool _isCharged;
+        private float _glow = -1f;
+        private bool _glowBoosted;
+        private GameObject _primaryReceiver;
+        private Transform _primaryModule;
+        private Vector3 _primaryModuleRest;
+        private Vector3 _flashRest;
+        private WeaponViewmodel _viewmodel;
+        private Transform _activeFlash;
+        private WeaponId _displayedWeapon;
         private float _idlePhase;
         private float _airOffset;
         private float _motionImpulse;
@@ -57,10 +66,16 @@ namespace Overtime
         {
             _player = GetComponentInParent<PlaygroundPlayer>();
             _weapon = _player.Combat?.Weapon;
-            if (_chargeStrips is { Length: > 0 })
+            _chargeProperties ??= new MaterialPropertyBlock();
+            _primaryReceiver = _recoilPivot.Find("ARC-01 Receiver")?.gameObject;
+            _primaryModule = _primaryReceiver != null ? _primaryReceiver.transform.Find("Power Cell") : null;
+            if (_primaryModule != null)
             {
-                _chargeProperties ??= new MaterialPropertyBlock();
+                _primaryModuleRest = _primaryModule.localPosition;
             }
+
+            _activeFlash = _muzzleFlash;
+            _flashRest = _muzzleFlash.localScale;
             if (_weapon != null)
             {
                 _weapon.ShotFired += Fire;
@@ -90,7 +105,7 @@ namespace Overtime
             _motor.Jumped -= OnJumped;
             _motor.Landed -= OnLanded;
             _motor.GravityChanged -= OnGravityChanged;
-            SetChargeGlow(false);
+            SetChargeGlow(0f, false);
             _motionTween?.Kill();
             _gravityTween?.Kill();
             _recoilTween?.Kill();
@@ -101,7 +116,7 @@ namespace Overtime
             _gravityImpulse = 0f;
             _recoil = 0f;
             _flashTime = 0f;
-            _muzzleFlash.gameObject.SetActive(false);
+            _activeFlash.gameObject.SetActive(false);
         }
 
         private void LateUpdate()
@@ -112,15 +127,18 @@ namespace Overtime
                 SyncTemporalMotion();
             }
 
-            SetChargeGlow(_weapon?.HasQueuedBoost == true);
+            SyncViewmodel();
+            var charge = _weapon?.ChargeProgress ?? 0f;
+            var energized = _weapon?.LastShotBoosted == true && _flashTime > 0f;
+            SetChargeGlow(Mathf.Max(charge, _displayedWeapon == WeaponId.Deadline ? Mathf.Clamp01(_recoil) * 0.65f : 0f), _weapon?.HasQueuedBoost == true || energized);
             var deltaTime = Time.unscaledDeltaTime;
             if (_flashTime > 0f)
             {
                 _flashTime -= deltaTime;
             }
-            else if (_muzzleFlash.gameObject.activeSelf)
+            else if (_activeFlash.gameObject.activeSelf)
             {
-                _muzzleFlash.gameObject.SetActive(false);
+                _activeFlash.gameObject.SetActive(false);
             }
 
 
@@ -140,25 +158,82 @@ namespace Overtime
             _swayPivot.localPosition = new Vector3(-_sway.x, -_sway.y, 0f) * (0.0045f * motion);
             _swayPivot.localRotation = Quaternion.Euler(_sway.y * motion, -_sway.x * motion, 0f);
             var temporal = _cameraRig.ReducedMotion ? 0f : _resetKick;
-            _recoilPivot.localPosition = Vector3.back * (_recoil * _recoilDistance * motion + temporal * 0.035f);
-            _recoilPivot.localRotation = Quaternion.Euler(-_recoil * _recoilAngle * motion + temporal * 4f, 0f, _recoil * _recoilRoll * motion);
+            var reload = _weapon?.ReloadProgress ?? 0f;
+            var switchProgress = _weapon?.SwitchProgress ?? 0f;
+            var action = Mathf.Max(ActionDip(reload, 0.28f, 0.72f), ActionDip(switchProgress, 0.5f, 0.5f)) * motion;
+            var module = _viewmodel != null ? _viewmodel.Module : _primaryModule;
+            if (module != null)
+            {
+                var rest = _viewmodel != null ? Vector3.zero : _primaryModuleRest;
+                module.localPosition = rest + new Vector3(0.014f, -0.14f, -0.043f) * ActionDip(reload, 0.48f, 0.55f) * motion;
+            }
+
+            var style = _weapon?.ActiveDefinition?.Recoil ?? new Vector3(_recoilDistance, _recoilAngle, _recoveryTime);
+            var vibration = new Vector3(Mathf.Sin(Time.unscaledTime * 119f), Mathf.Cos(Time.unscaledTime * 103f), 0f) * (charge * motion * 0.0022f);
+            _recoilPivot.localPosition = Vector3.back * (_recoil * style.x * motion + temporal * 0.035f) + Vector3.down * (action * 0.27f) + vibration;
+            _recoilPivot.localRotation = Quaternion.Euler(-_recoil * style.y * motion + temporal * 4f + action * 28f, -action * 9f, _recoil * _recoilRoll * motion + action * 7f);
         }
 
-        private void SetChargeGlow(bool charged)
+        private float ActionDip(float progress, float downEnd, float upStart)
         {
-            if (_chargeProperties == null || _isCharged == charged)
+            var dip = Mathf.Min(progress / downEnd, (1f - progress) / (1f - upStart));
+            return DOVirtual.EasedValue(0f, 1f, Mathf.Clamp01(dip), Ease.InOutSine);
+        }
+
+        private void SyncViewmodel()
+        {
+            var id = _weapon?.ActiveDefinition?.Id ?? WeaponId.Compliance;
+            if (id == _displayedWeapon)
             {
                 return;
             }
 
-            _isCharged = charged;
+            SetChargeGlow(0f, false);
+            _activeFlash.gameObject.SetActive(false);
+            _recoilTween.Pause();
+            _recoil = 0f;
+            _flashTime = 0f;
+            _displayedWeapon = id;
+            _viewmodel = id == WeaponId.Compliance || _alternatives == null ? null : _alternatives[(int)id - 1];
+            if (_alternatives != null)
+            {
+                foreach (var alternative in _alternatives)
+                {
+                    alternative.gameObject.SetActive(alternative == _viewmodel);
+                }
+            }
+
+            if (_primaryReceiver != null)
+            {
+                _primaryReceiver.SetActive(_viewmodel == null);
+            }
+
+            _activeFlash = _viewmodel != null ? _viewmodel.Flash : _muzzleFlash;
+            _flashRest = Vector3.one;
+            _glow = -1f;
+        }
+
+        private void SetChargeGlow(float brightness, bool boosted)
+        {
+            var strips = _viewmodel != null ? _viewmodel.ChargeRails : _chargeStrips;
+            if (strips == null || (Mathf.Approximately(_glow, brightness) && _glowBoosted == boosted))
+            {
+                return;
+            }
+
+            _glow = brightness;
+            _glowBoosted = boosted;
             _chargeProperties.Clear();
-            if (charged)
+            if (boosted)
             {
                 _chargeProperties.SetColor(s_emission, new Color(2.9f, 0.88f, 0.24f));
             }
+            else if (brightness > 0f)
+            {
+                _chargeProperties.SetColor(s_emission, new Color(0.24f, 1.8f, 3.5f) * (0.35f + brightness * 1.6f));
+            }
 
-            foreach (var strip in _chargeStrips)
+            foreach (var strip in strips)
             {
                 strip.SetPropertyBlock(_chargeProperties);
             }
@@ -180,7 +255,7 @@ namespace Overtime
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
             _recoil = 0f;
-            _muzzleFlash.gameObject.SetActive(false);
+            _activeFlash.gameObject.SetActive(false);
             if (!_cameraRig.ReducedMotion)
             {
                 _resetTween = DOTween.Sequence().SetUpdate(true)
@@ -191,6 +266,7 @@ namespace Overtime
 
         private void Fire()
         {
+            SyncViewmodel();
             if (_wasRewinding && !_cameraRig.IsRewinding)
             {
                 _wasRewinding = false;
@@ -202,10 +278,12 @@ namespace Overtime
             _recoilRoll = (_confirmedShots % 3 - 1f) * 1.4f;
             _kick = Mathf.Min(1.35f, _recoil + 0.84f + variation);
             _recoil = _kick;
+            var recovery = _weapon?.ActiveDefinition?.Recoil.z ?? _recoveryTime;
+            _recoilTween.timeScale = _recoveryTime / Mathf.Max(0.01f, recovery);
             _recoilTween.Restart();
-            _flashTime = _cameraRig.ReducedMotion ? 0.02f : 0.032f;
-            _muzzleFlash.localScale = Vector3.one * (_cameraRig.ReducedMotion ? 0.55f : 0.85f + variation);
-            _muzzleFlash.gameObject.SetActive(true);
+            _flashTime = _cameraRig.ReducedMotion ? 0.02f : _displayedWeapon == WeaponId.Termination ? 0.055f : 0.032f;
+            _activeFlash.localScale = _flashRest * (_cameraRig.ReducedMotion ? 0.55f : 0.85f + variation);
+            _activeFlash.gameObject.SetActive(true);
         }
 
         private void OnJumped()

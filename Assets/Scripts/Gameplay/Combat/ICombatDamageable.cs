@@ -6,6 +6,6 @@ namespace Overtime
     {
         CombatHealth Health { get; }
         int RewardId { get; }
-        DamageResult Hit(Collider collider, int amount, bool reducedMotion, out bool weakPoint);
+        DamageResult Hit(Collider collider, float amount, bool reducedMotion, out bool weakPoint);
     }
 }

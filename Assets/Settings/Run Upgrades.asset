@@ -23,21 +23,23 @@ MonoBehaviour:
     _magnitude: 0.2
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: a137547b17e63d0438ea6fe2a260373c, type: 3}
   - _id: 1
     _title: Extended Magazine
-    _description: Expands capacity. Reload to fill it.
-    _numbers: +{0:0} rounds per level
+    _description: Expands ARC-01, ARC-02 and ARC-03 capacity respectively.
+    _numbers: +10 / +2 / +1 rounds per level
     _category: 0
     _rarity: 0
     _maxLevel: 2
     _magnitude: 10
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 5a0e2665e201e6d4a9073937ce1a35ae, type: 3}
   - _id: 2
     _title: Rapid Service
-    _description: Shortens the ARC-01 reload cycle.
+    _description: "Shortens each weapon\u2019s reload cycle."
     _numbers: -{0:P0} reload time per level
     _category: 0
     _rarity: 0
@@ -45,6 +47,7 @@ MonoBehaviour:
     _magnitude: 0.25
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: d9aef80abf75bb6408c8cdf3e119fa21, type: 3}
   - _id: 3
     _title: Kinetic Charge
@@ -56,6 +59,7 @@ MonoBehaviour:
     _magnitude: 0.35
     _seconds: 2
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 9dc3eb6a6cdbf1c4283ab505cd8f4b28, type: 3}
   - _id: 4
     _title: Magnetic Acceleration
@@ -67,6 +71,7 @@ MonoBehaviour:
     _magnitude: 0.15
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: a0b9c4b44226c9d45900bdcecb69fe1b, type: 3}
   - _id: 5
     _title: Auto Feed
@@ -78,6 +83,7 @@ MonoBehaviour:
     _magnitude: 3
     _seconds: 1
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 99bdb7cdea68f374bb513759887a337b, type: 3}
   - _id: 6
     _title: Freefall
@@ -89,6 +95,7 @@ MonoBehaviour:
     _magnitude: 0.25
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 1d721b4530114ce42ba4dff3463dd2e1, type: 3}
   - _id: 7
     _title: Second Draft
@@ -100,6 +107,7 @@ MonoBehaviour:
     _magnitude: 0.75
     _seconds: 2
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 52138881d56ad7a4c8ae3b10acebb49a, type: 3}
   - _id: 8
     _title: Quality Assurance
@@ -111,6 +119,7 @@ MonoBehaviour:
     _magnitude: 0.35
     _seconds: 1.5
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: d82d2008a0e7fd349b76874148119beb, type: 3}
   - _id: 9
     _title: Exploit Window
@@ -122,6 +131,7 @@ MonoBehaviour:
     _magnitude: 0.3
     _seconds: 1.5
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 46fca75186741ba4c88fa6806777ac73, type: 3}
   - _id: 10
     _title: Residual Memory
@@ -133,6 +143,7 @@ MonoBehaviour:
     _magnitude: 0.35
     _seconds: 3
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 34df2bcfd4bcf6943b9bab638ffd3105, type: 3}
   - _id: 11
     _title: Efficient Recall
@@ -144,6 +155,7 @@ MonoBehaviour:
     _magnitude: 0.25
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: aed8db18ec77895408f74d921552b3bb, type: 3}
   - _id: 12
     _title: Safe Return
@@ -155,6 +167,7 @@ MonoBehaviour:
     _magnitude: 0.4
     _seconds: 1.5
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 1d802464e42d42f4e84180d042dd46b3, type: 3}
   - _id: 13
     _title: Bad Take
@@ -166,10 +179,11 @@ MonoBehaviour:
     _magnitude: 35
     _seconds: 0
     _radius: 2.5
+    _limit: 0
     _icon: {fileID: 21300000, guid: c88996f3a9ef13146966b7b89ea3df02, type: 3}
   - _id: 14
     _title: Accelerated Processing
-    _description: Cycle the ARC-01 faster in BULLET TIME.
+    _description: Shoot and charge faster in BULLET TIME.
     _numbers: +{0:P0} fire rate
     _category: 5
     _rarity: 1
@@ -177,6 +191,7 @@ MonoBehaviour:
     _magnitude: 0.35
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 2ee841e81fcbd1b4ea5fef8a59beebcb, type: 3}
   - _id: 15
     _title: Hypervelocity
@@ -188,6 +203,7 @@ MonoBehaviour:
     _magnitude: 0.5
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: 3f95360ef2e0054489344df96b57e14d, type: 3}
   - _id: 16
     _title: Extended Battery
@@ -199,6 +215,7 @@ MonoBehaviour:
     _magnitude: 25
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: a84f3fdc6f62be74b925f2f278e9d576, type: 3}
   - _id: 17
     _title: Performance Bonus
@@ -210,7 +227,104 @@ MonoBehaviour:
     _magnitude: 5
     _seconds: 0
     _radius: 0
+    _limit: 0
     _icon: {fileID: 21300000, guid: e14b63f9eb2cc644c9c4562a30cedd3a, type: 3}
+  - _id: 18
+    _title: Penetration Protocol
+    _description: Bolts pass through an extra hostile.
+    _numbers: +{0:0} target
+    _category: 0
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 1
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 4a0fa8f8a952b844cb58c9b8ba763959, type: 3}
+  - _id: 19
+    _title: Ricochet Matrix
+    _description: Bolts reflect once off static geometry.
+    _numbers: '{0:P0} damage retained'
+    _category: 0
+    _rarity: 2
+    _maxLevel: 1
+    _magnitude: 0.8
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 0eae0dfc6aa25d347a8264942cebe022, type: 3}
+  - _id: 20
+    _title: Twin Output
+    _description: Every fifth shot launches one extra bolt.
+    _numbers: '{0:P0} damage on the extra bolt'
+    _category: 0
+    _rarity: 2
+    _maxLevel: 1
+    _magnitude: 0.6
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 3a36d44e82183e044ae254bba3e7b394, type: 3}
+  - _id: 21
+    _title: Terminal Ballistics
+    _description: Bolt damage rises with distance travelled.
+    _numbers: +{0:P1}/m up to +45%
+    _category: 0
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.015
+    _seconds: 0
+    _radius: 0
+    _limit: 0.45
+    _icon: {fileID: 21300000, guid: a7cce50dff93ca04c83d13c2f47bc557, type: 3}
+  - _id: 22
+    _title: Close Quarters
+    _description: Boosts hits within a short flight distance.
+    _numbers: +{0:P0} within {2:0} m
+    _category: 0
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.3
+    _seconds: 0
+    _radius: 5
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 34471b5ca2ce8d740b16456694fa0881, type: 3}
+  - _id: 23
+    _title: Vertical Advantage
+    _description: Boosts shots from magnetic walls and ceilings.
+    _numbers: +{0:P0} shot damage
+    _category: 1
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.25
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 9a5416bd038730c4ba7b6a314c026986, type: 3}
+  - _id: 24
+    _title: Tactical Exchange
+    _description: The first shot after a completed switch hits harder.
+    _numbers: +{0:P0} / {1:0} s, 4 s cooldown
+    _category: 0
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.4
+    _seconds: 2
+    _radius: 0
+    _limit: 4
+    _icon: {fileID: 21300000, guid: b43b5ff94dfa3c7449c9889e3367581b, type: 3}
+  - _id: 25
+    _title: Last Word
+    _description: Boosts the last round in the magazine.
+    _numbers: +{0:P0} last shot damage
+    _category: 0
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.5
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 701f0bd40d4bb1042b1cc87678ff5ea5, type: 3}
   _rarityWeights: {x: 55, y: 35, z: 10}
   _synergyWeight: 1.35
   _maxSynergyWeight: 1.5

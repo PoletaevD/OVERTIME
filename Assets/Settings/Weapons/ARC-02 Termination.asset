@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d91308995dcfa6d4d94c08448f4af948, type: 3}
+  m_Name: ARC-02 Termination
+  m_EditorClassIdentifier: Overtime.Runtime::Overtime.WeaponDefinition
+  _id: 1
+  _type: 1
+  _displayName: ARC-02  /  Termination
+  _description: Eight separate bolts. Close the distance and take the flank.
+  _icon: {fileID: 21300000, guid: c05f0bb5f4388c249a1588ef6cbba091, type: 3}
+  _viewmodel: {fileID: 7709493865694178335, guid: 542cc45aaeb489f4eb74979ae562ff82, type: 3}
+  _tuning:
+    _roundsPerMinute: 100
+    _postShotDelay: 0
+    _magazine: 6
+    _reserve: 36
+    _magazinePerLevel: 2
+    _roomReserve: 8
+    _damage: 9
+    _reload: 2
+    _speed: 38
+    _radius: 0.032
+    _lifetime: 1
+    _range: 35
+    _pellets: 8
+    _spread: 7
+    _charge: 0
+    _targets: 1
+    _penetrationRetention: 0.85
+    _muzzle: {x: 0.31, y: -0.24, z: 1}
+  _recoil: {x: 0.133, y: 13, z: 0.31}
+  _shot: {fileID: 8300000, guid: 9fe3c5a2916c6634d856e3ef40eaae5c, type: 3}
+  _reload: {fileID: 8300000, guid: 954248a4e9f11914aad3db450094550e, type: 3}
+  _charge: {fileID: 0}

@@ -9,6 +9,9 @@ namespace Overtime
         private static readonly int s_baseColor = Shader.PropertyToID("_BaseColor");
         private const int TraceSamples = 6;
         private const int TraceSpacing = 4;
+        private const int MaxCollisionIterations = 6;
+        private const float SurfaceSkin = 0.004f;
+        private const float GoldenAngle = 2.39996323f;
 
         [SerializeField] private Transform[] _projectiles;
         [SerializeField] private bool _automatic = true;
@@ -21,7 +24,7 @@ namespace Overtime
         [SerializeField] private LayerMask _impactLayers = 1;
         [SerializeField] private Material _droneBolt;
 
-        private readonly RaycastHit[] _sweepHits = new RaycastHit[64];
+        private readonly RaycastHit[] _sweepHits = new RaycastHit[128];
         private readonly Collider[] _overlaps = new Collider[64];
         private bool _playerPool;
         private Material _fallbackMaterial;
@@ -55,7 +58,7 @@ namespace Overtime
             for (var slot = 0; slot < _projectiles.Length; slot++)
             {
                 var bolt = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                bolt.name = $"ARC-01 Bolt {slot + 1:00}";
+                bolt.name = $"Player Bolt {slot + 1:00}";
                 bolt.transform.SetParent(transform, false);
                 bolt.transform.localScale = new Vector3(0.09f, 0.09f, 0.24f);
                 var collider = bolt.GetComponent<Collider>();
@@ -135,17 +138,15 @@ namespace Overtime
                     continue;
                 }
 
+                var direction = projectile.Direction;
                 var distance = Mathf.Min(projectile.Range, projectile.Speed * Mathf.Min(step, projectile.Remaining));
-                if (_combatDirector != null && CheckImpact(projectile, distance, out var travelled))
+                if (_combatDirector != null)
                 {
-                    projectile.Position += projectile.Direction * travelled;
-                    projectile.Hit = true;
+                    AdvanceProjectile(ref projectile, distance);
                 }
                 else
                 {
-                    projectile.Position += projectile.Direction * distance;
-                    projectile.Range -= distance;
-                    projectile.Travelled += distance;
+                    Travel(ref projectile, distance);
                 }
 
                 projectile.Remaining = Mathf.Max(0f, projectile.Remaining - step);
@@ -154,7 +155,7 @@ namespace Overtime
                     _activeCount--;
                 }
 
-                Apply(slot);
+                Apply(slot, _playerPool && projectile.Direction != direction);
             }
 
             if (!_automatic)
@@ -190,9 +191,20 @@ namespace Overtime
 
         internal bool TryLaunchPlayer(Ray aim, Vector3 aimUp, Vector3 muzzleOffset, float speed, float lifetime, float range, float radius, int damage, int layers, bool charged = false, bool hypervelocity = false)
         {
+            return TryLaunchVolley(aim, aimUp, muzzleOffset, speed, lifetime, range, radius, damage, layers, charged, hypervelocity, default, 1, 0f, 0f, 0f);
+        }
+
+        internal bool TryLaunchVolley(Ray aim, Vector3 aimUp, Vector3 muzzleOffset, float speed, float lifetime, float range, float radius, float damage, int layers, bool charged, bool hypervelocity, in ProjectileBallistics ballistics, int pellets, float spread, float twinDamage, float twinOffset)
+        {
+            var count = pellets + (twinDamage > 0f ? 1 : 0);
+            if (PoolCapacity - ActiveCount < count)
+            {
+                return false;
+            }
+
+            Physics.SyncTransforms();
             var owner = _combatDirector.PlayerCapsule.transform;
-            var aimDistance = FindHit(aim.origin, 0f, aim.direction, range, layers, owner, out var aimHit) ? aimHit.distance : range;
-            var point = aim.GetPoint(aimDistance);
+            var aimDistance = FindHit(aim.origin, 0f, aim.direction, range, layers, owner, out var aimHit, out _) ? aimHit.distance : range;
             var frame = Quaternion.LookRotation(aim.direction, aimUp);
             var offset = frame * muzzleOffset;
             var muzzleDepth = Vector3.Dot(offset, aim.direction);
@@ -202,10 +214,9 @@ namespace Overtime
             }
 
             var origin = aim.origin + offset;
-            var direction = point - origin;
-            if (FindOverlap(aim.origin, radius, layers, owner, out _, out _) || FindHit(aim.origin, radius, offset.normalized, offset.magnitude, layers, owner, out _))
+            var direction = aim.GetPoint(aimDistance) - origin;
+            if (FindOverlap(aim.origin, radius, layers, owner, out _, out _, out var overlapFull) || overlapFull || FindHit(aim.origin, radius, offset.normalized, offset.magnitude, layers, owner, out _, out var castFull) || castFull)
             {
-                // Keep the bolt on the eye side of cover and send it along the obstructed muzzle path.
                 origin = aim.origin;
                 direction = offset.sqrMagnitude > 0f ? offset : aim.direction;
             }
@@ -214,20 +225,52 @@ namespace Overtime
                 direction = aim.direction;
             }
 
-            return TryLaunch(new Projectile
+            var pattern = Quaternion.LookRotation(direction, aimUp);
+            var projectile = new Projectile
             {
                 Position = origin,
-                Direction = direction.normalized,
                 Speed = speed,
                 Remaining = lifetime,
                 Range = range,
                 Radius = radius,
-                Damage = damage,
                 Owner = owner,
                 Layers = layers,
                 Charged = charged,
-                Hypervelocity = hypervelocity
-            });
+                Hypervelocity = hypervelocity,
+                Ballistics = ballistics,
+                Retention = 1f,
+                Penetrations = Mathf.Max(0, ballistics.TargetLimit - 1),
+                Ricochets = ballistics.RicochetLimit
+            };
+
+            var next = 0;
+            for (var slot = 0; slot < _live.Length && next < count; slot++)
+            {
+                if (_live[slot].Active)
+                {
+                    continue;
+                }
+
+                var duplicate = next >= pellets;
+                projectile.Direction = duplicate ? pattern * (Quaternion.Euler(-twinOffset * 0.5f, twinOffset, 0f) * Vector3.forward) : PelletDirection(pattern, next, pellets, spread);
+                projectile.Damage = duplicate ? damage * twinDamage : damage;
+                LaunchAt(slot, projectile);
+                next++;
+            }
+
+            return true;
+        }
+
+        private Vector3 PelletDirection(Quaternion frame, int index, int count, float spread)
+        {
+            if (index == 0 || spread <= 0f)
+            {
+                return frame * Vector3.forward;
+            }
+
+            var radius = Mathf.Sqrt((float)index / (count - 1)) * Mathf.Tan(spread * Mathf.Deg2Rad);
+            var angle = index * GoldenAngle;
+            return frame * new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 1f).normalized;
         }
 
         private bool TryLaunch(Projectile projectile)
@@ -239,17 +282,22 @@ namespace Overtime
                     continue;
                 }
 
-                projectile.Generation = ++_generation;
-                _live[slot] = projectile;
-                _activeCount++;
-                Apply(slot, true);
+                LaunchAt(slot, projectile);
                 return true;
             }
 
             return false;
         }
 
-        private bool CheckImpact(in Projectile projectile, float distance, out float travelled)
+        private void LaunchAt(int slot, Projectile projectile)
+        {
+            projectile.Generation = ++_generation;
+            _live[slot] = projectile;
+            _activeCount++;
+            Apply(slot, true);
+        }
+
+        private void AdvanceProjectile(ref Projectile projectile, float distance)
         {
             var layers = projectile.Layers;
             var capsule = _combatDirector.PlayerCapsule;
@@ -258,66 +306,136 @@ namespace Overtime
                 layers |= 1 << capsule.gameObject.layer;
             }
 
-            travelled = 0f;
-            var normal = -projectile.Direction;
-            if (!FindOverlap(projectile.Position, projectile.Radius, layers, projectile.Owner, out var collider, out var point))
+            for (var iteration = 0; iteration < MaxCollisionIterations && distance > 0f; iteration++)
             {
-                if (!FindHit(projectile.Position, projectile.Radius, projectile.Direction, distance, layers, projectile.Owner, out var hit))
+                if (!FindImpact(projectile, distance, layers, out var collider, out var point, out var normal, out var travelled))
                 {
-                    return false;
+                    Travel(ref projectile, distance);
+                    return;
                 }
 
+                Travel(ref projectile, travelled);
+                distance -= travelled;
+                if (!ResolveImpact(ref projectile, capsule, collider, point, normal))
+                {
+                    projectile.Hit = true;
+                    return;
+                }
+
+                if (projectile.Range <= 0f)
+                {
+                    return;
+                }
+
+                distance = Mathf.Min(distance, projectile.Range);
+            }
+        }
+
+        private void Travel(ref Projectile projectile, float distance)
+        {
+            projectile.Position += projectile.Direction * distance;
+            projectile.Range -= distance;
+            projectile.Travelled += distance;
+        }
+
+        private bool FindImpact(in Projectile projectile, float distance, int layers, out Collider collider, out Vector3 point, out Vector3 normal, out float travelled)
+        {
+            travelled = 0f;
+            if (FindOverlap(projectile.Position, projectile.Radius, layers, projectile.Owner, out collider, out point, out var overlapFull, projectile.Targets) || overlapFull)
+            {
+                normal = (projectile.Position - point).normalized;
+                return true;
+            }
+
+            if (FindHit(projectile.Position, projectile.Radius, projectile.Direction, distance, layers, projectile.Owner, out var hit, out var castFull, projectile.Targets) || castFull)
+            {
                 collider = hit.collider;
                 point = hit.point;
                 normal = hit.normal;
                 travelled = hit.distance;
+                return true;
+            }
+
+            normal = Vector3.zero;
+            return false;
+        }
+
+        private bool ResolveImpact(ref Projectile projectile, Collider capsule, Collider collider, Vector3 point, Vector3 normal)
+        {
+            if (collider == null)
+            {
+                return false;
             }
 
             var damage = default(DamageResult);
             var weakPoint = false;
-            var shield = _playerPool ? collider.GetComponent<CombatShield>() : null;
-            var shielded = shield != null;
+            var shielded = false;
+            var pierced = false;
+            var reflected = false;
             if (_playerPool)
             {
-                if (shielded)
+                if (collider.TryGetComponent<CombatShield>(out var shield))
                 {
+                    shielded = true;
                     shield.React(_combatDirector.ReducedMotion);
                 }
                 else if (collider.GetComponentInParent<ICombatDamageable>() is { } target)
                 {
-                    damage = _combatDirector.DamageTarget(target, collider, projectile.Damage, out weakPoint);
+                    var amount = projectile.Ballistics.DamageAtDistance(projectile.Damage, projectile.Travelled) * projectile.Retention;
+                    damage = _combatDirector.DamageTarget(target, collider, amount, out weakPoint);
+                    if (projectile.Penetrations > 0 && damage.Amount > 0)
+                    {
+                        projectile.Targets.Add(target.RewardId);
+                        projectile.Penetrations--;
+                        projectile.Retention *= projectile.Ballistics.PenetrationRetention;
+                        pierced = true;
+                    }
+                }
+                else if (projectile.Ricochets > 0 && collider.attachedRigidbody == null && collider.GetComponentInParent<EncounterGate>() == null && collider.GetComponentInParent<TemporalSlidingDoor>() == null && Vector3.Dot(projectile.Direction, normal) < -0.0001f)
+                {
+                    projectile.Direction = Vector3.Reflect(projectile.Direction, normal).normalized;
+                    projectile.Position = point + normal * (projectile.Radius + SurfaceSkin);
+                    projectile.Ricochets--;
+                    projectile.Retention *= projectile.Ballistics.RicochetRetention;
+                    reflected = true;
                 }
             }
             else if (collider == capsule)
             {
-                _combatDirector.DamagePlayer(projectile.Damage, projectile.Position - projectile.Direction);
+                _combatDirector.DamagePlayer(Mathf.RoundToInt(projectile.Damage), projectile.Position - projectile.Direction);
             }
 
-            _combatDirector.PublishImpact(new ProjectileImpact(point, normal, damage, weakPoint, shielded, _playerPool));
-            return true;
+            if (normal == Vector3.zero)
+            {
+                normal = -projectile.Direction;
+            }
+
+            _combatDirector.PublishImpact(new ProjectileImpact(point, normal, damage, weakPoint, shielded, _playerPool, reflected, projectile.Ballistics.TargetLimit > 1 && damage.Amount > 0));
+            return pierced || reflected;
         }
 
-        private bool FindHit(Vector3 origin, float radius, Vector3 direction, float distance, int layers, Transform owner, out RaycastHit closest)
+        private bool FindHit(Vector3 origin, float radius, Vector3 direction, float distance, int layers, Transform owner, out RaycastHit closest, out bool full, ProjectileTargets targets = default)
         {
             closest = default;
+            full = false;
             if (distance <= 0f)
             {
                 return false;
             }
 
             var count = radius > 0f ? Physics.SphereCastNonAlloc(origin, radius, direction, _sweepHits, distance, layers, QueryTriggerInteraction.Ignore) : Physics.RaycastNonAlloc(origin, direction, _sweepHits, distance, layers, QueryTriggerInteraction.Ignore);
-            var hits = _sweepHits;
-            if (count == hits.Length)
+            full = count == _sweepHits.Length;
+            if (full)
             {
-                hits = radius > 0f ? Physics.SphereCastAll(origin, radius, direction, distance, layers, QueryTriggerInteraction.Ignore) : Physics.RaycastAll(origin, direction, distance, layers, QueryTriggerInteraction.Ignore);
-                count = hits.Length;
+                // An incomplete query cannot establish whether a shield or a wall is nearer.
+                return false;
             }
 
             var best = float.PositiveInfinity;
             for (var index = 0; index < count; index++)
             {
-                var candidate = hits[index];
-                if (candidate.distance <= best && IsValid(candidate.collider, owner) && (candidate.distance < best || candidate.collider.TryGetComponent<CombatShield>(out _)))
+                var candidate = _sweepHits[index];
+                if (candidate.distance <= best && IsValid(candidate.collider, owner, targets) && (candidate.distance < best || candidate.collider.TryGetComponent<CombatShield>(out _)))
                 {
                     closest = candidate;
                     best = candidate.distance;
@@ -327,23 +445,21 @@ namespace Overtime
             return closest.collider != null;
         }
 
-        private bool FindOverlap(Vector3 origin, float radius, int layers, Transform owner, out Collider closest, out Vector3 point)
+        private bool FindOverlap(Vector3 origin, float radius, int layers, Transform owner, out Collider closest, out Vector3 point, out bool full, ProjectileTargets targets = default)
         {
-            var overlaps = _overlaps;
-            var count = Physics.OverlapSphereNonAlloc(origin, radius, overlaps, layers, QueryTriggerInteraction.Ignore);
-            if (count == overlaps.Length)
-            {
-                overlaps = Physics.OverlapSphere(origin, radius, layers, QueryTriggerInteraction.Ignore);
-                count = overlaps.Length;
-            }
-
+            var count = Physics.OverlapSphereNonAlloc(origin, radius, _overlaps, layers, QueryTriggerInteraction.Ignore);
             closest = null;
             point = origin;
+            full = count == _overlaps.Length;
+            if (full)
+            {
+                return false;
+            }
             var best = float.PositiveInfinity;
             for (var index = 0; index < count; index++)
             {
-                var candidate = overlaps[index];
-                if (!IsValid(candidate, owner))
+                var candidate = _overlaps[index];
+                if (!IsValid(candidate, owner, targets))
                 {
                     continue;
                 }
@@ -361,7 +477,7 @@ namespace Overtime
             return closest != null;
         }
 
-        private bool IsValid(Collider collider, Transform owner)
+        private bool IsValid(Collider collider, Transform owner, ProjectileTargets targets)
         {
             var capsule = _combatDirector.PlayerCapsule;
             if (collider == capsule)
@@ -374,7 +490,13 @@ namespace Overtime
                 return false;
             }
 
-            return _playerPool || collider.GetComponentInParent<ICombatDamageable>() == null;
+            if (_playerPool && collider.TryGetComponent<CombatShield>(out _))
+            {
+                return true;
+            }
+
+            var target = collider.GetComponentInParent<ICombatDamageable>();
+            return target == null || (_playerPool && !targets.Contains(target.RewardId));
         }
 
         internal override void Capture(int slot)
@@ -423,7 +545,7 @@ namespace Overtime
                     {
                         trace.enabled = current.Travelled > 0f;
                         trace.SetPosition(0, position);
-                        trace.SetPosition(1, position - current.Direction * Mathf.Min(current.Travelled, current.Hypervelocity ? 0.85f : 0.34f));
+                        trace.SetPosition(1, position - current.Direction * Mathf.Min(current.Travelled, current.Ballistics.Weapon == WeaponId.Deadline ? 1.8f : current.Hypervelocity ? 0.85f : 0.34f));
                     }
                     else
                     {
@@ -500,8 +622,9 @@ namespace Overtime
                 visual.localScale = style.Scale * (projectile.Radius / _radius);
                 if (_playerPool && style.Trace != null)
                 {
-                    style.Trace.startColor = projectile.Charged ? new Color(1f, 0.61f, 0.27f) : Color.white;
-                    style.Trace.endColor = projectile.Charged ? new Color(1f, 0.31f, 0.13f, 0f) : Color.white;
+                    var color = BoltColor(projectile);
+                    style.Trace.startColor = color;
+                    style.Trace.endColor = new Color(color.r, color.g, color.b, 0f);
                 }
 
                 if (style.Mesh != null)
@@ -510,15 +633,37 @@ namespace Overtime
                     if (_playerPool)
                     {
                         _boltProperties.Clear();
-                        if (projectile.Charged)
-                        {
-                            _boltProperties.SetColor(s_baseColor, new Color(2.6f, 0.83f, 0.24f));
-                        }
+                        _boltProperties.SetColor(s_baseColor, BoltColor(projectile));
 
                         style.Mesh.SetPropertyBlock(_boltProperties);
                     }
                 }
             }
+        }
+
+        private Color BoltColor(in Projectile projectile)
+        {
+            if (projectile.Charged)
+            {
+                return new Color(2.6f, 0.83f, 0.24f);
+            }
+
+            return projectile.Ballistics.Weapon switch
+            {
+                WeaponId.Termination => new Color(2.2f, 0.7f, 0.25f),
+                WeaponId.Deadline => new Color(0.65f, 1.6f, 3f),
+                _ => new Color(0.08f, 1.45f, 1.8f)
+            };
+        }
+
+        internal bool TryReadProjectile(int slot, out int penetrations, out int ricochets, out float damage, out float distance)
+        {
+            ref var projectile = ref _live[slot];
+            penetrations = projectile.Penetrations;
+            ricochets = projectile.Ricochets;
+            damage = projectile.Damage * projectile.Retention;
+            distance = projectile.Travelled;
+            return projectile.Active;
         }
 
         private readonly struct Visual
@@ -548,7 +693,12 @@ namespace Overtime
             internal int Layers;
             internal Transform Owner;
             internal float Radius;
-            internal int Damage;
+            internal float Damage;
+            internal ProjectileBallistics Ballistics;
+            internal ProjectileTargets Targets;
+            internal float Retention;
+            internal int Penetrations;
+            internal int Ricochets;
             internal uint Generation;
             internal bool Drone;
             internal bool Charged;

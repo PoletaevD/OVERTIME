@@ -25,6 +25,8 @@ namespace Overtime
 
         private readonly StringBuilder _left = new(768);
         private readonly StringBuilder _right = new(768);
+        private readonly StringBuilder _stats = new(256);
+        private WeaponDefinition _secondary;
         private Tween _inspectFade;
         private Sequence _noticeFade;
         private int _revision = -1;
@@ -57,7 +59,7 @@ namespace Overtime
                 _revision = build.Revision;
                 RefreshStats();
             }
-            else if (_mode != _director.Mode)
+            else if (_mode != _director.Mode || _secondary != _player.Combat.Weapon.Definition(1))
             {
                 RefreshStats();
             }
@@ -75,6 +77,10 @@ namespace Overtime
             Timer(3, effects.ExploitWindow, "EXPLOIT  {0:0.0}");
             Timer(4, effects.SafeReturn, "SAFE  {0:0.0}");
             Timer(5, effects.AutoFeed, "FEED  {0:0.0}");
+            if (_timers.Length > 6)
+            {
+                Timer(6, effects.Exchange, "EXCHANGE  {0:0.0}");
+            }
             _protection.alpha = effects.QualityAssurance > 0f || effects.SafeReturn > 0f ? 1f : 0f;
         }
 
@@ -96,9 +102,9 @@ namespace Overtime
                 icon.sprite = definition.Icon;
                 icon.color = ProtocolCard.CategoryColor(definition.Category);
                 _levels[index].SetText("{0:0}", level);
-                var column = index < 9 ? _left : _right;
+                var column = index < 13 ? _left : _right;
                 column.Append("<color=#E8F4F7><b>").Append(definition.Title).Append("</b>  /  L").Append(level).Append("</color>  ").AppendLine(definition.Numbers);
-                column.AppendLine(definition.Description).AppendLine();
+                column.AppendLine(definition.Description);
                 index++;
             }
 
@@ -116,7 +122,29 @@ namespace Overtime
             _mode = _director.Mode;
             var gun = _player.Combat.Weapon;
             var energy = _director.Energy;
-            _weaponStats.SetText("ARC-01   /   {0:0} DMG     {1:0} RPM     {2:0} MAG     {3:0.00} s RELOAD     {4:0.0} m/s", gun.EffectiveDamage, gun.RoundsPerMinute(_mode), gun.MagazineCapacity, gun.ReloadSeconds, gun.ProjectileSpeed(_mode));
+            _secondary = gun.Definition(1);
+            _stats.Clear();
+            var count = gun.HasSecondary ? 2 : 1;
+            for (var slot = 0; slot < count; slot++)
+            {
+                _stats.Append(gun.Name(slot)).Append("    ");
+                var tuning = gun.Tuning(slot);
+                if (tuning.Pellets > 1)
+                {
+                    _stats.Append(tuning.Pellets).Append(" × ");
+                }
+
+                _stats.AppendFormat("{0:0.#}", gun.DamageFor(slot));
+                _stats.AppendFormat(" DMG    {0:0} RPM    {1:0} MAG    {2:0.00}s RELOAD    {3:0.#} m/s", 60f / gun.CycleSeconds(slot, _mode), gun.Capacity(slot), gun.ReloadFor(slot), gun.SpeedFor(slot, _mode));
+                if (tuning.Charge > 0f)
+                {
+                    _stats.AppendFormat("    {0:0.00}s CHARGE", gun.ChargeSeconds(slot, _mode));
+                }
+
+                _stats.AppendLine();
+            }
+
+            _weaponStats.SetText(_stats);
             _chronoStats.SetText("CHRONO {0:0} MAX   /   RESET {1:0.0}     OVERRIDE {2:0.0}     RECALL {3:0.0}     BULLET TIME {4:0.0} / s", energy.Maximum, energy.Cost(TemporalMode.Reset), energy.Cost(TemporalMode.Override), energy.Cost(TemporalMode.Recall), energy.Cost(TemporalMode.BulletTime));
         }
 

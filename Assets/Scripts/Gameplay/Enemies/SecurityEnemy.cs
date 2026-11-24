@@ -134,7 +134,7 @@ namespace Overtime
             }
         }
 
-        DamageResult ICombatDamageable.Hit(Collider collider, int amount, bool reducedMotion, out bool weakPoint)
+        DamageResult ICombatDamageable.Hit(Collider collider, float amount, bool reducedMotion, out bool weakPoint)
         {
             weakPoint = _weakPoint != null && collider == _weakPoint;
             if (!weakPoint && collider != _body)

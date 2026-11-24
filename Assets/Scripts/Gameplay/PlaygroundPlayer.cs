@@ -52,7 +52,7 @@ namespace Overtime
             if (_temporalDirector != null)
             {
                 var look = _input.ReadLook(deltaTime);
-                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.TakeTemporalSelection(), _input.ResetPressed, _input.Focused, _input.FireHeld, _input.ReloadPressed, _input.RechargePressed);
+                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.TakeTemporalSelection(), _input.ResetPressed, _input.Focused, _input.FireHeld, _input.ReloadPressed, _input.RechargePressed, _input.WeaponSelection);
                 _input.ClearCombatCommands();
                 if (!_temporalDirector.Advance(Time.unscaledDeltaTime, input))
                 {

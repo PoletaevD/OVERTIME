@@ -31,7 +31,18 @@ namespace Overtime.Tests
         }
 
         [UnityTest]
-        public IEnumerator CompletingTheRouteSealsEachRoomAndShowsSuccess()
+        public IEnumerator CompletingTheRouteWithTerminationSealsEachRoomAndShowsSuccess()
+        {
+            yield return CompleteRoute(0);
+        }
+
+        [UnityTest]
+        public IEnumerator CompletingTheRouteWithDeadlineSealsEachRoomAndShowsSuccess()
+        {
+            yield return CompleteRoute(1);
+        }
+
+        private IEnumerator CompleteRoute(int choice)
         {
             var scaler = _player.GetComponentInChildren<CanvasScaler>();
             Assert.That(scaler.uiScaleMode, Is.EqualTo(CanvasScaler.ScaleMode.ScaleWithScreenSize));
@@ -45,13 +56,21 @@ namespace Overtime.Tests
             var combat = _player.Combat;
             Assert.That(_director.RewardSelection, Is.True);
             Assert.That(_route.Current.State, Is.EqualTo(EncounterState.Waiting));
-            Assert.That(_route.Progression.Selection.Count, Is.EqualTo(3));
+            Assert.That(_route.SelectingSecondary, Is.True);
+            Assert.That(_route.Progression.Selection.Count, Is.Zero);
             Assert.That(_route.Progression.Build.Revision, Is.Zero);
             Tick(60, TemporalMode.BulletTime, true);
             Assert.That(_director.SimulationTick, Is.Zero);
             Assert.That(_route.Elapsed, Is.Zero);
             Assert.That(_director.Energy.Current, Is.EqualTo(100f));
             Assert.That(combat.Weapon.Magazine, Is.EqualTo(30));
+            Assert.That(_route.ConfirmUpgrade(0), Is.False);
+            Assert.That(_route.ConfirmSecondary(choice), Is.True);
+            Assert.That(_route.ConfirmSecondary(1 - choice), Is.False);
+            Assert.That(_route.Progression.Selection.Count, Is.EqualTo(3));
+            Assert.That(combat.Weapon.State(1).Reserve, Is.EqualTo(choice == 0 ? 36 : 16));
+            var secondaryReward = choice == 0 ? 8 : 4;
+            Assert.That(combat.Weapon.State(1).Magazine, Is.EqualTo(choice == 0 ? 6 : 4));
             ConfirmReward(1);
             _director.Energy.Spend(35d);
             Assert.That(_director.DamagePlayer(21), Is.True);
@@ -87,6 +106,7 @@ namespace Overtime.Tests
 
                 var ammo = combat.Weapon.Magazine;
                 var reserve = combat.Weapon.Reserve;
+                var secondary = combat.Weapon.State(1);
                 foreach (var enemy in room.Enemies)
                 {
                     Assert.That(enemy.Body.enabled, Is.True);
@@ -135,6 +155,8 @@ namespace Overtime.Tests
                 var energy = _director.Energy.Current;
                 MoveTo(exits[index]);
                 Assert.That(room.State, Is.EqualTo(EncounterState.Completed));
+                Assert.That(combat.Weapon.State(1).Reserve, Is.EqualTo(secondary.Reserve + secondaryReward));
+                Assert.That(combat.Weapon.State(1).Magazine, Is.EqualTo(secondary.Magazine));
                 Assert.That(gate.enabled, Is.True);
                 Assert.That(combat.Health.Current, Is.EqualTo(79));
                 Assert.That(combat.Weapon.Reserve, Is.EqualTo(reserve + 30));
@@ -165,6 +187,7 @@ namespace Overtime.Tests
         [Test]
         public void FrontShieldBlocksAndTheRearCellDoublesDamageWithRewindableColliders()
         {
+            Assert.That(_route.ConfirmSecondary(0), Is.True);
             ConfirmReward(1);
             MoveTo(4f);
             ClearAndLeave(28f);
@@ -232,6 +255,66 @@ namespace Overtime.Tests
             Assert.That(Vector3.Angle(direction, shield.transform.forward), Is.LessThan(1.3f));
             Assert.That(blocked, Is.EqualTo(frontCount));
             Assert.That(weak, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ShieldStopsRailEvenWithRicochetAndRearTakesShotgunDamage()
+        {
+            Assert.That(_route.ConfirmSecondary(0), Is.True);
+            ConfirmReward(1);
+            MoveTo(4f);
+            ClearAndLeave(28f);
+            MoveTo(34f);
+            ClearAndLeave(58f);
+            MoveTo(64f);
+            var enforcer = _route.Current.Enemies[0];
+            enforcer.transform.position += Vector3.right * 3.5f;
+            Physics.SyncTransforms();
+            var point = enforcer.Body.bounds.center;
+            var forward = enforcer.transform.forward;
+            var from = point + forward * 1.7f;
+            var rail = new ProjectileBallistics(WeaponId.Deadline, 4, 1, 0.85f, 0.8f, 0f, 0f, 0f, 0f);
+            var shielded = false;
+            var reflected = false;
+            _director.ProjectileHit += impact =>
+            {
+                shielded |= impact.Shielded;
+                reflected |= impact.Ricochet;
+            };
+            var pool = _director.PlayerProjectiles;
+            Assert.That(pool.TryLaunchVolley(new Ray(from, -forward), Vector3.up, Vector3.zero, 100f, 1f, 100f, 0.045f, 90f, Physics.DefaultRaycastLayers, false, false, rail, 1, 0f, 0f, 0f), Is.True);
+            pool.Simulate(0.025f);
+            Assert.That(shielded, Is.True);
+            Assert.That(reflected, Is.False);
+            Assert.That(pool.ActiveCount, Is.Zero);
+            Assert.That(enforcer.Health.Current, Is.EqualTo(160));
+
+            var rear = enforcer.transform.Find("Exposed Rear Power Cell").GetComponent<Collider>().bounds.center;
+            var scatter = _player.Combat.Weapon.Tuning(1);
+            Assert.That(pool.TryLaunchVolley(new Ray(rear - forward * 1.6f, forward), Vector3.up, Vector3.zero, scatter.Speed, scatter.Lifetime, scatter.Range, scatter.Radius, scatter.Damage, Physics.DefaultRaycastLayers, false, false, default, scatter.Pellets, scatter.Spread, 0f, 0f), Is.True);
+            pool.Simulate(0.075f);
+            Assert.That(enforcer.Health.Current, Is.LessThanOrEqualTo(160 - 8 * 9));
+        }
+
+        [Test]
+        public void DeadlineProjectileCanCatchASurveillanceDrone()
+        {
+            Assert.That(_route.ConfirmSecondary(1), Is.True);
+            ConfirmReward(1);
+            MoveTo(4f);
+            ClearAndLeave(28f);
+            MoveTo(34f);
+            var drone = _route.Current.Enemies[0];
+            Assert.That(drone.Kind, Is.EqualTo(SecurityEnemyKind.Drone));
+            var target = drone.Body.bounds.center;
+            var origin = target + Vector3.up * 2f + Vector3.back;
+            var rail = _player.Combat.Weapon.Tuning(1);
+            var flight = new ProjectileBallistics(WeaponId.Deadline, rail.Targets, 0, rail.PenetrationRetention, 0f, 0f, 0f, 0f, 0f);
+            var pool = _director.PlayerProjectiles;
+            Assert.That(pool.TryLaunchVolley(new Ray(origin, (target - origin).normalized), Vector3.up, Vector3.zero, rail.Speed, rail.Lifetime, rail.Range, rail.Radius, rail.Damage, Physics.DefaultRaycastLayers, false, false, flight, 1, 0f, 0f, 0f), Is.True);
+            Assert.That(drone.Health.Alive, Is.True);
+            Tick(4, TemporalMode.BulletTime);
+            Assert.That(drone.Health.Alive, Is.False);
         }
 
         private void ClearAndLeave(float exit)

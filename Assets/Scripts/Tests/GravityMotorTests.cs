@@ -561,8 +561,11 @@ namespace Overtime.Tests
             gun.BindUpgrades(build, null);
             var startingAmmo = new CombatWeapon.Snapshot
             {
-                Magazine = 20,
-                Reserve = 4
+                Primary = new WeaponState
+                {
+                    Magazine = 20,
+                    Reserve = 4
+                }
             };
             gun.Restore(startingAmmo);
             var effects = new PlayerUpgradeEffects(build, _motor, gun);
@@ -600,6 +603,66 @@ namespace Overtime.Tests
             {
                 effects.Unbind();
             }
+        }
+
+        [Test]
+        public void VerticalAdvantageRequiresMagneticSupportAwayFromTheFloor()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<RunUpgradeCatalog>("Assets/Settings/Run Upgrades.asset");
+            var build = new RunUpgradeState();
+            build.Acquire(catalog.Definitions[(int)UpgradeId.VerticalAdvantage]);
+            var gun = _motor.gameObject.AddComponent<CombatWeapon>();
+            var effects = new PlayerUpgradeEffects(build, _motor, gun);
+            try
+            {
+                Reset(new Vector3(0f, 0.88f, 3.8f));
+                Step(Vector2.zero, false, 4);
+                Assert.That(_motor.Grounded, Is.True);
+                Assert.That(effects.ModifyShotDamage(12f), Is.EqualTo(12f));
+                AttachNorthWall();
+                StepUntil(() => _motor.Grounded && !_motor.Transitioning, Vector2.up, false, 95);
+                Assert.That(_motor.Magnetic, Is.True);
+                Assert.That(_motor.Up, Is.EqualTo(Vector3.back));
+                Assert.That(effects.ModifyShotDamage(12f), Is.EqualTo(15f));
+            }
+            finally
+            {
+                effects.Unbind();
+            }
+        }
+
+        [Test]
+        public void DeadlineChargesWhileTheMotorTravelsAcrossTheMagneticCeiling()
+        {
+            AttachNorthWall();
+            StepUntil(() => _motor.Up == Vector3.down, Vector2.up, false, 150);
+            StepUntil(() => _motor.Grounded && !_motor.Transitioning, Vector2.up, false, 45);
+            Assert.That(_motor.Surface?.name, Is.EqualTo("Ceiling"));
+
+            var gun = _motor.gameObject.AddComponent<CombatWeapon>();
+            var rail = AssetDatabase.LoadAssetAtPath<WeaponDefinition>("Assets/Settings/Weapons/ARC-03 Deadline.asset");
+            Assert.That(gun.EquipSecondary(rail), Is.True);
+            var aim = new Ray(_motor.transform.position, _heading);
+            var playerStep = TemporalTimeline.TickDuration;
+            gun.Simulate(playerStep, false, false, true, aim, _motor.Up, null, selection: WeaponSlotInput.Secondary);
+            for (var tick = 0; tick < 36; tick++)
+            {
+                gun.Simulate(playerStep, false, false, true, aim, _motor.Up, null);
+            }
+
+            var origin = _motor.transform.position;
+            for (var tick = 0; tick < 40; tick++)
+            {
+                Step(Vector2.right, false, 1);
+                var ceilingAim = new Ray(_motor.transform.position, _heading);
+                gun.Simulate(playerStep, true, false, true, ceilingAim, _motor.Up, null, TemporalMode.BulletTime, fireHeld: true);
+            }
+
+            Assert.That(_motor.Up, Is.EqualTo(Vector3.down));
+            Assert.That(_motor.Surface?.name, Is.EqualTo("Ceiling"));
+            Assert.That(Vector3.Distance(_motor.transform.position, origin), Is.GreaterThan(1f));
+            Assert.That(gun.ChargeProgress, Is.EqualTo(40f / 84f).Within(0.0001f));
+            Assert.That(gun.Magazine, Is.EqualTo(4));
         }
 
         private void AttachNorthWall()

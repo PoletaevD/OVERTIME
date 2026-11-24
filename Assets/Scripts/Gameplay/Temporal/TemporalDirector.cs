@@ -50,6 +50,7 @@ namespace Overtime
         private bool _pendingJump;
         private bool _pendingFire;
         private bool _pendingReload;
+        private WeaponSlotInput _pendingWeapon;
         private bool _pendingRecharge;
         private bool _playerChangedBetweenSteps;
         private bool _restartRequested;
@@ -125,7 +126,7 @@ namespace Overtime
 
             if (player.Combat != null)
             {
-                var pool = new GameObject("ARC-01 Projectile Pool");
+                var pool = new GameObject("Player Projectile Pool");
                 pool.transform.SetParent(transform, false);
                 _playerProjectiles = pool.AddComponent<TemporalProjectileEmitter>();
                 _playerProjectiles.ConfigurePlayerPool(this, player.Combat.Weapon.ProjectileCapacity, Resources.Load<Material>("ARC-01 Bolt"));
@@ -194,6 +195,10 @@ namespace Overtime
                 _pendingJump |= input.JumpPressed;
                 _pendingFire |= CanAffectWorld && input.FirePressed;
                 _pendingReload |= input.ReloadPressed;
+                if (input.WeaponSelection != WeaponSlotInput.None && Mode != TemporalMode.Override)
+                {
+                    _pendingWeapon = input.WeaponSelection;
+                }
                 _pendingRecharge |= CanAffectWorld && input.RechargePressed;
             }
 
@@ -539,7 +544,7 @@ namespace Overtime
                     {
                         if (_player.Combat?.Alive != false)
                         {
-                            _progression?.PlayerEffects.Simulate(Step);
+                            _progression?.PlayerEffects.Simulate(Step, Mode != TemporalMode.Override);
                             _player.Simulate(input.Move, look, _pendingJump, input.JumpHeld && !_blockJumpHold, Step);
                             SimulatePlayerCombat(input.FireHeld);
                         }
@@ -547,6 +552,7 @@ namespace Overtime
                         _pendingJump = false;
                         _pendingFire = false;
                         _pendingReload = false;
+                        _pendingWeapon = WeaponSlotInput.None;
                         _pendingRecharge = false;
                         _playerFrames[PlayerTimeline.RecordNext()] = _player.Capture();
                         _playerChangedBetweenSteps = false;
@@ -582,7 +588,7 @@ namespace Overtime
                 }
 
                 var generation = _playerProjectiles.Generation;
-                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, _player.AimUp, _playerProjectiles, Mode);
+                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, _player.AimUp, _playerProjectiles, Mode, _pendingWeapon, fireHeld);
                 _worldChangedBetweenSteps |= generation != _playerProjectiles.Generation;
                 return;
             }
@@ -595,7 +601,7 @@ namespace Overtime
             }
         }
 
-        internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, int amount, out bool weakPoint)
+        internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, float amount, out bool weakPoint)
         {
             weakPoint = false;
             if (!CanDamageWorld)
@@ -818,6 +824,7 @@ namespace Overtime
             _pendingJump = false;
             _pendingFire = false;
             _pendingReload = false;
+            _pendingWeapon = WeaponSlotInput.None;
             _pendingRecharge = false;
         }
     }
@@ -891,13 +898,14 @@ namespace Overtime
         internal bool FireHeld { get; }
         internal bool ReloadPressed { get; }
         internal bool RechargePressed { get; }
+        internal WeaponSlotInput WeaponSelection { get; }
         internal TemporalSelection Selection { get; }
         internal bool DebugReset { get; }
         internal bool Focused => !_unfocused;
 
         private readonly bool _unfocused;
 
-        internal TemporalInput(Vector2 move, Vector2 look, bool jumpPressed, bool jumpHeld, bool firePressed, TemporalSelection selection, bool debugReset = false, bool focused = true, bool fireHeld = false, bool reloadPressed = false, bool rechargePressed = false)
+        internal TemporalInput(Vector2 move, Vector2 look, bool jumpPressed, bool jumpHeld, bool firePressed, TemporalSelection selection, bool debugReset = false, bool focused = true, bool fireHeld = false, bool reloadPressed = false, bool rechargePressed = false, WeaponSlotInput weaponSelection = WeaponSlotInput.None)
         {
             Move = move;
             Look = look;
@@ -907,6 +915,7 @@ namespace Overtime
             FireHeld = fireHeld;
             ReloadPressed = reloadPressed;
             RechargePressed = rechargePressed;
+            WeaponSelection = weaponSelection;
             Selection = selection;
             DebugReset = debugReset;
             _unfocused = !focused;

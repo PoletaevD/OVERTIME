@@ -14,6 +14,13 @@ namespace Overtime
         private AudioClip _shield;
         private AudioClip _charge;
         private AudioClip _feed;
+        private AudioClip _swap;
+        private AudioClip _ricochet;
+        private AudioClip _pierce;
+        private AudioSource _handling;
+        private Vector3 _lastImpactPoint;
+        private float _lastImpactTime = -1f;
+        private bool _lastImpactShielded;
         private AudioSource _weapon;
         private AudioSource[] _voices;
         private GameObject _voicePool;
@@ -22,6 +29,7 @@ namespace Overtime
         private void Awake()
         {
             _weapon = gameObject.AddComponent<AudioSource>();
+            _handling = gameObject.AddComponent<AudioSource>();
             _voices = new AudioSource[6];
             _voicePool = new GameObject("Combat Audio Pool");
             _voicePool.transform.SetParent(_director.transform, false);
@@ -43,12 +51,16 @@ namespace Overtime
             _shield = BuildClip("Shield Deflection", 0.19f, 620f, 395f, 0.03f, 3.2f);
             _charge = BuildClip("Auditor Charge", 0.55f, 170f, 510f, 0.01f, 1.3f);
             _feed = BuildClip("Magnetic Feed", 0.10f, 840f, 1250f, 0.04f, 2.5f);
+            _swap = BuildClip("Loadout Exchange", 0.19f, 210f, 480f, 0.61f, 3.1f);
+            _ricochet = BuildClip("Bolt Ricochet", 0.14f, 1570f, 850f, 0.11f, 2.8f);
+            _pierce = BuildClip("Piercing Impact", 0.12f, 319f, 121f, 0.6f, 3.6f);
         }
 
         private void OnEnable()
         {
             _player.Combat.Weapon.ShotFired += OnShot;
             _player.Combat.Weapon.AutoFed += OnFeed;
+            _player.Combat.Weapon.SwitchStarted += OnSwitch;
             _director.ProjectileHit += OnImpact;
             _director.AuditorCharging += OnCharge;
         }
@@ -57,6 +69,8 @@ namespace Overtime
         {
             _player.Combat.Weapon.ShotFired -= OnShot;
             _player.Combat.Weapon.AutoFed -= OnFeed;
+            _player.Combat.Weapon.SwitchStarted -= OnSwitch;
+            _handling.Stop();
             _director.ProjectileHit -= OnImpact;
             _director.AuditorCharging -= OnCharge;
         }
@@ -68,12 +82,50 @@ namespace Overtime
             Destroy(_shield);
             Destroy(_charge);
             Destroy(_feed);
+            Destroy(_swap);
+            Destroy(_ricochet);
+            Destroy(_pierce);
             Destroy(_voicePool);
         }
 
         private void OnShot()
         {
-            _weapon.PlayOneShot(_shot, 0.31f);
+            var gun = _player.Combat.Weapon;
+            var gain = gun.ActiveType == WeaponType.Scatter ? 0.59f : gun.ActiveType == WeaponType.Charged ? 0.52f : 0.31f;
+            _weapon.PlayOneShot(gun.ActiveDefinition?.Shot ?? _shot, gain);
+        }
+
+        private void OnSwitch()
+        {
+            _weapon.PlayOneShot(_swap, 0.29f);
+        }
+
+        private void LateUpdate()
+        {
+            var gun = _player.Combat.Weapon;
+            var definition = gun.ActiveDefinition;
+            var recharge = gun.IsReloading;
+            var progress = recharge ? gun.ReloadProgress : gun.ChargeProgress;
+            var clip = recharge ? definition?.Reload : gun.IsCharging ? definition?.Charge : null;
+            if (clip == null || _director.IsRewinding || _director.RewardSelection || !_director.HasLivingPlayer || progress >= 0.998f)
+            {
+                if (_handling.isPlaying)
+                {
+                    _handling.Stop();
+                }
+
+                return;
+            }
+
+            var duration = recharge ? gun.State(gun.ActiveSlot).ReloadDuration : gun.ChargeSeconds(gun.ActiveSlot, _director.Mode);
+            _handling.pitch = clip.length / Mathf.Max(0.05f, duration);
+            if (_handling.clip != clip || !_handling.isPlaying || Mathf.Abs(_handling.time - progress * clip.length) > 0.09f)
+            {
+                _handling.clip = clip;
+                _handling.time = progress * clip.length;
+                _handling.volume = recharge ? 0.54f : 0.38f;
+                _handling.Play();
+            }
         }
 
         private void OnFeed()
@@ -83,7 +135,21 @@ namespace Overtime
 
         private void OnImpact(ProjectileImpact impact)
         {
-            PlayAt(impact.Shielded ? _shield : _impact, impact.Point, impact.Shielded ? 0.50f : 0.27f);
+            var now = Time.unscaledTime;
+            if (impact.FromPlayer && !impact.Ricochet && !impact.Piercing && now - _lastImpactTime < 0.055f && impact.Shielded == _lastImpactShielded && (impact.Point - _lastImpactPoint).sqrMagnitude < 0.8f)
+            {
+                return;
+            }
+
+            if (impact.FromPlayer)
+            {
+                _lastImpactTime = now;
+                _lastImpactPoint = impact.Point;
+                _lastImpactShielded = impact.Shielded;
+            }
+
+            var clip = impact.Shielded ? _shield : impact.Ricochet ? _ricochet : impact.Piercing ? _pierce : _impact;
+            PlayAt(clip, impact.Point, impact.Shielded ? 0.50f : 0.27f);
         }
 
         private void OnCharge(Vector3 position)

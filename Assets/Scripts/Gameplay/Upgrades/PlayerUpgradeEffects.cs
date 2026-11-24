@@ -8,6 +8,7 @@ namespace Overtime
         private readonly GravityMotor _motor;
         private readonly CombatWeapon _weapon;
         private Snapshot _state;
+        private bool _canFeed = true;
 
         internal PlayerUpgradeEffects(RunUpgradeState build, GravityMotor motor, CombatWeapon weapon)
         {
@@ -18,23 +19,37 @@ namespace Overtime
         }
 
         internal Snapshot State => _state;
-        internal bool Charged => _state.Kinetic > 0f || _state.SecondDraft > 0f;
+        internal bool Charged => _state.Kinetic > 0f || _state.SecondDraft > 0f || _state.Exchange > 0f;
         internal float IncomingDamageMultiplier => Protection(_state.QualityAssurance, UpgradeId.QualityAssurance) * Protection(_state.SafeReturn, UpgradeId.SafeReturn);
 
         internal float ModifyShotDamage(float damage)
         {
             var freefall = _motor.Grounded ? 1f : 1f + _build.Bonus(UpgradeId.Freefall);
-            return damage * freefall * Boost(_state.Kinetic, UpgradeId.KineticCharge) * Boost(_state.SecondDraft, UpgradeId.SecondDraft) * Boost(_state.ExploitWindow, UpgradeId.ExploitWindow);
+            var vertical = _motor.Magnetic && _motor.Grounded && Vector3.Dot(_motor.Up, Vector3.up) < 0.5f ? 1f + _build.Bonus(UpgradeId.VerticalAdvantage) : 1f;
+            return damage * Boost(_state.Kinetic, UpgradeId.KineticCharge) * Boost(_state.SecondDraft, UpgradeId.SecondDraft) * Boost(_state.ExploitWindow, UpgradeId.ExploitWindow) * Boost(_state.Exchange, UpgradeId.TacticalExchange) * freefall * vertical;
         }
 
         internal void ConfirmShot()
         {
             _state.Kinetic = 0f;
             _state.SecondDraft = 0f;
+            _state.Exchange = 0f;
         }
 
-        internal void Simulate(float step)
+        internal void CompleteSwitch()
         {
+            if (_state.ExchangeCooldown <= 0f && _build.Definition(UpgradeId.TacticalExchange) is { } exchange)
+            {
+                _state.Exchange = exchange.Seconds;
+                _state.ExchangeCooldown = exchange.Limit;
+            }
+        }
+
+        internal void Simulate(float step, bool canFeed = true)
+        {
+            _canFeed = canFeed;
+            _state.Exchange = Mathf.Max(0f, _state.Exchange - step);
+            _state.ExchangeCooldown = Mathf.Max(0f, _state.ExchangeCooldown - step);
             _state.Kinetic = Mathf.Max(0f, _state.Kinetic - step);
             _state.AutoFeed = Mathf.Max(0f, _state.AutoFeed - step);
             _state.SecondDraft = Mathf.Max(0f, _state.SecondDraft - step);
@@ -76,7 +91,7 @@ namespace Overtime
         {
             _state.Kinetic = Duration(UpgradeId.KineticCharge);
             var feed = _build.Definition(UpgradeId.AutoFeed);
-            if (_motor.Magnetic && feed != null && _state.AutoFeed <= 0f && _weapon.TryAutoFeed(Mathf.RoundToInt(_build.Bonus(UpgradeId.AutoFeed))))
+            if (_canFeed && _motor.Magnetic && feed != null && _state.AutoFeed <= 0f && _weapon.TryAutoFeed(Mathf.RoundToInt(_build.Bonus(UpgradeId.AutoFeed))))
             {
                 _state.AutoFeed = feed.Seconds;
             }
@@ -105,6 +120,8 @@ namespace Overtime
             internal float QualityAssurance;
             internal float ExploitWindow;
             internal float SafeReturn;
+            internal float Exchange;
+            internal float ExchangeCooldown;
         }
     }
 }

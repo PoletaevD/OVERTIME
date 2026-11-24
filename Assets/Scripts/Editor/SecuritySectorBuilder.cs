@@ -89,6 +89,101 @@ namespace Overtime.Editor
             }
         }
 
+        [MenuItem("OVERTIME/Install Security Sector Weapon Loadout")]
+        public static void InstallWeaponLoadout()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                throw new InvalidOperationException("Exit Play Mode before installing the loadout.");
+            }
+
+            var scene = SceneManager.GetSceneByPath(ScenePath);
+            var wasLoaded = scene.isLoaded;
+            if (wasLoaded && scene.isDirty)
+            {
+                throw new InvalidOperationException("Save the Security Sector scene before installing the loadout.");
+            }
+
+            if (!wasLoaded)
+            {
+                scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive);
+            }
+
+            try
+            {
+                SectorRoute route = null;
+                PlaygroundPlayer player = null;
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    route ??= root.GetComponentInChildren<SectorRoute>();
+                    player ??= root.GetComponentInChildren<PlaygroundPlayer>();
+                }
+
+                if (route == null || player == null)
+                {
+                    throw new InvalidOperationException("The Security Sector scene requires a route and a player.");
+                }
+
+                var movement = player.GetComponentInChildren<PlaygroundHud>();
+                if (route.GetComponent<RunProgression>() == null)
+                {
+                    AddRunProtocols(route, player, movement);
+                }
+
+                AddWeaponLoadout(route, player, movement);
+                EditorSceneManager.MarkSceneDirty(scene);
+                if (!EditorSceneManager.SaveScene(scene))
+                {
+                    throw new InvalidOperationException($"Failed to save {ScenePath}.");
+                }
+            }
+            finally
+            {
+                if (!wasLoaded)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+
+        private static void AddWeaponLoadout(SectorRoute route, PlaygroundPlayer player, PlaygroundHud movement)
+        {
+            var definitions = new WeaponAssets().LoadOrCreate();
+            var catalog = new RunUpgradeAssets().LoadOrCreate();
+            PlaygroundSceneBuilder.Wire(route.GetComponent<RunProgression>(), "_catalog", catalog);
+            var options = new[] { definitions[1], definitions[2] };
+            PlaygroundSceneBuilder.Wire(route, "_secondaryOptions", options);
+            var weapon = player.Combat.Weapon;
+            PlaygroundSceneBuilder.Wire(weapon, "_primary", definitions[0]);
+            var data = new SerializedObject(weapon);
+            data.FindProperty("_projectileCapacity").intValue = 64;
+            data.ApplyModifiedPropertiesWithoutUndo();
+
+            if (movement.GetComponent<WeaponSelectionHud>() != null)
+            {
+                return;
+            }
+
+            var presentation = player.GetComponentInChildren<WeaponPresentation>();
+            var pivot = presentation.transform.Find("Movement Pivot/Sway Pivot/Recoil Pivot");
+            var viewmodels = new WeaponViewmodel[options.Length];
+            for (var index = 0; index < options.Length; index++)
+            {
+                var view = (GameObject)PrefabUtility.InstantiatePrefab(options[index].Viewmodel, pivot);
+                viewmodels[index] = view.GetComponent<WeaponViewmodel>();
+                view.SetActive(false);
+            }
+
+            PlaygroundSceneBuilder.Wire(presentation, "_alternatives", viewmodels);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(presentation);
+            var hud = new PlaygroundHudBuilder(PlaygroundSceneBuilder.TMPAsset());
+            hud.ExtendRunInspection(movement);
+            hud.BuildWeaponHud(movement, route, route.GetComponent<TemporalDirector>(), options);
+            var bindings = movement.transform.Find("Controls/Bindings").GetComponent<TMPro.TMP_Text>();
+            bindings.text = bindings.text.Replace("R  RELOAD   F5  RETRY SECTOR", "R  RELOAD   1 / 2 / WHEEL  SWAP");
+            PrefabUtility.RecordPrefabInstancePropertyModifications(bindings);
+        }
+
         private static void AddRunProtocols(SectorRoute route, PlaygroundPlayer player, PlaygroundHud movement)
         {
             var catalog = new RunUpgradeAssets().LoadOrCreate();
@@ -169,6 +264,7 @@ namespace Overtime.Editor
             hud.BuildSector(movement, combatHud, player, director, route, player.GetComponentInChildren<Camera>());
             chamber.BuildTemporalEffects(director, rig, pulse);
             AddRunProtocols(route, player, movement);
+            AddWeaponLoadout(route, player, movement);
         }
 
         private EncounterController BuildRoom(string number, string title, float start, float length, float width, float height, Material accent, TemporalDirector director, TemporalProjectileEmitter pool)

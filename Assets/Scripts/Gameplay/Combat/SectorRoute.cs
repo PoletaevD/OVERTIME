@@ -8,12 +8,16 @@ namespace Overtime
         [SerializeField] private EncounterController[] _rooms;
         [SerializeField] private TemporalProjectileEmitter _enemyProjectiles;
         [SerializeField] private RunProgression _progression;
+        [SerializeField] private WeaponDefinition[] _secondaryOptions;
 
         private TemporalDirector _director;
         private PlaygroundPlayer _player;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private int _debugReward;
 #endif
+
+        internal bool SelectingSecondary { get; private set; }
+        internal WeaponDefinition[] SecondaryOptions => _secondaryOptions;
 
         internal int RoomIndex { get; private set; }
         internal RunProgression Progression => _progression;
@@ -67,7 +71,32 @@ namespace Overtime
         {
             _director = director;
             _player = player;
-            OpenReward(0);
+            if (_secondaryOptions is { Length: > 0 })
+            {
+                SelectingSecondary = true;
+                director.SetRewardSelection(true);
+            }
+            else
+            {
+                OpenReward(0);
+            }
+        }
+
+        internal bool ConfirmSecondary(int choice)
+        {
+            if (!SelectingSecondary || choice < 0 || choice >= _secondaryOptions.Length || !_player.Combat.Weapon.EquipSecondary(_secondaryOptions[choice]))
+            {
+                return false;
+            }
+
+            SelectingSecondary = false;
+            _director.SealHistory();
+            if (!OpenReward(0))
+            {
+                _director.SetRewardSelection(false);
+            }
+
+            return true;
         }
 
         internal bool OpenRoomReward()
@@ -77,7 +106,7 @@ namespace Overtime
 
         internal bool ConfirmUpgrade(int card)
         {
-            if (!_director.RewardSelection || !_progression.Confirm(card))
+            if (SelectingSecondary || !_director.RewardSelection || !_progression.Confirm(card))
             {
                 return false;
             }

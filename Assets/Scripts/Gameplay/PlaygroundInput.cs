@@ -13,6 +13,10 @@ namespace Overtime
         private InputAction _jump;
         private InputAction _attack;
         private InputAction _reload;
+        private InputAction _primaryWeapon;
+        private InputAction _secondaryWeapon;
+        private InputAction _swapWeapon;
+        private WeaponSlotInput _weaponSelection;
         private InputAction _combatRestart;
         private InputAction _rechargeChrono;
         private InputAction _rewind;
@@ -43,6 +47,7 @@ namespace Overtime
         internal bool FirePressed { get; private set; }
         internal bool FireHeld => _captured && !_blockFireHold && _attack.IsPressed();
         internal bool ResetPressed => _focused && (_combatBindings ? _restartRequested : Keyboard.current?.rKey.wasPressedThisFrame == true);
+        internal WeaponSlotInput WeaponSelection => _captured && !_rewardSelection ? _weaponSelection : WeaponSlotInput.None;
         internal bool ReloadPressed => _captured && _reloadRequested;
         internal bool RechargePressed => _captured && _rechargeRequested;
         internal bool DebugPressed => _focused && Keyboard.current?.f3Key.wasPressedThisFrame == true;
@@ -58,6 +63,9 @@ namespace Overtime
             _jump = map.FindAction("Jump", true);
             _attack = map.FindAction("Attack", true);
             _reload = map.FindAction("Reload", true);
+            _primaryWeapon = map.FindAction("PrimaryWeapon", true);
+            _secondaryWeapon = map.FindAction("SecondaryWeapon", true);
+            _swapWeapon = map.FindAction("SwapWeapon", true);
             _combatRestart = map.FindAction("CombatRestart", true);
             _rechargeChrono = map.FindAction("RechargeChrono", true);
             _playerActions = map;
@@ -135,6 +143,7 @@ namespace Overtime
             _captureRequested = false;
             _fireRequested = false;
             _reloadRequested = false;
+            _weaponSelection = WeaponSlotInput.None;
             _restartRequested = false;
             _rechargeRequested = false;
         }
@@ -154,14 +163,26 @@ namespace Overtime
             }
 
             var action = context.action;
-            if (_combatBindings && context.performed)
+            if (_combatBindings && context.performed && action == _combatRestart)
+            {
+                _restartRequested = true;
+            }
+
+            if (_combatBindings && context.performed && !_rewardSelection)
             {
                 var attack = action == _attack;
                 _captureRequested |= attack && context.control.device is Mouse;
                 _fireRequested |= attack;
                 _reloadRequested |= action == _reload;
-                _restartRequested |= action == _combatRestart;
                 _rechargeRequested |= action == _rechargeChrono;
+                if (action == _primaryWeapon || action == _secondaryWeapon)
+                {
+                    _weaponSelection = action == _primaryWeapon ? WeaponSlotInput.Primary : WeaponSlotInput.Secondary;
+                }
+                else if (action == _swapWeapon && Mathf.Abs(context.ReadValue<float>()) > 0.01f)
+                {
+                    _weaponSelection = WeaponSlotInput.Toggle;
+                }
             }
 
             var mode = action == _rewind ? TemporalMode.Reset : action == _override ? TemporalMode.Override : action == _recall ? TemporalMode.Recall : action == _bulletTime ? TemporalMode.BulletTime : TemporalMode.Normal;

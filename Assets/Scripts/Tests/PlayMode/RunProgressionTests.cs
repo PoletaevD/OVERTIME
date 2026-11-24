@@ -36,6 +36,15 @@ namespace Overtime.Tests
                 InputSystem.QueueStateEvent(keyboard.Device, new KeyboardState(Key.Digit2, Key.C));
                 yield return null;
                 yield return null;
+                Assert.That(_route.SelectingSecondary, Is.False);
+                Assert.That(_director.RewardSelection, Is.True);
+                Assert.That(priorRun.Revision, Is.Zero);
+                Assert.That(_player.Combat.Weapon.Definition(1).Id, Is.EqualTo(WeaponId.Deadline));
+                InputSystem.QueueStateEvent(keyboard.Device, new KeyboardState());
+                yield return null;
+                InputSystem.QueueStateEvent(keyboard.Device, new KeyboardState(Key.Digit2));
+                yield return null;
+                yield return null;
             }
 
             Assert.That(_director.RewardSelection, Is.False);
@@ -56,7 +65,9 @@ namespace Overtime.Tests
             Assert.That(_progression.PlayerEffects.State.Kinetic, Is.Zero);
             Assert.That(_director.Energy.Current, Is.EqualTo(100f));
             Assert.That(_director.RewardSelection, Is.True);
-            Assert.That(_progression.Selection.Count, Is.EqualTo(3));
+            Assert.That(_route.SelectingSecondary, Is.True);
+            Assert.That(_player.Combat.Weapon.HasSecondary, Is.False);
+            Assert.That(_progression.Selection.Count, Is.Zero);
             ConfirmStart();
             _director.Energy.Spend(60d);
             var before = _director.Energy.Current;
@@ -304,6 +315,7 @@ namespace Overtime.Tests
 
         private void ConfirmStart()
         {
+            Assert.That(_route.ConfirmSecondary(0), Is.True);
             Assert.That(_route.ConfirmUpgrade(0), Is.True);
         }
 

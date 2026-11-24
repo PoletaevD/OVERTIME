@@ -76,11 +76,10 @@ namespace Overtime
                     break;
                 case EncounterState.Active when director.HasLivingPlayer && LivingEnemies == 0:
                     State = EncounterState.RewardSelection;
+                    player.Combat.Weapon.ReplenishRoom(_reserveReward);
                     director.SealHistory();
-                    player.Combat.Weapon.AddReserve(_reserveReward);
                     if (!route.OpenRoomReward())
                     {
-                        director.SealHistory();
                         UnlockExit(player);
                     }
                     break;

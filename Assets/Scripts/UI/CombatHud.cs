@@ -20,6 +20,9 @@ namespace Overtime
         [SerializeField] private TMP_Text _ammoLabel;
         [SerializeField] private TMP_Text _reloadLabel;
         [SerializeField] private Image _reloadFill;
+        [SerializeField] private Image _weaponIcon;
+        [SerializeField] private TMP_Text _stowedLabel;
+        [SerializeField] private TMP_Text _actionLabel;
         [SerializeField] private TMP_Text _energyLabel;
         [SerializeField] private TMP_Text _costLabel;
         [SerializeField] private Image _energyFill;
@@ -47,6 +50,18 @@ namespace Overtime
         private Tween _energyPulse;
         private Tween _hitPulse;
         private Tween _stationTween;
+        private Tween _weaponPulse;
+        private int _slot = -1;
+        private WeaponDefinition _activeDefinition;
+        private WeaponDefinition _stowedDefinition;
+        private int _stowedMagazine = -1;
+        private int _stowedReserve = -1;
+        private string _weaponAction;
+        private float _hitWindow;
+        private int _groupedDamage;
+        private bool _groupedKill;
+        private bool _groupedWeak;
+        private bool _groupedShield;
         private Tween _deathTween;
         private CanvasGroup _stationGroup;
         private Color _healthColor;
@@ -69,6 +84,10 @@ namespace Overtime
             _energyPulse = BuildPulse(0.42f, value => _energyFill.color = Color.Lerp(s_chrono, Color.white, value));
             _hitPulse = BuildPulse(0.22f, PresentHitPulse);
             _restart.onClick.AddListener(_director.RequestRestart);
+            if (_weaponIcon != null)
+            {
+                _weaponPulse = _weaponIcon.rectTransform.DOScale(1f, 0.20f).From(0.84f, false).SetAutoKill(false).SetUpdate(true).Pause();
+            }
             if (_damageDirection != null)
             {
                 _directionPulse = BuildPulse(0.55f, value => _damageDirection.alpha = value * 0.85f);
@@ -83,6 +102,7 @@ namespace Overtime
         private void OnEnable()
         {
             _director.ProjectileHit += OnImpact;
+            _player.Combat.Weapon.SwitchStarted += OnSwitch;
             _player.Combat.Health.Damaged += OnDamage;
             _director.ModeChanged += OnModeChanged;
             _director.DirectionalDamage += OnDirectionalDamage;
@@ -91,6 +111,7 @@ namespace Overtime
         private void OnDisable()
         {
             _director.ProjectileHit -= OnImpact;
+            _player.Combat.Weapon.SwitchStarted -= OnSwitch;
             _player.Combat.Health.Damaged -= OnDamage;
             _director.ModeChanged -= OnModeChanged;
             _director.DirectionalDamage -= OnDirectionalDamage;
@@ -106,6 +127,7 @@ namespace Overtime
             _energyPulse.Kill();
             _hitPulse.Kill();
             _stationTween?.Kill();
+            _weaponPulse?.Kill();
             _deathTween?.Kill();
             _directionPulse?.Kill();
             _remainingPulse?.Kill();
@@ -229,8 +251,61 @@ namespace Overtime
                 _reserve = weapon.Reserve;
             }
 
-            _reloadLabel.SetText(weapon.IsReloading ? "RELOADING" : weapon.Magazine == 0 ? (weapon.Reserve > 0 ? "R  /  RELOAD" : "NO AMMUNITION") : "ARC-01  /  AUTO");
-            SetFill(_reloadFill, weapon.ReloadProgress);
+            var action = weapon.IsSwitching ? "EXCHANGING" : weapon.IsReloading ? "RELOADING" : weapon.IsCharging ? "CHARGING" : weapon.Magazine == 0 ? (weapon.Reserve > 0 ? "R  /  RELOAD" : "NO AMMUNITION") : string.Empty;
+            if (_actionLabel == null)
+            {
+                _reloadLabel.SetText(action.Length == 0 ? weapon.ActiveName : action);
+            }
+            else
+            {
+                RefreshLoadout(weapon, action);
+            }
+
+            _reloadFill.color = weapon.IsCharging ? s_chrono : s_weak;
+            SetFill(_reloadFill, weapon.IsSwitching ? weapon.SwitchProgress : weapon.IsCharging ? weapon.ChargeProgress : weapon.ReloadProgress);
+        }
+
+        private void OnSwitch()
+        {
+            if (!_player.ReducedMotion)
+            {
+                _weaponPulse?.Restart();
+            }
+        }
+
+        private void RefreshLoadout(CombatWeapon weapon, string action)
+        {
+            if (_activeDefinition != weapon.ActiveDefinition || _slot != weapon.ActiveSlot)
+            {
+                _activeDefinition = weapon.ActiveDefinition;
+                _slot = weapon.ActiveSlot;
+                _weaponIcon.sprite = _activeDefinition?.Icon;
+                _weaponIcon.enabled = _weaponIcon.sprite != null;
+                _reloadLabel.SetText(weapon.ActiveName);
+            }
+
+            if (_weaponAction != action)
+            {
+                _weaponAction = action;
+                _actionLabel.SetText(action);
+            }
+
+            _stowedLabel.gameObject.SetActive(weapon.HasSecondary);
+            if (!weapon.HasSecondary)
+            {
+                return;
+            }
+
+            var stowedSlot = 1 - _slot;
+            var stowed = weapon.State(stowedSlot);
+            var definition = weapon.Definition(stowedSlot);
+            if (_stowedMagazine != stowed.Magazine || _stowedReserve != stowed.Reserve || _stowedDefinition != definition)
+            {
+                _stowedMagazine = stowed.Magazine;
+                _stowedReserve = stowed.Reserve;
+                _stowedDefinition = definition;
+                _stowedLabel.SetText($"[{stowedSlot + 1}]   {weapon.Name(stowedSlot)}   {stowed.Magazine:00} / {stowed.Reserve:000}");
+            }
         }
 
         private void RefreshEnergy()
@@ -320,18 +395,35 @@ namespace Overtime
                 return;
             }
 
-            _hitMarker.color = shot.Shielded ? new Color(0.48f, 0.70f, 1f) : shot.Damage.Killed ? s_damage : shot.WeakPoint ? s_weak : s_text;
+            var fresh = Time.unscaledTime >= _hitWindow;
+            if (fresh)
+            {
+                _hitWindow = Time.unscaledTime + 0.075f;
+                _groupedDamage = 0;
+                _groupedKill = _groupedWeak = _groupedShield = false;
+            }
+
+            _groupedDamage += shot.Damage.Amount;
+            _groupedKill |= shot.Damage.Killed;
+            _groupedWeak |= shot.WeakPoint;
+            _groupedShield |= shot.Shielded;
+            var blocked = _groupedDamage == 0 && _groupedShield;
+            _hitMarker.color = blocked ? new Color(0.48f, 0.70f, 1f) : _groupedKill ? s_damage : _groupedWeak ? s_weak : s_text;
             _hitLabel.color = _hitMarker.color;
-            _hitMarker.SetText(shot.Shielded ? "[]" : shot.Damage.Killed ? "X" : shot.WeakPoint ? "<>" : "+");
-            _hitLabel.SetText(shot.Shielded ? "SHIELD BLOCK" : shot.Damage.Killed ? "TARGET DESTROYED" : shot.WeakPoint ? "WEAK POINT  {0:0}" : "{0:0}", shot.Damage.Amount);
-            PresentHitPulse(1f);
-            _hitPulse.Restart();
+            _hitMarker.SetText(blocked ? "[]" : _groupedKill ? "X" : _groupedWeak ? "<>" : "+");
+            _hitLabel.SetText(blocked ? "SHIELD BLOCK" : _groupedKill ? "TARGET DESTROYED" : _groupedWeak ? "WEAK POINT  {0:0}" : "{0:0}", _groupedDamage);
+            if (fresh)
+            {
+                PresentHitPulse(1f);
+                _hitPulse.Restart();
+            }
         }
 
         private void OnModeChanged(TemporalMode mode)
         {
             if (!_director.CanDamageWorld)
             {
+                _hitWindow = 0f;
                 _hitPulse.Pause();
                 _hitGroup.alpha = 0f;
                 if (_damageDirection != null)
