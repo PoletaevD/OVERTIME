@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1c264121c4670764ebd04db9dbc9fce6, type: 3}
+  m_Name: Surveillance Center
+  m_EditorClassIdentifier: Overtime.Runtime::Overtime.RoomDefinition
+  _id: surveillance-center
+  _title: Surveillance Center
+  _description: Break line of sight between server banks. The perimeter stays open.
+  _prefab: {fileID: 2243092206214553016, guid: 37745a6b93f7f2048bc9ef63263b8781, type: 3}
+  _thumbnail: {fileID: 2800000, guid: 12f61efbbde59e5459acb699487ba072, type: 3}
+  _category: 1
+  _geometry: 9
+  _minDepth: 2
+  _maxDepth: 3
+  _difficulty: 2
+  _variants:
+  - _title: Data Watch
+    _difficulty: 2
+    _markers: 000000000100000002000000
+  - _title: Server Sweep
+    _difficulty: 3
+    _markers: 00000000010000000300000004000000
+  - _title: Restricted Access
+    _difficulty: 3
+    _markers: 01000000020000000500000006000000
+  _rewards: 0100000002000000

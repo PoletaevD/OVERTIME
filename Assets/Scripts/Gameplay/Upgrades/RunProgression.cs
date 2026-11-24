@@ -10,6 +10,10 @@ namespace Overtime
         [SerializeField] private int _seed;
         [SerializeField] private LayerMask _blastObstacles = 1;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private static int? s_nextDebugSeed;
+#endif
+
         private TemporalDirector _director;
         private PlayerUpgradeEffects _playerEffects;
 
@@ -25,6 +29,13 @@ namespace Overtime
         {
             _director = director;
             Seed = _useFixedSeed ? _seed : Guid.NewGuid().GetHashCode();
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+            if (s_nextDebugSeed.HasValue)
+            {
+                Seed = s_nextDebugSeed.Value;
+                s_nextDebugSeed = null;
+            }
+#endif
             Build = new RunUpgradeState();
             Selection = new UpgradeSelection(_catalog, Build, Seed);
             _playerEffects = new PlayerUpgradeEffects(Build, player.Motor, player.Combat.Weapon);
@@ -120,6 +131,12 @@ namespace Overtime
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+        internal void DebugRestartWithSeed(int seed)
+        {
+            s_nextDebugSeed = seed;
+            GetComponent<SectorRoute>().Restart();
+        }
+
         internal RunUpgradeDefinition[] DebugDefinitions => _catalog.Definitions;
 
         internal bool DebugGrant(RunUpgradeDefinition definition)

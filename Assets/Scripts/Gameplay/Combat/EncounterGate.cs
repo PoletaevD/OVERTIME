@@ -7,6 +7,7 @@ namespace Overtime
     {
         [SerializeField] private Collider _barrier;
         [SerializeField] private Transform _panel;
+        [SerializeField] private bool _waitForClearance;
         [SerializeField] private Vector3 _travel = new(0f, 3.5f, 0f);
 
         private Tween _slide;
@@ -21,7 +22,7 @@ namespace Overtime
                 _initialized = true;
             }
 
-            _barrier.enabled = !open;
+            _barrier.enabled = !open || (_waitForClearance && !reducedMotion);
             _slide?.Kill();
             var position = open ? _closed + _travel : _closed;
             if (reducedMotion)
@@ -31,6 +32,10 @@ namespace Overtime
             }
 
             _slide = _panel.DOLocalMove(position, 0.32f).SetUpdate(true).SetEase(Ease.OutCubic);
+            if (open && _waitForClearance)
+            {
+                _slide.OnComplete(() => _barrier.enabled = false);
+            }
         }
 
         private void OnDestroy()

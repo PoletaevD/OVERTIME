@@ -1,3 +1,5 @@
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -6,75 +8,101 @@ namespace Overtime
     internal sealed class SectorRoute : MonoBehaviour
     {
         [SerializeField] private EncounterController[] _rooms;
+        [SerializeField] private RoomDefinition[] _library;
+        [SerializeField] private RouteTransfer _transfer;
         [SerializeField] private TemporalProjectileEmitter _enemyProjectiles;
         [SerializeField] private RunProgression _progression;
         [SerializeField] private WeaponDefinition[] _secondaryOptions;
 
+        private readonly HashSet<int> _paidRooms = new();
+        private readonly RouteNode[] _visited = new RouteNode[RoutePlan.RoomCount];
         private TemporalDirector _director;
         private PlaygroundPlayer _player;
+        private RoomRuntime _activeRoom;
+        private RouteNode _next;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         private int _debugReward;
 #endif
 
         internal bool SelectingSecondary { get; private set; }
         internal WeaponDefinition[] SecondaryOptions => _secondaryOptions;
-
         internal int RoomIndex { get; private set; }
+        internal int RoomCount => Generated ? RoutePlan.RoomCount : _rooms.Length;
         internal RunProgression Progression => _progression;
-        internal EncounterController Current => _rooms[RoomIndex];
+        internal EncounterController Current => Generated ? _activeRoom.Encounter : _rooms[RoomIndex];
+        internal RoutePlan Plan { get; private set; }
+        internal RouteNode CurrentNode => _visited[RoomIndex];
+        internal IReadOnlyList<RouteNode> Visited => _visited;
+        internal bool Generated => _library is { Length: > 0 };
+        internal bool SelectingRoute => Generated && Current.State == EncounterState.RouteSelection;
+        internal bool Transferring { get; private set; }
+        internal IReadOnlyList<RouteNode> RouteOptions => Plan.At(RoomIndex + 1);
         internal int EnemiesDefeated { get; private set; }
         internal int PowersUsed { get; private set; }
         internal double Elapsed { get; private set; }
         internal bool Finished { get; private set; }
         internal TemporalProjectileEmitter EnemyProjectiles => _enemyProjectiles;
 
-        internal TemporalActor[] Prepare()
+        internal TemporalActor[] Prepare(TemporalDirector director, PlaygroundPlayer player)
         {
+            _director = director;
+            _player = player;
+            if (Generated)
+            {
+                Plan = new RouteGenerator(_progression.Seed, _library).Generate();
+                return PrepareRoom(Plan.At(0)[0]);
+            }
+
             foreach (var room in _rooms)
             {
                 room.Prepare();
             }
 
-            return RoomActors();
+            return FixedRoomActors();
         }
 
-        internal void Advance(double elapsed, TemporalDirector director, PlaygroundPlayer player)
+        internal void Advance(double elapsed)
         {
             Elapsed += elapsed;
-            var before = Current.State;
-            Current.Advance(director, player, this);
-            if (before == Current.State)
+            var room = Current;
+            var before = room.State;
+            room.Advance(_director, _player);
+            if (before == room.State)
             {
                 return;
             }
 
-            if (Current.State is EncounterState.Cleared or EncounterState.RewardSelection)
+            if (room.State == EncounterState.RewardSelection)
             {
-                EnemiesDefeated += Current.Enemies.Length;
+                ClearRoom(room);
             }
-            else if (Current.State == EncounterState.Completed)
+            else if (room.State == EncounterState.Completed)
             {
-                if (RoomIndex + 1 == _rooms.Length)
+                if (RoomIndex + 1 == RoomCount)
                 {
-                    director.SealHistory();
-                    Finished = true;
-                    player.SetGameOver(true);
+                    _director.SealHistory();
+                    CompleteSector();
                     return;
                 }
 
-                RoomIndex++;
-                director.ReplaceEncounter(RoomActors());
+                if (Generated)
+                {
+                    BeginTransfer(_next, RoomIndex + 1);
+                }
+                else
+                {
+                    RoomIndex++;
+                    _director.ReplaceEncounter(FixedRoomActors());
+                }
             }
         }
 
-        internal void StartRun(TemporalDirector director, PlaygroundPlayer player)
+        internal void StartRun()
         {
-            _director = director;
-            _player = player;
             if (_secondaryOptions is { Length: > 0 })
             {
                 SelectingSecondary = true;
-                director.SetRewardSelection(true);
+                _director.SetRewardSelection(true);
             }
             else
             {
@@ -99,14 +127,9 @@ namespace Overtime
             return true;
         }
 
-        internal bool OpenRoomReward()
-        {
-            return RoomIndex < _rooms.Length - 1 && OpenReward(RoomIndex + 1);
-        }
-
         internal bool ConfirmUpgrade(int card)
         {
-            if (SelectingSecondary || !_director.RewardSelection || !_progression.Confirm(card))
+            if (SelectingSecondary || SelectingRoute || !_director.RewardSelection || !_progression.Confirm(card))
             {
                 return false;
             }
@@ -114,16 +137,93 @@ namespace Overtime
             _director.SealHistory();
             if (Current.State == EncounterState.RewardSelection)
             {
-                Current.UnlockExit(_player);
+                ResolveReward();
+            }
+            else
+            {
+                _director.SetRewardSelection(false);
             }
 
+            return true;
+        }
+
+        internal bool ConfirmRoute(int choice)
+        {
+            if (!SelectingRoute || choice < 0 || choice >= RouteOptions.Count)
+            {
+                return false;
+            }
+
+            _next = RouteOptions[choice];
+            Current.UnlockExit(_player);
             _director.SetRewardSelection(false);
             return true;
         }
 
-        private bool OpenReward(int reward)
+        private void ClearRoom(EncounterController room)
         {
-            if (_progression == null || !_progression.Selection.Open(reward))
+            _director.SealHistory();
+            var id = Generated ? CurrentNode.Id : RoomIndex + 1;
+            var reward = Generated ? CurrentNode.Reward : RoomReward.None;
+            if (_paidRooms.Add(id))
+            {
+                EnemiesDefeated += room.Enemies.Length;
+                _player.Combat.Weapon.ReplenishRoom(room.ReserveReward);
+                GrantSupplies(reward);
+                _director.CommitPlayerBaseline();
+            }
+
+            if (Generated && RoomIndex + 1 == RoomCount)
+            {
+                room.Complete();
+                CompleteSector();
+                return;
+            }
+
+            if (RoomIndex + 1 == RoomCount || !OpenReward(id, reward == RoomReward.PriorityProtocol))
+            {
+                ResolveReward();
+            }
+        }
+
+        private void GrantSupplies(RoomReward reward)
+        {
+            switch (reward)
+            {
+                case RoomReward.MedicalSupplies:
+                    var health = _player.Combat.Health;
+                    health.Restore(health.Current + 25);
+                    break;
+                case RoomReward.ChronoCache:
+                    _director.Energy.AddEnergy(35f);
+                    break;
+                case RoomReward.AmmunitionCache:
+                    _player.Combat.Weapon.GrantAmmoCache();
+                    break;
+            }
+        }
+
+        private void ResolveReward()
+        {
+            if (Generated && RouteOptions.Count > 1)
+            {
+                Current.RequestRoute();
+                _director.SetRewardSelection(true);
+                return;
+            }
+
+            if (Generated)
+            {
+                _next = RouteOptions[0];
+            }
+
+            Current.UnlockExit(_player);
+            _director.SetRewardSelection(false);
+        }
+
+        private bool OpenReward(int reward, bool priority = false)
+        {
+            if (_progression == null || !_progression.Selection.Open(reward, priority))
             {
                 return false;
             }
@@ -132,16 +232,132 @@ namespace Overtime
             return true;
         }
 
+        private TemporalActor[] PrepareRoom(RouteNode node)
+        {
+            _activeRoom = Instantiate(node.Room.Prefab, transform.position, Quaternion.identity, transform);
+            _activeRoom.name = node.Room.Title;
+            _visited[RoomIndex] = node;
+            var actors = _activeRoom.Prepare(node, _director, _enemyProjectiles);
+            _player.PlaceAt(_activeRoom.Entry.position, _activeRoom.Entry.rotation);
+            return actors;
+        }
+
+        private void BeginTransfer(RouteNode destination, int roomIndex)
+        {
+            Transferring = true;
+            _director.SetTransfer(true);
+            StartCoroutine(Transfer(destination, roomIndex));
+        }
+
+        private IEnumerator Transfer(RouteNode destination, int roomIndex)
+        {
+            var reduced = _player.ReducedMotion;
+            _transfer.Fade(true, reduced);
+            yield return new WaitForSecondsRealtime(reduced ? 0.05f : RouteTransfer.CloseSeconds);
+
+            _director.DetachEncounter();
+            _activeRoom.gameObject.SetActive(false);
+            Destroy(_activeRoom.gameObject);
+            RoomIndex = roomIndex;
+            _next = null;
+            _director.AttachEncounter(PrepareRoom(destination));
+
+            _transfer.Fade(false, reduced);
+            if (reduced)
+            {
+                yield return null;
+            }
+            else
+            {
+                yield return new WaitForSecondsRealtime(RouteTransfer.OpenSeconds);
+            }
+
+            Transferring = false;
+            _director.SetTransfer(false);
+        }
+
+        private void CompleteSector()
+        {
+            Finished = true;
+            _player.SetGameOver(true);
+        }
+
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+        internal RoomDefinition[] DebugLibrary => _library;
+        internal bool RewardClaimed(int id) => _paidRooms.Contains(id);
+
         internal bool DebugOffer()
         {
-            if (!_director.HasLivingPlayer || Finished || _director.RewardSelection)
+            if (!_director.HasLivingPlayer || Finished || _director.RewardSelection || Transferring)
             {
                 return false;
             }
 
             _director.SealHistory();
             return OpenReward(--_debugReward);
+        }
+
+        internal bool DebugTravel(int libraryIndex, int variant)
+        {
+            if (!CanDebugTravel() || libraryIndex < 0 || libraryIndex >= _library.Length)
+            {
+                return false;
+            }
+
+            var room = _library[libraryIndex];
+            if (variant < 0 || variant >= room.Variants.Length)
+            {
+                return false;
+            }
+
+            BeginTransfer(new RouteNode(100 + libraryIndex, RoomIndex + 1, room, variant, RoomReward.None), RoomIndex);
+            return true;
+        }
+
+        internal bool DebugRestartRoom()
+        {
+            if (!CanDebugTravel())
+            {
+                return false;
+            }
+
+            BeginTransfer(CurrentNode, RoomIndex);
+            return true;
+        }
+
+        internal bool DebugClearRoom()
+        {
+            if (!CanDebugTravel() || Current.State != EncounterState.Active || _director.Mode != TemporalMode.Normal)
+            {
+                return false;
+            }
+
+            foreach (var enemy in Current.Enemies)
+            {
+                if (enemy.Health.Alive)
+                {
+                    _director.DamageTarget(enemy, enemy.Body, 1000f, out _);
+                }
+            }
+
+            _director.Advance(0d, default);
+            return true;
+        }
+
+        internal bool DebugNextRoom()
+        {
+            if (!CanDebugTravel() || RoomIndex + 1 >= RoomCount)
+            {
+                return false;
+            }
+
+            BeginTransfer(_next ?? RouteOptions[0], RoomIndex + 1);
+            return true;
+        }
+
+        private bool CanDebugTravel()
+        {
+            return Generated && !Transferring && !Finished && !_director.RewardSelection && _director.HasLivingPlayer;
         }
 #endif
 
@@ -158,7 +374,7 @@ namespace Overtime
             SceneManager.LoadScene(gameObject.scene.buildIndex);
         }
 
-        private TemporalActor[] RoomActors()
+        private TemporalActor[] FixedRoomActors()
         {
             var enemies = Current.Enemies;
             var actors = new TemporalActor[enemies.Length + 1];

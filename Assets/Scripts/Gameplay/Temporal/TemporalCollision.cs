@@ -8,6 +8,7 @@ namespace Overtime
         private readonly CapsuleCollider _player;
         private readonly Entry[] _entries;
 
+        internal int Count => _entries.Length;
         internal int OverlapCount { get; private set; }
         internal int PhasedCount { get; private set; }
 
@@ -54,6 +55,18 @@ namespace Overtime
                 if (!_player.isTrigger && _player.enabled && Physics.GetIgnoreCollision(_player, other) != entry.Phased)
                 {
                     Physics.IgnoreCollision(_player, other, entry.Phased);
+                }
+            }
+        }
+
+        internal void Release()
+        {
+            foreach (var entry in _entries)
+            {
+                var collider = entry.Collider;
+                if (collider != null && collider.enabled && collider.gameObject.activeInHierarchy && Physics.GetIgnoreCollision(_player, collider))
+                {
+                    Physics.IgnoreCollision(_player, collider, false);
                 }
             }
         }

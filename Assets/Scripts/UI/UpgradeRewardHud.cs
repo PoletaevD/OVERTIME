@@ -32,7 +32,7 @@ namespace Overtime
 
         private void Update()
         {
-            var showProtocols = _director.RewardSelection && !_route.SelectingSecondary;
+            var showProtocols = _director.RewardSelection && !_route.SelectingSecondary && !_route.SelectingRoute;
             if (showProtocols != _open)
             {
                 if (showProtocols)

@@ -40,7 +40,7 @@ namespace Overtime
             if (roomChanged)
             {
                 _roomIndex = _route.RoomIndex;
-                _roomNumber.SetText("ROOM {0:00}", _roomIndex + 1);
+                _roomNumber.SetText(_route.Generated ? $"ROOM {_roomIndex + 1:00} / {_route.RoomCount:00}" : $"ROOM {_roomIndex + 1:00}");
                 _roomTitle.SetText(room.RoomName.ToUpperInvariant());
             }
 
@@ -51,12 +51,17 @@ namespace Overtime
                 _exitArrow.gameObject.SetActive(_state == EncounterState.Cleared);
                 if (_state == EncounterState.Cleared)
                 {
-                    _status.SetText("CLEAR    /    +30 RESERVE");
+                    var reward = _route.CurrentNode?.Reward ?? RoomReward.None;
+                    _status.SetText(reward == RoomReward.None ? "CLEAR    /    +30 RESERVE" : $"CLEAR    /    {RouteCard.RewardText(reward)}");
                     Announce("CLEAR");
                 }
                 else if (_state == EncounterState.RewardSelection)
                 {
                     _status.SetText("CLEAR    /    PROTOCOL PENDING");
+                }
+                else if (_state == EncounterState.RouteSelection)
+                {
+                    _status.SetText("CLEAR    /    ASSIGNMENT PENDING");
                 }
                 else if (_state == EncounterState.Waiting)
                 {

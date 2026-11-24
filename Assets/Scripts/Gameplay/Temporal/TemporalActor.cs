@@ -28,6 +28,8 @@ namespace Overtime
     {
         private T[] _history;
 
+        internal int HistoryCapacity => _history?.Length ?? 0;
+
         internal override void Initialize(int capacity)
         {
             _history = new T[capacity];

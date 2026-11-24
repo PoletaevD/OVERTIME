@@ -8,7 +8,8 @@ namespace Overtime
         Active,
         Cleared,
         Completed,
-        RewardSelection
+        RewardSelection,
+        RouteSelection
     }
 
     internal sealed class EncounterController : MonoBehaviour
@@ -24,6 +25,25 @@ namespace Overtime
         internal Vector3 Exit => _gate.transform.position;
         internal EncounterState State { get; private set; }
         internal SecurityEnemy[] Enemies => _enemies;
+        internal int ReserveReward => _reserveReward;
+        internal BoxCollider CombatZone => _combatZone;
+        internal BoxCollider ExitZone => _exitZone;
+        internal EncounterGate Gate => _gate;
+
+        internal void AssignEnemies(SecurityEnemy[] enemies)
+        {
+            _enemies = enemies;
+        }
+
+        internal void RequestRoute()
+        {
+            State = EncounterState.RouteSelection;
+        }
+
+        internal void Complete()
+        {
+            State = EncounterState.Completed;
+        }
 
         internal int LivingEnemies
         {
@@ -59,7 +79,7 @@ namespace Overtime
             _gate.SetOpen(true, player.ReducedMotion);
         }
 
-        internal void Advance(TemporalDirector director, PlaygroundPlayer player, SectorRoute route)
+        internal void Advance(TemporalDirector director, PlaygroundPlayer player)
         {
             var capsule = player.Capsule;
             var position = capsule.transform.TransformPoint(capsule.center);
@@ -76,12 +96,6 @@ namespace Overtime
                     break;
                 case EncounterState.Active when director.HasLivingPlayer && LivingEnemies == 0:
                     State = EncounterState.RewardSelection;
-                    player.Combat.Weapon.ReplenishRoom(_reserveReward);
-                    director.SealHistory();
-                    if (!route.OpenRoomReward())
-                    {
-                        UnlockExit(player);
-                    }
                     break;
                 case EncounterState.Cleared when _exitZone.bounds.Contains(position):
                     _gate.SetOpen(false, player.ReducedMotion);

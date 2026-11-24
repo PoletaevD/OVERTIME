@@ -1,4 +1,5 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -12,12 +13,19 @@ namespace Overtime
 
         private bool _visible;
         private int _index;
+        private int _room;
+        private int _variant;
+        private string _seed;
+        private bool _showActors;
+        private bool _showMarkers;
+        private Vector2 _scroll;
 
         internal void Initialize(SectorRoute route, TemporalDirector director, PlaygroundPlayer player)
         {
             _route = route;
             _director = director;
             _player = player;
+            _seed = route.Progression.Seed.ToString();
         }
 
         private void Update()
@@ -97,7 +105,17 @@ namespace Overtime
 
         private void OnGUI()
         {
-            if (!_visible || _director.RewardSelection)
+            if (!_visible)
+            {
+                return;
+            }
+
+            if (_route.Generated)
+            {
+                DrawRoute();
+            }
+
+            if (_director.RewardSelection)
             {
                 return;
             }
@@ -107,7 +125,7 @@ namespace Overtime
             var gun = _player.Combat.Weapon;
             var energy = _director.Energy;
             var buffs = progression.PlayerEffects.State;
-            var rect = new Rect(14f, Screen.height * 0.32f, 540f, 220f);
+            var rect = new Rect(14f, _route.Generated ? 320f : Screen.height * 0.32f, 540f, 220f);
             GUI.Box(rect, "WEAPONS & RUN PROTOCOLS   /   QA");
             GUILayout.BeginArea(new Rect(rect.x + 12f, rect.y + 25f, rect.width - 24f, rect.height - 26f));
             GUILayout.Label($"{definition.Title}   {progression.Build.Level(definition.Id)}/{definition.MaxLevel}    SEED {progression.Seed}");
@@ -130,6 +148,118 @@ namespace Overtime
             GUILayout.Label($"POOL {pool.ActiveCount}/{pool.PoolCapacity}   MAX PENETRATIONS {penetrations}   MAX RICOCHETS {ricochets}");
             GUILayout.Label("F9 / F10 / F11  Equip   HOME  Slot   END  Restock");
             GUILayout.Label("PGUP/DOWN  Browse   ENTER  Grant   O  Offer   F5  Restart");
+            GUILayout.EndArea();
+        }
+
+        private void DrawRoute()
+        {
+            var width = Mathf.Min(540f, Screen.width - 28f);
+            GUI.Box(new Rect(14f, 14f, width, 298f), "SECURITY ROUTE   /   QA");
+            GUILayout.BeginArea(new Rect(26f, 39f, width - 24f, 263f));
+            _scroll = GUILayout.BeginScrollView(_scroll);
+            GUILayout.BeginHorizontal();
+            _seed = GUILayout.TextField(_seed, 12, GUILayout.Width(124f));
+            if (GUILayout.Button("New run from seed") && int.TryParse(_seed, out var seed))
+            {
+                _route.Progression.DebugRestartWithSeed(seed);
+            }
+
+            GUILayout.Label("ESC releases cursor");
+            GUILayout.EndHorizontal();
+
+            for (var index = 0; index < RoutePlan.RoomCount; index++)
+            {
+                var options = _route.Plan.At(index);
+                var left = options[0];
+                var right = options.Count > 1 ? $"  /  {options[1].Room.Title}" : string.Empty;
+                GUILayout.Label($"{index + 1}  {left.Room.Title}{right}");
+            }
+
+            var library = _route.DebugLibrary;
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Previous room"))
+            {
+                _room = (_room + library.Length - 1) % library.Length;
+                _variant = 0;
+            }
+
+            if (GUILayout.Button("Next room"))
+            {
+                _room = (_room + 1) % library.Length;
+                _variant = 0;
+            }
+
+            var room = library[_room];
+            if (GUILayout.Button("Change variant"))
+            {
+                _variant = (_variant + 1) % room.Variants.Length;
+            }
+
+            GUILayout.EndHorizontal();
+            var variant = room.Variants[_variant];
+            GUILayout.Label($"{room.Title}   /   {variant.Title} ({variant.Difficulty})");
+
+            GUILayout.BeginHorizontal();
+            var enabled = GUI.enabled;
+            GUI.enabled = enabled && !_director.RewardSelection && !_route.Transferring && !_route.Finished;
+            if (GUILayout.Button("Load"))
+            {
+                _route.DebugTravel(_room, _variant);
+            }
+
+            if (GUILayout.Button("Next in plan"))
+            {
+                _route.DebugNextRoom();
+            }
+
+            if (GUILayout.Button("Retry fight"))
+            {
+                _route.DebugRestartRoom();
+            }
+
+            if (GUILayout.Button("Clear fight"))
+            {
+                _route.DebugClearRoom();
+            }
+
+            GUI.enabled = enabled;
+            GUILayout.EndHorizontal();
+
+            var node = _route.CurrentNode;
+            var paid = _route.RewardClaimed(node.Id) ? "PAID" : "PENDING";
+            GUILayout.Label($"{paid}   {RouteCard.RewardText(node.Reward)}");
+            GUILayout.Label($"History  P {_director.PlayerTimeline.Count} / W {_director.WorldTimeline.Count} / Max {_director.WorldTimeline.Capacity}");
+            GUILayout.Label($"Actors {_director.WorldActorCount}   Colliders {_director.DynamicColliderCount}   Bolts {_director.PlayerProjectiles.ActiveCount + _route.EnemyProjectiles.ActiveCount}");
+
+            _showActors = GUILayout.Toggle(_showActors, "World actors and Reward IDs");
+            if (_showActors)
+            {
+                var ids = new HashSet<int>();
+                foreach (var actor in _director.WorldActors)
+                {
+                    if (actor is SecurityEnemy enemy)
+                    {
+                        var id = ((ICombatDamageable)enemy).RewardId;
+                        GUILayout.Label($"{enemy.Kind}   {id}{(ids.Add(id) ? string.Empty : "  DUPLICATE")}");
+                    }
+                    else
+                    {
+                        GUILayout.Label(actor.name);
+                    }
+                }
+            }
+
+            _showMarkers = GUILayout.Toggle(_showMarkers, "Selected variant markers");
+            if (_showMarkers)
+            {
+                foreach (var index in variant.Markers)
+                {
+                    var marker = room.Prefab.Markers[index];
+                    GUILayout.Label($"{index:00}  {marker.Enemy.Kind}   {marker.Point.localPosition}   Patrol {marker.Patrol.Length}");
+                }
+            }
+
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
         }
     }

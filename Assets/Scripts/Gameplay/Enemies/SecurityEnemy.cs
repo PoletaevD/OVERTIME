@@ -109,6 +109,15 @@ namespace Overtime
             }));
         }
 
+        internal void BindEncounter(TemporalDirector director, TemporalProjectileEmitter projectiles, int rewardId, Transform[] patrol, Vector3 flightHalfExtents)
+        {
+            _director = director;
+            _projectiles = projectiles;
+            _rewardId = rewardId;
+            _patrol = patrol;
+            _flightHalfExtents = flightHalfExtents;
+        }
+
         internal void SetEncounterReady(bool ready)
         {
             _encounterReady = ready;

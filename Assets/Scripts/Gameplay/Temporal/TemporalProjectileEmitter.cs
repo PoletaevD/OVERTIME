@@ -110,6 +110,12 @@ namespace Overtime
             ResetState();
         }
 
+        internal override void ReleaseHistory()
+        {
+            _history = null;
+            _emitterHistory = null;
+        }
+
         internal void ClearProjectiles()
         {
             ResetState();

@@ -9,7 +9,7 @@ using UnityEngine.SceneManagement;
 
 namespace Overtime.Editor
 {
-    public sealed class SecuritySectorBuilder
+    public sealed partial class SecuritySectorBuilder
     {
         private const string ScenePath = "Assets/Scenes/Security Sector.unity";
         private const string ArtPath = "Assets/Art/Gravity Playground";
@@ -224,10 +224,10 @@ namespace Overtime.Editor
             PrefabUtility.RecordPrefabInstancePropertyModifications(bindings);
         }
 
-        private void Build(Scene scene)
+        private void Build(Scene scene, RoomDefinition[] library = null)
         {
             var root = _art.Root;
-            root.name = "MERIDIAN | Security Sector";
+            root.name = library == null ? "MERIDIAN | Security Sector" : "MERIDIAN | Security Route";
             PlaygroundSceneBuilder.AddLighting(_art, AssetDatabase.LoadAssetAtPath<VolumeProfile>($"{ArtPath}/Facility Volume.asset"));
             CreateBoltMaterial();
             var timeline = PlaygroundSceneBuilder.Child("Sector Timeline", root).gameObject;
@@ -236,13 +236,22 @@ namespace Overtime.Editor
             var route = timeline.AddComponent<SectorRoute>();
             var armory = new SecurityPlaygroundBuilder(_art, timeline.transform);
             var pool = armory.BuildPool(director, 40, _violet);
-            var rooms = new[]
+            if (library == null)
             {
-                BuildRoom("01", "Security Checkpoint", 0f, 24f, 18f, 7.4f, _cyan, director, pool),
-                BuildRoom("02", "Surveillance Shaft", 30f, 24f, 16f, 13f, _violet, director, pool),
-                BuildRoom("03", "Containment Chamber", 60f, 28f, 20f, 8.4f, _orange, director, pool)
-            };
-            PlaygroundSceneBuilder.Wire(route, "_rooms", rooms, "_enemyProjectiles", pool);
+                var rooms = new[]
+                {
+                    BuildRoom("01", "Security Checkpoint", 0f, 24f, 18f, 7.4f, _cyan, director, pool),
+                    BuildRoom("02", "Surveillance Shaft", 30f, 24f, 16f, 13f, _violet, director, pool),
+                    BuildRoom("03", "Containment Chamber", 60f, 28f, 20f, 8.4f, _orange, director, pool)
+                };
+                PlaygroundSceneBuilder.Wire(route, "_rooms", rooms);
+            }
+            else
+            {
+                PlaygroundSceneBuilder.Wire(route, "_library", library);
+            }
+
+            PlaygroundSceneBuilder.Wire(route, "_enemyProjectiles", pool);
             PlaygroundSceneBuilder.Wire(director, "_energy", energy, "_sector", route);
 
             var player = CombatPlaygroundBuilder.BuildPlayer(scene, director, new Vector3(0f, 0.89f, 1.7f));
@@ -265,6 +274,10 @@ namespace Overtime.Editor
             chamber.BuildTemporalEffects(director, rig, pulse);
             AddRunProtocols(route, player, movement);
             AddWeaponLoadout(route, player, movement);
+            if (library != null)
+            {
+                hud.BuildRouteHud(movement, route, director);
+            }
         }
 
         private EncounterController BuildRoom(string number, string title, float start, float length, float width, float height, Material accent, TemporalDirector director, TemporalProjectileEmitter pool)
@@ -302,7 +315,7 @@ namespace Overtime.Editor
             return encounter;
         }
 
-        private SecurityEnemy[] Checkpoint(Transform room, SecurityPlaygroundBuilder enemies, TemporalDirector director, TemporalProjectileEmitter pool)
+        private void CheckpointGeometry(Transform room)
         {
             foreach (var side in new[] { -1, 1 })
             {
@@ -313,6 +326,11 @@ namespace Overtime.Editor
 
             Bay(room, "Auditor Podium", 0f, 19.6f, 4.6f, 1.44f, 3.5f);
             Bay(room, "Podium Step", 2.6f, 18.43f, 1.6f, 0.57f, 1.7f);
+        }
+
+        private SecurityEnemy[] Checkpoint(Transform room, SecurityPlaygroundBuilder enemies, TemporalDirector director, TemporalProjectileEmitter pool)
+        {
+            CheckpointGeometry(room);
             return new[]
             {
                 Place(enemies, SecurityEnemyKind.Guard, "Security Unit 01", 301, new Vector3(-5f, 0.92f, 11.7f), director, pool, new Vector3(-6.35f, 0.92f, 14.8f), new Vector3(-4.95f, 0.92f, 11.7f), new Vector3(-2.9f, 0.92f, 10.05f)),
@@ -321,7 +339,7 @@ namespace Overtime.Editor
             };
         }
 
-        private SecurityEnemy[] Surveillance(Transform room, SecurityPlaygroundBuilder enemies, TemporalDirector director, TemporalProjectileEmitter pool)
+        private void SurveillanceGeometry(Transform room)
         {
             for (var index = 0; index < 3; index++)
             {
@@ -336,6 +354,11 @@ namespace Overtime.Editor
             Bay(room, "Scanner Housing", -2.9f, 11.1f, 2.25f, 1.85f, 1.12f);
             Bay(room, "Relay Cabinet", 2.6f, 16.6f, 2.1f, 2.15f, 1.4f);
             Block(room, "Auditor Service Deck", new Vector3(0f, 2.45f, 21.1f), new Vector3(5.2f, 0.46f, 1.7f), _graphite);
+        }
+
+        private SecurityEnemy[] Surveillance(Transform room, SecurityPlaygroundBuilder enemies, TemporalDirector director, TemporalProjectileEmitter pool)
+        {
+            SurveillanceGeometry(room);
             var drones = new[]
             {
                 Place(enemies, SecurityEnemyKind.Drone, "Surveillance Drone 01", 304, new Vector3(-3.3f, 3.1f, 8.5f), director, pool, new Vector3(-3.1f, 4.6f, 9.6f), new Vector3(-0.6f, 2.9f, 7.2f)),
@@ -354,7 +377,7 @@ namespace Overtime.Editor
             return drones;
         }
 
-        private SecurityEnemy[] Containment(Transform room, SecurityPlaygroundBuilder enemies, TemporalDirector director, TemporalProjectileEmitter pool)
+        private void ContainmentGeometry(Transform room)
         {
             Bay(room, "Isolation Vessel", 0f, 13.5f, 5.0f, 4.15f, 5.8f);
             Block(room, "Containment Spine", new Vector3(0f, 4.26f, 13.5f), new Vector3(4.2f, 0.23f, 5.3f), _graphite);
@@ -366,6 +389,11 @@ namespace Overtime.Editor
                 Block(room, "Overhead Transit Strip", new Vector3(side * 4.5f, 8.37f, 18f), new Vector3(0.14f, 0.04f, 13.5f), _cyan, false);
             }
 
+        }
+
+        private SecurityEnemy[] Containment(Transform room, SecurityPlaygroundBuilder enemies, TemporalDirector director, TemporalProjectileEmitter pool)
+        {
+            ContainmentGeometry(room);
             return new[]
             {
                 Place(enemies, SecurityEnemyKind.Enforcer, "Compliance Enforcer", 308, new Vector3(1.8f, 1.0f, 9.4f), director, pool, new Vector3(1.4f, 1f, 7.8f), new Vector3(3.4f, 1f, 9f)),

@@ -97,6 +97,21 @@ namespace Overtime
             }
         }
 
+        internal void CancelCharge()
+        {
+            _state.Primary.ChargeElapsed = 0d;
+            _state.Secondary.ChargeElapsed = 0d;
+        }
+
+        internal void GrantAmmoCache()
+        {
+            _state.Primary.Reserve += 45;
+            if (HasSecondary)
+            {
+                _state.Secondary.Reserve += _secondary.Id == WeaponId.Deadline ? 6 : 12;
+            }
+        }
+
         internal void ResetState()
         {
             _state = default;

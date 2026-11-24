@@ -26,7 +26,7 @@ namespace Overtime
             return _offers[index];
         }
 
-        internal bool Open(int reward)
+        internal bool Open(int reward, bool priority = false)
         {
             if (Count != 0 || _claimed.Contains(reward))
             {
@@ -36,7 +36,7 @@ namespace Overtime
             _reward = reward;
             for (var index = 0; index < _offers.Length; index++)
             {
-                var definition = Draw();
+                var definition = Draw(priority);
                 if (definition == null)
                 {
                     break;
@@ -73,7 +73,7 @@ namespace Overtime
             return _state.HasCategory(category) ? _catalog.SynergyWeight : 1f;
         }
 
-        private RunUpgradeDefinition Draw()
+        private RunUpgradeDefinition Draw(bool priority)
         {
             Span<int> counts = stackalloc int[3];
             counts.Clear();
@@ -90,7 +90,7 @@ namespace Overtime
             {
                 if (Available(definition))
                 {
-                    total += Weight(definition, counts);
+                    total += Weight(definition, counts, priority);
                 }
             }
 
@@ -103,7 +103,7 @@ namespace Overtime
                     continue;
                 }
 
-                var weight = Weight(definition, counts);
+                var weight = Weight(definition, counts, priority);
                 value -= weight;
                 if (value < 0d)
                 {
@@ -119,9 +119,16 @@ namespace Overtime
             return fallback;
         }
 
-        private float Weight(RunUpgradeDefinition definition, ReadOnlySpan<int> counts)
+        private float Weight(RunUpgradeDefinition definition, ReadOnlySpan<int> counts, bool priority)
         {
-            return _catalog.RarityWeight(definition.Rarity) * CategoryWeight(definition.Category) / counts[(int)definition.Rarity];
+            var rarity = definition.Rarity;
+            var rarityWeight = priority ? rarity switch
+            {
+                UpgradeRarity.Common => 20f,
+                UpgradeRarity.Uncommon => 50f,
+                _ => 30f
+            } : _catalog.RarityWeight(rarity);
+            return rarityWeight * CategoryWeight(definition.Category) / counts[(int)rarity];
         }
 
         private bool Available(RunUpgradeDefinition definition)

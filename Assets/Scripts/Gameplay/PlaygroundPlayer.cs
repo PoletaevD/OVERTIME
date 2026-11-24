@@ -104,9 +104,14 @@ namespace Overtime
 
         internal void ResetAtSpawn()
         {
+            PlaceAt(_spawnPosition, _spawnRotation);
+        }
+
+        internal void PlaceAt(Vector3 position, Quaternion orientation)
+        {
             _accumulator = 0f;
-            _motor.ResetAt(_spawnPosition, _spawnRotation);
-            _cameraRig.ResetView(_spawnRotation);
+            _motor.ResetAt(position, orientation);
+            _cameraRig.ResetView(orientation);
         }
 
         internal void Simulate(Vector2 move, Vector2 look, bool jumpPressed, bool jumpHeld, float step)

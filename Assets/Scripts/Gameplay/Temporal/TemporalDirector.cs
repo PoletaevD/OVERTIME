@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Overtime
@@ -77,6 +78,8 @@ namespace Overtime
         internal TemporalProjectileEmitter PlayerProjectiles => _playerProjectiles;
         internal bool ReducedMotion => _player.ReducedMotion;
         internal bool RewardSelection => _rewardSelection;
+        internal IReadOnlyList<TemporalActor> WorldActors => _worldActors;
+        internal int DynamicColliderCount => _collision?.Count ?? 0;
         internal SecurityEnemy[] CurrentEnemies => _sector != null ? _sector.Current.Enemies : Array.Empty<SecurityEnemy>();
 
         internal ChronoEnergy Energy => _energy;
@@ -91,7 +94,7 @@ namespace Overtime
         internal TemporalMode Mode { get; private set; }
         internal bool IsRewinding => IsPlayerProtected || WorldTimeline?.Direction == TemporalDirection.Reverse;
         internal bool IsPlayerProtected => PlayerTimeline?.Direction == TemporalDirection.Reverse;
-        internal bool CanDamageWorld => !_rewardSelection && WorldTimeline?.Direction == TemporalDirection.Forward && _player.Combat?.GameOver != true;
+        internal bool CanDamageWorld => !_rewardSelection && _sector?.Transferring != true && _sector?.Finished != true && WorldTimeline?.Direction == TemporalDirection.Forward && _player.Combat?.GameOver != true;
         internal bool CanAffectWorld => !IsPlayerProtected && CanDamageWorld;
         internal long SimulationTick { get; private set; }
         internal int PlayerSteps { get; private set; }
@@ -110,13 +113,15 @@ namespace Overtime
             _playerFrames = new PlaygroundPlayer.Snapshot[PlayerTimeline.Capacity];
             if (_sector != null)
             {
-                _worldActors = _sector.Prepare();
+
                 _progression = _sector.Progression;
                 if (_progression != null)
                 {
                     _progression.Initialize(this, player);
                     _echoFrames = new RecallEchoPresentation.Snapshot[WorldTimeline.Capacity];
                 }
+
+                _worldActors = _sector.Prepare(this, player);
             }
 
             foreach (var actor in _worldActors)
@@ -137,7 +142,7 @@ namespace Overtime
             player.SetTemporalCollision(_collision);
             Physics.SyncTransforms();
             CaptureBaseline();
-            _sector?.StartRun(this, player);
+            _sector?.StartRun();
         }
 
         internal bool Advance(double elapsed, in TemporalInput input)
@@ -162,7 +167,7 @@ namespace Overtime
                 return false;
             }
 
-            if (_rewardSelection || _player.Combat?.GameOver == true || _sector?.Finished == true)
+            if (_rewardSelection || _player.Combat?.GameOver == true || _sector?.Finished == true || _sector?.Transferring == true)
             {
                 return false;
             }
@@ -214,7 +219,7 @@ namespace Overtime
             {
                 var room = _sector.Current;
                 var state = room.State;
-                _sector.Advance(realElapsed, this, _player);
+                _sector.Advance(realElapsed);
                 if (room.State != state)
                 {
                     _exhaustedButtons |= input.Selection.Held;
@@ -725,15 +730,30 @@ namespace Overtime
 
         internal void ReplaceEncounter(TemporalActor[] actors)
         {
-            ChangeMode(TemporalMode.Normal, TemporalExitReason.Service);
+            DetachEncounter();
+            AttachEncounter(actors);
+        }
+
+        internal void DetachEncounter()
+        {
+            ClearEncounterHistory();
             foreach (var actor in _worldActors)
             {
-                if (actor != actors[0])
+                if (actor != _sector.EnemyProjectiles)
                 {
                     actor.ReleaseHistory();
                 }
             }
 
+            _worldActors = Array.Empty<TemporalActor>();
+            _collision.Release();
+            _player.SetTemporalCollision(null);
+            _collision = null;
+            _progression?.RestoreWorld(default);
+        }
+
+        internal void AttachEncounter(TemporalActor[] actors)
+        {
             _worldActors = actors;
             for (var index = 1; index < actors.Length; index++)
             {
@@ -742,10 +762,37 @@ namespace Overtime
 
             _collision = new TemporalCollision(PlayerCapsule, _worldActors);
             _player.SetTemporalCollision(_collision);
-            SealHistory();
+            RecordBaseline();
+        }
+
+        internal void SetTransfer(bool active)
+        {
+            if (active)
+            {
+                ChangeMode(TemporalMode.Normal, TemporalExitReason.Service);
+                _player.Combat.Weapon.CancelCharge();
+            }
+
+            ClearPendingInput();
+            _player.SetRewardSelection(active);
+            if (active)
+            {
+                Cursor.visible = false;
+            }
+        }
+
+        internal void CommitPlayerBaseline()
+        {
+            _playerFrames[0] = _player.Capture();
         }
 
         internal void SealHistory()
+        {
+            ClearEncounterHistory();
+            RecordBaseline();
+        }
+
+        private void ClearEncounterHistory()
         {
             ChangeMode(TemporalMode.Normal, TemporalExitReason.Service);
             ClearPendingInput();
@@ -757,6 +804,10 @@ namespace Overtime
             WorldTimeline.Clear();
             SetTimelineRates();
             _playerChangedBetweenSteps = false;
+        }
+
+        private void RecordBaseline()
+        {
             Physics.SyncTransforms();
             _collision.Refresh(false);
             CaptureBaseline();
