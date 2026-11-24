@@ -18,26 +18,32 @@ namespace Overtime.Editor
         [MenuItem("OVERTIME/Create Combat Playground")]
         public static void Create()
         {
-            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(ScenePath) != null)
+            Create(ScenePath, false);
+        }
+
+        internal static void Create(string path, bool security)
+        {
+            if (AssetDatabase.LoadAssetAtPath<SceneAsset>(path) != null)
             {
-                var existing = SceneManager.GetSceneByPath(ScenePath);
-                SceneManager.SetActiveScene(existing.isLoaded ? existing : EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive));
+                var existing = SceneManager.GetSceneByPath(path);
+                SceneManager.SetActiveScene(existing.isLoaded ? existing : EditorSceneManager.OpenScene(path, OpenSceneMode.Additive));
                 return;
             }
 
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
             SceneManager.SetActiveScene(scene);
             var art = new PlaygroundArt();
-            var room = art.BuildTemporalRoom("COMBAT EVALUATION");
-            art.Root.name = "MERIDIAN | Combat Evaluation Facility";
-            room.name = "Combat Evaluation Chamber";
+            var room = art.BuildTemporalRoom(security ? "SECURITY DIVISION  /  LIVE TRIAL" : "COMBAT EVALUATION");
+            art.Root.name = security ? "MERIDIAN | Security Evaluation Facility" : "MERIDIAN | Combat Evaluation Facility";
+            room.name = security ? "Security Evaluation Chamber" : "Combat Evaluation Chamber";
             PlaygroundSceneBuilder.AddLighting(art, AssetDatabase.LoadAssetAtPath<VolumeProfile>($"{GravityArt}/Facility Volume.asset"));
             var chamber = new Chamber(art, room);
             var control = PlaygroundSceneBuilder.Child("Combat Timeline", room).gameObject;
             var director = control.AddComponent<TemporalDirector>();
             var energy = control.AddComponent<ChronoEnergy>();
             var station = chamber.BuildStation();
-            var actors = new TemporalActor[]
+            var encounter = security ? new SecurityPlaygroundBuilder(art, room) : null;
+            var actors = security ? encounter.Build(director) : new TemporalActor[]
             {
                 chamber.BuildDummy("Training Dummy 01", 1, new Vector3(0f, 1.52f, 3.3f)),
                 chamber.BuildDummy("Training Dummy 02", 2, new Vector3(-2.65f, 1.52f, 7.4f)),
@@ -46,12 +52,15 @@ namespace Overtime.Editor
                 chamber.BuildEmitter(director)
             };
             PlaygroundSceneBuilder.Wire(director, "_energy", energy, "_rechargeStation", station, "_worldActors", actors);
-            chamber.BuildRoute();
+            if (!security)
+            {
+                chamber.BuildRoute();
+            }
 
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Gravity Player.prefab");
             var playerObject = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
             playerObject.layer = IgnoreRaycastLayer;
-            playerObject.transform.position = new Vector3(0f, 0.89f, -7f);
+            playerObject.transform.position = new Vector3(0f, 0.89f, security ? -8.2f : -7f);
             PrefabUtility.RecordPrefabInstancePropertyModifications(playerObject);
             PrefabUtility.RecordPrefabInstancePropertyModifications(playerObject.transform);
             var player = playerObject.GetComponent<PlaygroundPlayer>();
@@ -66,18 +75,30 @@ namespace Overtime.Editor
             var hud = new PlaygroundHudBuilder(PlaygroundSceneBuilder.TMPAsset());
             var movement = playerObject.GetComponentInChildren<PlaygroundHud>();
             var pulse = hud.BuildTemporal(movement, director, rig);
-            hud.BuildCombat(movement, director, player);
+            var combatHud = hud.BuildCombat(movement, director, player);
+            if (security)
+            {
+                hud.BuildSecurity(movement, combatHud, encounter.Enemies, playerObject.GetComponentInChildren<Camera>());
+            }
             chamber.BuildTemporalEffects(director, rig, pulse);
 
-            if (!EditorSceneManager.SaveScene(scene, ScenePath))
+            if (!EditorSceneManager.SaveScene(scene, path))
             {
-                throw new InvalidOperationException("Failed to save Combat Playground.");
+                throw new InvalidOperationException($"Failed to save {path}.");
             }
 
             var scenes = EditorBuildSettings.scenes;
-            Array.Resize(ref scenes, scenes.Length + 1);
-            scenes[^1] = new EditorBuildSettingsScene(ScenePath, true);
-            EditorBuildSettings.scenes = scenes;
+            if (!Array.Exists(scenes, entry => entry.path == path))
+            {
+                Array.Resize(ref scenes, scenes.Length + 1);
+                scenes[^1] = new EditorBuildSettingsScene(path, true);
+                EditorBuildSettings.scenes = scenes;
+                var settings = AssetDatabase.LoadMainAssetAtPath("ProjectSettings/EditorBuildSettings.asset");
+                if (settings != null)
+                {
+                    AssetDatabase.SaveAssetIfDirty(settings);
+                }
+            }
         }
 
         private sealed class Chamber

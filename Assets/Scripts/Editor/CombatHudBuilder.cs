@@ -8,7 +8,7 @@ namespace Overtime.Editor
 {
     internal sealed partial class PlaygroundHudBuilder
     {
-        internal void BuildCombat(PlaygroundHud movement, TemporalDirector director, PlaygroundPlayer player)
+        internal CombatHud BuildCombat(PlaygroundHud movement, TemporalDirector director, PlaygroundPlayer player)
         {
             var root = movement.transform;
             var controls = root.Find("Controls");
@@ -63,6 +63,23 @@ namespace Overtime.Editor
 
             var hud = root.gameObject.AddComponent<CombatHud>();
             PlaygroundSceneBuilder.Wire(hud, "_director", director, "_player", player, "_healthLabel", health, "_healthFill", healthFill, "_damageFlash", damageGroup, "_ammoLabel", ammo, "_reloadLabel", reload, "_reloadFill", reloadFill, "_energyLabel", energy, "_costLabel", cost, "_energyFill", energyFill, "_stationHint", station, "_hitMarker", hitMarker, "_hitLabel", hitLabel, "_hitGroup", hitGroup, "_deathGroup", deathGroup, "_deathTitle", deathTitle, "_deathInfo", deathInfo, "_restart", restart);
+            return hud;
+        }
+
+        internal void BuildSecurity(PlaygroundHud movement, CombatHud hud, SecurityEnemy[] enemies, Camera view)
+        {
+            var root = movement.transform;
+            var top = new Vector2(0.5f, 1f);
+            var panel = Panel("Security Encounter", root, top, Vector2.zero, new Vector2(248f, 43f), s_ink);
+            panel.rectTransform.pivot = top;
+            panel.rectTransform.anchoredPosition = new Vector2(0f, -42f);
+            var remaining = Label("Remaining Hostiles", panel.transform, new Vector2(13f, 6f), new Vector2(222f, 30f), string.Empty, 18f, s_cyan);
+            remaining.alignment = TextAlignmentOptions.Center;
+
+            var damageDirection = Rect("Directional Damage", root, Vector2.one * 0.5f, Vector2.zero, Vector2.zero);
+            var arrow = CenterLabel("Impact Direction", damageDirection, new Vector2(0f, 86f), new Vector2(64f, 34f), "^", 32f, s_orange);
+            var directionGroup = AddOverlayGroup(damageDirection.gameObject);
+            PlaygroundSceneBuilder.Wire(hud, "_enemies", enemies, "_remainingLabel", remaining, "_damageDirection", directionGroup, "_damageArrow", arrow, "_view", view);
         }
 
         private Image Meter(string name, Transform parent, float y, float height, Color color)

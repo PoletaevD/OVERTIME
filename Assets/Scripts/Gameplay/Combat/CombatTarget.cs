@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Overtime
 {
-    internal sealed class CombatTarget : TemporalActor<int>
+    internal sealed class CombatTarget : TemporalActor<int>, ICombatDamageable
     {
         private static readonly int s_color = Shader.PropertyToID("_BaseColor");
 
@@ -26,6 +26,9 @@ namespace Overtime
         internal CombatHealth Health => _health;
         internal int RewardId => _rewardId;
 
+        int ICombatDamageable.RewardId => RewardId;
+        CombatHealth ICombatDamageable.Health => Health;
+
         private void Awake()
         {
             _properties = new MaterialPropertyBlock();
@@ -36,6 +39,11 @@ namespace Overtime
         private void OnDestroy()
         {
             _flash?.Kill();
+        }
+
+        DamageResult ICombatDamageable.Hit(Collider collider, int amount, bool reducedMotion, out bool weakPoint)
+        {
+            return Hit(collider, amount, reducedMotion, out weakPoint);
         }
 
         internal DamageResult Hit(Collider collider, int amount, bool reducedMotion, out bool weakPoint)

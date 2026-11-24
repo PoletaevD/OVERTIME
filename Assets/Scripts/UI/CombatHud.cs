@@ -31,6 +31,16 @@ namespace Overtime
         [SerializeField] private TMP_Text _deathTitle;
         [SerializeField] private TMP_Text _deathInfo;
         [SerializeField] private Button _restart;
+        [SerializeField] private SecurityEnemy[] _enemies;
+        [SerializeField] private TMP_Text _remainingLabel;
+        [SerializeField] private CanvasGroup _damageDirection;
+        [SerializeField] private TMP_Text _damageArrow;
+        [SerializeField] private Camera _view;
+
+        private Tween _directionPulse;
+        private Tween _remainingPulse;
+        private Vector3 _damageSource;
+        private int _remaining = -1;
 
         private Tween _healthPulse;
         private Tween _ammoPulse;
@@ -57,6 +67,11 @@ namespace Overtime
             _energyPulse = BuildPulse(0.42f, value => _energyFill.color = Color.Lerp(s_chrono, Color.white, value));
             _hitPulse = BuildPulse(0.22f, PresentHitPulse);
             _restart.onClick.AddListener(_director.RequestRestart);
+            if (_damageDirection != null)
+            {
+                _directionPulse = BuildPulse(0.55f, value => _damageDirection.alpha = value * 0.85f);
+                _remainingPulse = BuildPulse(0.38f, value => _remainingLabel.color = Color.Lerp(s_chrono, s_weak, value));
+            }
         }
 
         private void OnEnable()
@@ -64,6 +79,7 @@ namespace Overtime
             _player.Combat.Weapon.ShotFired += OnShot;
             _player.Combat.Health.Damaged += OnDamage;
             _director.ModeChanged += OnModeChanged;
+            _director.DirectionalDamage += OnDirectionalDamage;
         }
 
         private void OnDisable()
@@ -71,6 +87,7 @@ namespace Overtime
             _player.Combat.Weapon.ShotFired -= OnShot;
             _player.Combat.Health.Damaged -= OnDamage;
             _director.ModeChanged -= OnModeChanged;
+            _director.DirectionalDamage -= OnDirectionalDamage;
             _hitPulse.Pause();
             _hitGroup.alpha = 0f;
         }
@@ -84,6 +101,8 @@ namespace Overtime
             _hitPulse.Kill();
             _stationTween?.Kill();
             _deathTween?.Kill();
+            _directionPulse?.Kill();
+            _remainingPulse?.Kill();
         }
 
         private void LateUpdate()
@@ -93,6 +112,62 @@ namespace Overtime
             RefreshAmmo(combat.Weapon);
             RefreshEnergy();
             RefreshDeath(combat);
+            if (_remainingLabel != null)
+            {
+                RefreshEncounter();
+                if (_damageDirection.alpha > 0f)
+                {
+                    OrientDamageArrow();
+                }
+            }
+        }
+
+        private void RefreshEncounter()
+        {
+            var remaining = 0;
+            foreach (var enemy in _enemies)
+            {
+                remaining += enemy.Health.Alive ? 1 : 0;
+            }
+
+            if (_remaining == remaining)
+            {
+                return;
+            }
+
+            _remainingLabel.SetText(remaining > 0 ? "HOSTILES  {0:00}" : "AREA SECURE  /  F5", remaining);
+            if (_remaining >= 0 && !_player.ReducedMotion)
+            {
+                _remainingPulse.Restart();
+            }
+
+            _remaining = remaining;
+        }
+
+        private void OnDirectionalDamage(Vector3 source)
+        {
+            if (_damageDirection == null)
+            {
+                return;
+            }
+
+            _damageSource = source;
+            OrientDamageArrow();
+            _damageDirection.alpha = 0.85f;
+            _directionPulse.Restart();
+        }
+
+        private void OrientDamageArrow()
+        {
+            var bearing = _view.transform.InverseTransformPoint(_damageSource);
+            var screen = new Vector2(bearing.x, bearing.y);
+            if (screen.sqrMagnitude < 0.01f)
+            {
+                screen = bearing.z < 0f ? Vector2.down : Vector2.up;
+            }
+
+            _damageArrow.rectTransform.anchoredPosition = screen.normalized * 87f;
+            _damageArrow.rectTransform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(-screen.x, screen.y) * Mathf.Rad2Deg);
         }
 
         private void RefreshHealth(CombatHealth health)
@@ -246,6 +321,11 @@ namespace Overtime
             {
                 _hitPulse.Pause();
                 _hitGroup.alpha = 0f;
+                if (_damageDirection != null)
+                {
+                    _directionPulse.Pause();
+                    _damageDirection.alpha = 0f;
+                }
             }
         }
 

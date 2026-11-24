@@ -1,0 +1,484 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace Overtime
+{
+    internal enum SecurityEnemyKind
+    {
+        Guard,
+        Drone,
+        Auditor
+    }
+
+    internal enum SecurityEnemyState
+    {
+        Idle,
+        Alert,
+        Moving,
+        Aiming,
+        Attacking,
+        Recovering,
+        Dead
+    }
+
+    [DisallowMultipleComponent]
+    [RequireComponent(typeof(CombatHealth))]
+    internal sealed class SecurityEnemy : TemporalActor<SecurityEnemy.Snapshot>, ICombatDamageable
+    {
+        private const float AimTolerance = 3f;
+
+        [SerializeField] private SecurityEnemyKind _kind;
+        [SerializeField] private CombatHealth _health;
+        [SerializeField] private Collider _body;
+        [SerializeField] private Collider _weakPoint;
+        [SerializeField, Min(1f)] private float _weakPointMultiplier = 1.5f;
+        [SerializeField, Min(1)] private int _rewardId = 1;
+        [SerializeField] private TemporalDirector _director;
+        [SerializeField] private TemporalProjectileEmitter _projectiles;
+        [SerializeField] private SecurityEnemyPresentation _presentation;
+        [SerializeField] private LayerMask _geometry = 1;
+        [SerializeField] private Transform[] _patrol = Array.Empty<Transform>();
+        [SerializeField] private Vector3 _flightHalfExtents = new(5f, 2f, 7f);
+        [SerializeField] private Vector3 _attackOrigin = new(0f, 0.35f, 0f);
+        [SerializeField, Min(0.1f)] private float _moveRadius = 0.48f;
+        [SerializeField, Min(0f)] private float _moveSpeed = 3.5f;
+        [SerializeField, Min(0.1f)] private float _detectionRange = 18f;
+        [SerializeField, Min(0f)] private float _reactionSeconds = 0.28f;
+        [SerializeField, Min(1f)] private float _yawSpeed = 320f;
+        [SerializeField, Min(1f)] private float _pitchSpeed = 120f;
+        [SerializeField, Min(0.1f)] private float _preferredRange = 7f;
+        [SerializeField, Min(0.05f)] private float _cooldownSeconds = 1.3f;
+        [SerializeField, Min(1)] private int _burstSize = 3;
+        [SerializeField, Min(0.01f)] private float _burstSpacing = 0.15f;
+        [SerializeField, Min(0.05f)] private float _aimSeconds = 0.9f;
+        [SerializeField, Min(0.01f)] private float _lockedSeconds = 0.35f;
+        [SerializeField, Min(0.01f)] private float _beamSeconds = 0.12f;
+        [SerializeField, Min(1)] private int _damage = 8;
+        [SerializeField, Min(0.1f)] private float _projectileSpeed = 16f;
+        [SerializeField, Min(0.05f)] private float _projectileLifetime = 2.2f;
+        [SerializeField, Min(0.01f)] private float _projectileRadius = 0.13f;
+
+        private AiState _state;
+        private Vector3 _home;
+        private Quaternion _homeRotation;
+
+        internal SecurityEnemyKind Kind => _kind;
+        internal CombatHealth Health => _health;
+        internal Collider Body => _body;
+        internal SecurityEnemyState State => _state.State;
+        internal float PhaseRemaining => _state.PhaseRemaining;
+        internal float Cooldown => _state.Cooldown;
+        internal bool SeesPlayer => _state.SeesPlayer;
+        internal bool DirectionLocked => _state.DirectionLocked;
+        internal uint Attacks => _state.Attacks;
+        internal Vector3 Aim => _state.Aim;
+        internal Vector3 AttackOrigin => transform.TransformPoint(_attackOrigin);
+
+        CombatHealth ICombatDamageable.Health => _health;
+        int ICombatDamageable.RewardId => _rewardId;
+
+        internal override void Initialize(int capacity)
+        {
+            _home = transform.position;
+            _homeRotation = transform.rotation;
+            base.Initialize(capacity);
+        }
+
+        internal override void ResetState()
+        {
+            RestoreState(new Snapshot(_home, _homeRotation, _health.Maximum, new AiState
+            {
+                Aim = _homeRotation * Vector3.forward
+            }));
+        }
+
+        internal override void CollectColliders(List<Collider> colliders)
+        {
+            colliders.Add(_body);
+            if (_weakPoint != null)
+            {
+                colliders.Add(_weakPoint);
+            }
+        }
+
+        DamageResult ICombatDamageable.Hit(Collider collider, int amount, bool reducedMotion, out bool weakPoint)
+        {
+            weakPoint = _weakPoint != null && collider == _weakPoint;
+            if (!weakPoint && collider != _body)
+            {
+                return default;
+            }
+
+            var result = _health.ApplyDamage(weakPoint ? Mathf.RoundToInt(amount * _weakPointMultiplier) : amount);
+            if (result.Amount == 0)
+            {
+                return result;
+            }
+
+            if (result.Killed)
+            {
+                _state.State = SecurityEnemyState.Dead;
+                _state.DeathTime = 0f;
+                _state.DirectionLocked = false;
+                _state.SeesPlayer = false;
+                _state.Recoil = 0f;
+                SetHitboxes(false);
+            }
+
+            _presentation.ReactToHit(reducedMotion);
+            return result;
+        }
+
+        internal override void Simulate(float step)
+        {
+            if (!_health.Alive)
+            {
+                _state.DeathTime = Mathf.Min(1.3f, _state.DeathTime + step);
+                return;
+            }
+
+            _state.PhaseRemaining = Mathf.Max(0f, _state.PhaseRemaining - step);
+            _state.Cooldown = Mathf.Max(0f, _state.Cooldown - step);
+            _state.Recoil = Mathf.MoveTowards(_state.Recoil, 0f, 7f * step);
+
+            var capsule = _director.PlayerCapsule;
+            var target = capsule.transform.TransformPoint(capsule.center);
+            var toPlayer = target - AttackOrigin;
+            var sawPlayer = _state.SeesPlayer;
+            _state.SeesPlayer = _director.HasLivingPlayer && toPlayer.sqrMagnitude <= _detectionRange * _detectionRange && !Physics.Linecast(AttackOrigin, target, _geometry, QueryTriggerInteraction.Ignore);
+
+            if (_kind == SecurityEnemyKind.Auditor)
+            {
+                SimulateAuditor(toPlayer, step);
+                return;
+            }
+
+            SimulateMobile(target, toPlayer, sawPlayer, step);
+        }
+
+        private void SimulateMobile(Vector3 target, Vector3 toPlayer, bool sawPlayer, float step)
+        {
+            if (!_state.SeesPlayer)
+            {
+                _state.ShotsRemaining = 0;
+                _state.State = sawPlayer || _state.State == SecurityEnemyState.Moving ? SecurityEnemyState.Moving : SecurityEnemyState.Idle;
+                var heading = MoveOnRoute(step);
+                if (heading.sqrMagnitude > 0.0001f)
+                {
+                    TurnToward(heading, step);
+                }
+
+                return;
+            }
+
+            TurnToward(toPlayer, step);
+            if (!sawPlayer)
+            {
+                _state.State = SecurityEnemyState.Alert;
+                _state.PhaseRemaining = _reactionSeconds;
+            }
+
+            if (_state.State == SecurityEnemyState.Alert && _state.PhaseRemaining > 0f)
+            {
+                return;
+            }
+
+            if (_state.Cooldown > 0f)
+            {
+                _state.State = SecurityEnemyState.Recovering;
+                if (_kind == SecurityEnemyKind.Guard)
+                {
+                    MoveOnRoute(step);
+                }
+                else
+                {
+                    MoveDrone(target, step);
+                }
+
+                return;
+            }
+
+            if (_state.ShotsRemaining == 0)
+            {
+                _state.State = SecurityEnemyState.Aiming;
+                if (_kind == SecurityEnemyKind.Drone)
+                {
+                    MoveDrone(target, step);
+                    toPlayer = target - AttackOrigin;
+                }
+
+                if (Vector3.Angle(_state.Aim, toPlayer) > AimTolerance)
+                {
+                    return;
+                }
+
+                _state.ShotsRemaining = _burstSize;
+            }
+
+            _state.State = SecurityEnemyState.Attacking;
+            if (_state.PhaseRemaining > 0f || Vector3.Angle(_state.Aim, toPlayer) > AimTolerance || Physics.Raycast(AttackOrigin, _state.Aim, toPlayer.magnitude, _geometry, QueryTriggerInteraction.Ignore))
+            {
+                return;
+            }
+
+            if (_projectiles.TryLaunch(AttackOrigin, _state.Aim, _projectileSpeed, _projectileLifetime, _projectileRadius, _damage, _kind == SecurityEnemyKind.Drone))
+            {
+                _state.Attacks++;
+                _state.Recoil = 1f;
+                _state.ShotsRemaining--;
+                _state.PhaseRemaining = _burstSpacing;
+            }
+
+            if (_state.ShotsRemaining == 0)
+            {
+                _state.Cooldown = _cooldownSeconds;
+            }
+        }
+
+        private void SimulateAuditor(Vector3 toPlayer, float step)
+        {
+            if (_state.State == SecurityEnemyState.Attacking && _state.PhaseRemaining > 0f)
+            {
+                return;
+            }
+
+            if (_state.Cooldown > 0f)
+            {
+                _state.State = SecurityEnemyState.Recovering;
+                _state.DirectionLocked = false;
+                if (_state.SeesPlayer)
+                {
+                    TurnToward(toPlayer, step);
+                }
+
+                return;
+            }
+
+            if (!_state.DirectionLocked && !_state.SeesPlayer)
+            {
+                _state.State = SecurityEnemyState.Idle;
+                return;
+            }
+
+            var lockedTime = Mathf.Min(_lockedSeconds, _aimSeconds);
+            if (_state.State != SecurityEnemyState.Aiming)
+            {
+                _state.State = SecurityEnemyState.Aiming;
+                _state.PhaseRemaining = _aimSeconds;
+            }
+
+            if (!_state.DirectionLocked)
+            {
+                TurnToward(toPlayer, step);
+                if (_state.PhaseRemaining <= lockedTime && Vector3.Angle(_state.Aim, toPlayer) <= AimTolerance)
+                {
+                    _state.DirectionLocked = true;
+                }
+
+                _state.PhaseRemaining = Mathf.Max(_state.PhaseRemaining, lockedTime);
+                _state.BeamDistance = BeamDistance(AttackOrigin, false, out _);
+                return;
+            }
+
+            if (_state.PhaseRemaining <= 0f)
+            {
+                var origin = AttackOrigin;
+                _state.BeamDistance = BeamDistance(origin, _director.CanDamagePlayer, out var hitsPlayer);
+                _state.State = SecurityEnemyState.Attacking;
+                _state.PhaseRemaining = _beamSeconds;
+                _state.Cooldown = _cooldownSeconds;
+                _state.Recoil = 1f;
+                _state.Attacks++;
+                if (hitsPlayer)
+                {
+                    _director.DamagePlayer(_damage, origin);
+                }
+            }
+            else
+            {
+                _state.BeamDistance = BeamDistance(AttackOrigin, false, out _);
+            }
+        }
+
+        private float BeamDistance(Vector3 origin, bool includePlayer, out bool hitsPlayer)
+        {
+            var capsule = _director.PlayerCapsule;
+            var layers = includePlayer ? _geometry.value | (1 << capsule.gameObject.layer) : _geometry.value;
+            if (Physics.Raycast(origin, _state.Aim, out var hit, _detectionRange, layers, QueryTriggerInteraction.Ignore))
+            {
+                hitsPlayer = includePlayer && hit.collider == capsule;
+                return hit.distance;
+            }
+
+            hitsPlayer = false;
+            return _detectionRange;
+        }
+
+        private void TurnToward(Vector3 direction, float step)
+        {
+            var horizontal = Vector3.ProjectOnPlane(direction, Vector3.up);
+            if (horizontal.sqrMagnitude > 0.0001f)
+            {
+                transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(horizontal), _yawSpeed * step);
+            }
+
+            var targetPitch = Mathf.Atan2(direction.y, horizontal.magnitude) * Mathf.Rad2Deg;
+            _state.Pitch = Mathf.MoveTowards(_state.Pitch, targetPitch, _pitchSpeed * step);
+            _state.Aim = transform.rotation * Quaternion.Euler(-_state.Pitch, 0f, 0f) * Vector3.forward;
+        }
+
+        private Vector3 MoveOnRoute(float step)
+        {
+            if (_patrol.Length == 0)
+            {
+                return Vector3.zero;
+            }
+
+            var delta = _patrol[_state.Waypoint].position - transform.position;
+            if (_kind == SecurityEnemyKind.Guard)
+            {
+                delta.y = 0f;
+            }
+            else
+            {
+                delta = LimitFlight(delta);
+            }
+
+            if (delta.sqrMagnitude < 0.04f || !TryMove(delta, step))
+            {
+                _state.Waypoint = (_state.Waypoint + 1) % _patrol.Length;
+            }
+
+            return delta;
+        }
+
+        private void MoveDrone(Vector3 target, float step)
+        {
+            var toTarget = target - transform.position;
+            var distance = toTarget.magnitude;
+            if (distance < 0.01f)
+            {
+                return;
+            }
+
+            var radial = toTarget / distance;
+            var tangent = Vector3.Cross(Vector3.up, radial);
+            var steer = radial * Mathf.Clamp((distance - _preferredRange) / 2f, -1f, 1f);
+            steer.y += Mathf.Clamp(toTarget.y + 0.45f, -1f, 1f) * 0.6f;
+            if (TryMove(LimitFlight((steer + tangent * 0.8f).normalized), step))
+            {
+                return;
+            }
+
+            if (TryMove(LimitFlight((steer - tangent).normalized), step))
+            {
+                return;
+            }
+
+            if (!TryMove(LimitFlight(Vector3.up), step))
+            {
+                TryMove(LimitFlight(Vector3.down), step);
+            }
+        }
+
+        private Vector3 LimitFlight(Vector3 delta)
+        {
+            var candidate = transform.position + delta - _home;
+            candidate.x = Mathf.Clamp(candidate.x, -_flightHalfExtents.x, _flightHalfExtents.x);
+            candidate.y = Mathf.Clamp(candidate.y, -_flightHalfExtents.y, _flightHalfExtents.y);
+            candidate.z = Mathf.Clamp(candidate.z, -_flightHalfExtents.z, _flightHalfExtents.z);
+            return _home + candidate - transform.position;
+        }
+
+        private bool TryMove(Vector3 delta, float step)
+        {
+            var length = delta.magnitude;
+            if (length <= 0.0001f)
+            {
+                return false;
+            }
+
+            var position = transform.position;
+            var direction = delta / length;
+            var distance = Mathf.Min(length, step * _moveSpeed);
+            var halfSegment = _kind == SecurityEnemyKind.Guard ? Vector3.up * 0.40f : Vector3.zero;
+            var blocked = halfSegment == Vector3.zero
+                ? Physics.SphereCast(position, _moveRadius, direction, out _, distance + 0.03f, _geometry, QueryTriggerInteraction.Ignore)
+                : Physics.CapsuleCast(position - halfSegment, position + halfSegment, _moveRadius, direction, out _, distance + 0.03f, _geometry, QueryTriggerInteraction.Ignore);
+
+            if (blocked)
+            {
+                return false;
+            }
+
+            transform.position = position + direction * distance;
+            return true;
+        }
+
+        internal override void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
+        {
+            var aiming = _kind == SecurityEnemyKind.Auditor && _state.State == SecurityEnemyState.Aiming;
+            var firing = _kind == SecurityEnemyKind.Auditor && _state.State == SecurityEnemyState.Attacking;
+            var charge = aiming ? 1f - _state.PhaseRemaining / _aimSeconds : 0f;
+            var time = (timeline.Cursor + timeline.ForwardFraction - timeline.PreviewFraction) * (float)TemporalTimeline.TickDuration;
+            _presentation.Present(time, _state.Aim, AttackOrigin, _state.Recoil, _state.DeathTime, _state.State, aiming, firing, charge, _state.DirectionLocked, _state.BeamDistance);
+        }
+
+        private protected override Snapshot CaptureState()
+        {
+            return new Snapshot(transform.position, transform.rotation, _health.Current, _state);
+        }
+
+        private protected override void RestoreState(in Snapshot snapshot)
+        {
+            _state = snapshot.Ai;
+            transform.SetPositionAndRotation(snapshot.Position, snapshot.Rotation);
+            _health.Restore(snapshot.HitPoints);
+            SetHitboxes(_health.Alive);
+            _presentation.ClearHit();
+        }
+
+        private void SetHitboxes(bool alive)
+        {
+            _body.enabled = alive;
+            if (_weakPoint != null)
+            {
+                _weakPoint.enabled = alive;
+            }
+        }
+
+        internal readonly struct Snapshot
+        {
+            internal readonly Vector3 Position;
+            internal readonly Quaternion Rotation;
+            internal readonly int HitPoints;
+            internal readonly AiState Ai;
+
+            internal Snapshot(Vector3 position, Quaternion rotation, int hitPoints, in AiState ai)
+            {
+                Position = position;
+                Rotation = rotation;
+                HitPoints = hitPoints;
+                Ai = ai;
+            }
+        }
+
+        internal struct AiState
+        {
+            internal Vector3 Aim;
+            internal SecurityEnemyState State;
+            internal bool SeesPlayer;
+            internal bool DirectionLocked;
+            internal int Waypoint;
+            internal int ShotsRemaining;
+            internal float PhaseRemaining;
+            internal float Cooldown;
+            internal float Pitch;
+            internal float BeamDistance;
+            internal float Recoil;
+            internal float DeathTime;
+            internal uint Attacks;
+        }
+    }
+}

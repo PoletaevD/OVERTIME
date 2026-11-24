@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace Overtime
@@ -8,31 +9,51 @@ namespace Overtime
         private const int TraceSpacing = 4;
 
         [SerializeField] private Transform[] _projectiles;
+        [SerializeField] private bool _automatic = true;
         [SerializeField, Min(0.05f)] private float _interval = 0.48f;
         [SerializeField, Min(0.05f)] private float _lifetime = 1.45f;
         [SerializeField, Min(0.1f)] private float _speed = 8f;
-
         [SerializeField] private TemporalDirector _combatDirector;
         [SerializeField, Min(1)] private int _damage = 15;
         [SerializeField, Min(0.01f)] private float _radius = 0.13f;
+        [SerializeField] private LayerMask _impactLayers = 1;
+        [SerializeField] private Material _droneBolt;
 
-        private LineRenderer[] _traces;
+        private Visual[] _visuals;
         private Projectile[] _live;
         private Projectile[] _history;
         private EmitterFrame[] _emitterHistory;
         private float _untilEmission;
         private uint _generation;
 
+        internal uint Generation => _generation;
+
+        internal int ActiveCount
+        {
+            get
+            {
+                var count = 0;
+                foreach (var projectile in _live)
+                {
+                    count += projectile.Active ? 1 : 0;
+                }
+
+                return count;
+            }
+        }
+
         internal override void Initialize(int capacity)
         {
             var slots = _projectiles.Length;
-            _traces = new LineRenderer[slots];
+            _visuals = new Visual[slots];
             _live = new Projectile[slots];
             _history = new Projectile[capacity * slots];
             _emitterHistory = new EmitterFrame[capacity];
             for (var slot = 0; slot < slots; slot++)
             {
-                _traces[slot] = _projectiles[slot].GetComponent<LineRenderer>();
+                var transform = _projectiles[slot];
+                var mesh = transform.GetComponent<MeshRenderer>();
+                _visuals[slot] = new Visual(transform.GetComponent<LineRenderer>(), mesh, mesh != null ? mesh.sharedMaterial : null, transform.localScale);
             }
 
             ResetState();
@@ -51,65 +72,100 @@ namespace Overtime
 
         internal override void Simulate(float step)
         {
-            var displacement = transform.forward * (_speed * step);
             for (var slot = 0; slot < _live.Length; slot++)
             {
                 ref var projectile = ref _live[slot];
-                if (projectile.Active)
+                if (!projectile.Active)
                 {
-                    if (_combatDirector != null && Sweep(projectile.Position, displacement))
-                    {
-                        projectile.Remaining = 0f;
-                    }
-                    else
-                    {
-                        projectile.Remaining = Mathf.Max(0f, projectile.Remaining - step);
-                        projectile.Position += displacement;
-                    }
-
-                    Apply(slot);
+                    continue;
                 }
+
+                var distance = projectile.Speed * Mathf.Min(step, projectile.Remaining);
+                if (_combatDirector != null && Sweep(projectile, distance, out var travelled))
+                {
+                    projectile.Position += projectile.Direction * travelled;
+                    projectile.Hit = true;
+                }
+                else
+                {
+                    projectile.Position += projectile.Direction * distance;
+                }
+
+                projectile.Remaining = Mathf.Max(0f, projectile.Remaining - step);
+                Apply(slot);
+            }
+
+            if (!_automatic)
+            {
+                return;
             }
 
             _untilEmission -= step;
             if (_untilEmission <= 0.000001f)
             {
                 _untilEmission += _interval;
-                for (var slot = 0; slot < _live.Length; slot++)
-                {
-                    if (!_live[slot].Active)
-                    {
-                        _live[slot] = new Projectile { Position = transform.position, Remaining = _lifetime, Generation = ++_generation };
-                        Apply(slot);
-                        break;
-                    }
-                }
+                TryLaunch(transform.position, transform.forward, _speed, _lifetime, _radius, _damage, false);
             }
         }
 
-        private bool Sweep(Vector3 origin, Vector3 displacement)
+        internal bool TryLaunch(Vector3 origin, Vector3 direction, float speed, float lifetime, float radius, int damage, bool drone)
         {
-            // The combat player's capsule is on Ignore Raycast. Include it only when damage is allowed.
-            var canDamagePlayer = _combatDirector.CanDamagePlayer;
-            var mask = canDamagePlayer ? Physics.AllLayers : Physics.DefaultRaycastLayers;
-            var capsule = _combatDirector.PlayerCapsule;
-            if (canDamagePlayer && (capsule.ClosestPoint(origin) - origin).sqrMagnitude <= _radius * _radius)
+            for (var slot = 0; slot < _live.Length; slot++)
             {
-                return _combatDirector.DamagePlayer(_damage);
+                if (_live[slot].Active)
+                {
+                    continue;
+                }
+
+                _live[slot] = new Projectile
+                {
+                    Position = origin,
+                    Direction = direction,
+                    Speed = speed,
+                    Remaining = lifetime,
+                    Radius = radius,
+                    Damage = damage,
+                    Generation = ++_generation,
+                    Drone = drone
+                };
+                Apply(slot, true);
+                return true;
             }
 
-            if (!Physics.SphereCast(origin, _radius, transform.forward, out var hit, displacement.magnitude, mask, QueryTriggerInteraction.Ignore))
+            return false;
+        }
+
+        private bool Sweep(in Projectile projectile, float distance, out float travelled)
+        {
+            travelled = 0f;
+            var origin = projectile.Position;
+            var radius = projectile.Radius;
+            var canDamagePlayer = _combatDirector.CanDamagePlayer;
+            var capsule = _combatDirector.PlayerCapsule;
+            // Enemy bolts use the geometry mask. The separate hitbox layer keeps shooters out of their own sweeps.
+            var mask = _automatic ? Physics.DefaultRaycastLayers : _impactLayers.value;
+            if (canDamagePlayer)
+            {
+                mask = _automatic ? Physics.AllLayers : mask | (1 << capsule.gameObject.layer);
+                if ((capsule.ClosestPoint(origin) - origin).sqrMagnitude <= radius * radius)
+                {
+                    return _combatDirector.DamagePlayer(projectile.Damage, origin - projectile.Direction);
+                }
+            }
+
+            if (!Physics.SphereCast(origin, radius, projectile.Direction, out var hit, distance, mask, QueryTriggerInteraction.Ignore))
             {
                 return false;
             }
 
-            return hit.collider != capsule || _combatDirector.DamagePlayer(_damage);
+            travelled = hit.distance;
+            return hit.collider != capsule || _combatDirector.DamagePlayer(projectile.Damage, origin - projectile.Direction);
         }
 
         internal override void Capture(int slot)
         {
-            _emitterHistory[slot] = new EmitterFrame { UntilEmission = _untilEmission, Generation = _generation };
-            System.Array.Copy(_live, 0, _history, slot * _live.Length, _live.Length);
+            _emitterHistory[slot] = new EmitterFrame(_untilEmission, _generation);
+            Array.Copy(_live, 0, _history, slot * _live.Length, _live.Length);
         }
 
         internal override void Restore(int slot)
@@ -117,10 +173,10 @@ namespace Overtime
             var frame = _emitterHistory[slot];
             _untilEmission = frame.UntilEmission;
             _generation = frame.Generation;
-            System.Array.Copy(_history, slot * _live.Length, _live, 0, _live.Length);
+            Array.Copy(_history, slot * _live.Length, _live, 0, _live.Length);
             for (var projectile = 0; projectile < _live.Length; projectile++)
             {
-                Apply(projectile);
+                Apply(projectile, true);
             }
         }
 
@@ -129,7 +185,6 @@ namespace Overtime
             for (var slot = 0; slot < _live.Length; slot++)
             {
                 var current = _live[slot];
-                var trace = _traces[slot];
                 if (!current.Active)
                 {
                     continue;
@@ -147,10 +202,11 @@ namespace Overtime
                 else if (timeline.Direction == TemporalDirection.Forward)
                 {
                     var fraction = timeline.ForwardFraction * (float)TemporalTimeline.TickDuration;
-                    position += transform.forward * (_speed * Mathf.Min(fraction, current.Remaining));
+                    position += current.Direction * (current.Speed * Mathf.Min(fraction, current.Remaining));
                 }
 
                 _projectiles[slot].position = position;
+                var trace = _visuals[slot].Trace;
                 if (trace != null)
                 {
                     PresentTrace(timeline, mode, showTraces, slot, current, position, trace);
@@ -166,7 +222,7 @@ namespace Overtime
                 return;
             }
 
-            var limit = (int)System.Math.Min(TraceSamples, 1 + (timeline.Cursor - timeline.Oldest) / TraceSpacing);
+            var limit = (int)Math.Min(TraceSamples, 1 + (timeline.Cursor - timeline.Oldest) / TraceSpacing);
             var samples = 1;
             while (samples < limit && SameProjectile(Read(timeline, timeline.Cursor - samples * TraceSpacing, slot), current))
             {
@@ -198,39 +254,78 @@ namespace Overtime
             return first.Active && first.Generation == second.Generation;
         }
 
-        private void Apply(int slot)
+        private void Apply(int slot, bool refreshStyle = false)
         {
             var projectile = _live[slot];
             var visual = _projectiles[slot];
+            ref readonly var style = ref _visuals[slot];
             if (visual.gameObject.activeSelf != projectile.Active)
             {
-                if (!projectile.Active && _traces[slot] != null)
+                if (!projectile.Active && style.Trace != null)
                 {
-                    _traces[slot].enabled = false;
+                    style.Trace.enabled = false;
                 }
 
                 visual.gameObject.SetActive(projectile.Active);
             }
 
-            if (projectile.Active)
+            if (!projectile.Active)
             {
-                visual.position = projectile.Position;
+                return;
+            }
+
+            visual.position = projectile.Position;
+            if (refreshStyle && !_automatic)
+            {
+                visual.rotation = Quaternion.LookRotation(projectile.Direction);
+                visual.localScale = style.Scale * (projectile.Radius / _radius);
+                if (style.Mesh != null)
+                {
+                    style.Mesh.sharedMaterial = projectile.Drone && _droneBolt != null ? _droneBolt : style.Material;
+                }
+            }
+        }
+
+        private readonly struct Visual
+        {
+            internal readonly LineRenderer Trace;
+            internal readonly MeshRenderer Mesh;
+            internal readonly Material Material;
+            internal readonly Vector3 Scale;
+
+            internal Visual(LineRenderer trace, MeshRenderer mesh, Material material, Vector3 scale)
+            {
+                Trace = trace;
+                Mesh = mesh;
+                Material = material;
+                Scale = scale;
             }
         }
 
         private struct Projectile
         {
             internal Vector3 Position;
+            internal Vector3 Direction;
+            internal float Speed;
             internal float Remaining;
+            internal float Radius;
+            internal int Damage;
             internal uint Generation;
-
-            internal bool Active => Remaining > 0f;
+            internal bool Drone;
+            internal bool Hit;
+            internal bool Active => !Hit && Remaining > 0f;
         }
 
-        private struct EmitterFrame
+        private readonly struct EmitterFrame
         {
-            internal float UntilEmission;
-            internal uint Generation;
+            internal readonly float UntilEmission;
+            internal readonly uint Generation;
+
+            internal EmitterFrame(float untilEmission, uint generation)
+            {
+                UntilEmission = untilEmission;
+                Generation = generation;
+            }
         }
     }
 }

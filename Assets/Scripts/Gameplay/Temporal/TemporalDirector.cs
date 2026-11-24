@@ -47,10 +47,12 @@ namespace Overtime
         private int _exhaustedButtons;
 
         internal event Action<TemporalMode> ModeChanged;
+        internal event Action<Vector3> DirectionalDamage;
 
         internal ChronoEnergy Energy => _energy;
         internal float EnergyCost => _energy.Cost(Mode);
         internal CapsuleCollider PlayerCapsule => _player.Capsule;
+        internal bool HasLivingPlayer => _player.Combat is { Alive: true, GameOver: false };
         internal bool CanRecharge => _rechargeStation != null && (_rechargeStation.position - _player.transform.position).sqrMagnitude <= _rechargeRadius * _rechargeRadius;
         internal bool RecoveryAvailable => _player.Combat is { Alive: false, GameOver: false } && (CanRecover(TemporalMode.Reset) || CanRecover(TemporalMode.Recall));
 
@@ -449,6 +451,7 @@ namespace Overtime
 
         private void SimulateWorld()
         {
+            Physics.SyncTransforms();
             foreach (var actor in _worldActors)
             {
                 actor.Simulate(Step);
@@ -476,7 +479,7 @@ namespace Overtime
             }
         }
 
-        internal DamageResult DamageTarget(CombatTarget target, Collider hit, int amount, out bool weakPoint)
+        internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, int amount, out bool weakPoint)
         {
             weakPoint = false;
             if (!CanAffectWorld || _player.Combat is not { Alive: true, GameOver: false })
@@ -488,15 +491,15 @@ namespace Overtime
             _worldChangedBetweenSteps |= damage.Amount > 0;
             if (damage.Killed)
             {
-                _energy.Reward(target.RewardId);
+                _energy?.Reward(target.RewardId);
             }
 
             return damage;
         }
 
-        internal bool CanDamagePlayer => CanAffectWorld && _player.Combat is { Alive: true, GameOver: false };
+        internal bool CanDamagePlayer => CanAffectWorld && HasLivingPlayer;
 
-        internal bool DamagePlayer(int amount)
+        internal bool DamagePlayer(int amount, Vector3? source = null)
         {
             if (!CanDamagePlayer || !_player.Combat.TakeDamage(amount))
             {
@@ -504,6 +507,11 @@ namespace Overtime
             }
 
             _playerChangedBetweenSteps = true;
+            if (source.HasValue)
+            {
+                DirectionalDamage?.Invoke(source.Value);
+            }
+
             return true;
         }
 

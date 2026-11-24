@@ -82,7 +82,7 @@ namespace Overtime
                 shot.HasImpact = true;
                 shot.Point = hit.point;
                 shot.Normal = hit.normal;
-                var target = hit.collider.GetComponentInParent<CombatTarget>();
+                var target = hit.collider.GetComponentInParent<ICombatDamageable>();
                 if (target != null)
                 {
                     shot.Damage = director.DamageTarget(target, hit.collider, _damage, out shot.WeakPoint);
