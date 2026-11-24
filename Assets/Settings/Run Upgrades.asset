@@ -1,0 +1,216 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 60351f8d2069756409b0fcb6e97e9799, type: 3}
+  m_Name: Run Upgrades
+  m_EditorClassIdentifier: Overtime.Runtime::Overtime.RunUpgradeCatalog
+  _definitions:
+  - _id: 0
+    _title: Overclocked Receiver
+    _description: Amplifies base weapon damage.
+    _numbers: +{0:P0} damage per level
+    _category: 0
+    _rarity: 0
+    _maxLevel: 3
+    _magnitude: 0.2
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: a137547b17e63d0438ea6fe2a260373c, type: 3}
+  - _id: 1
+    _title: Extended Magazine
+    _description: Expands capacity. Reload to fill it.
+    _numbers: +{0:0} rounds per level
+    _category: 0
+    _rarity: 0
+    _maxLevel: 2
+    _magnitude: 10
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 5a0e2665e201e6d4a9073937ce1a35ae, type: 3}
+  - _id: 2
+    _title: Rapid Service
+    _description: Shortens the ARC-01 reload cycle.
+    _numbers: -{0:P0} reload time per level
+    _category: 0
+    _rarity: 0
+    _maxLevel: 2
+    _magnitude: 0.25
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: d9aef80abf75bb6408c8cdf3e119fa21, type: 3}
+  - _id: 3
+    _title: Kinetic Charge
+    _description: Change gravity to charge the next shot.
+    _numbers: +{0:P0} shot damage / {1:0.##} s
+    _category: 1
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.35
+    _seconds: 2
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 9dc3eb6a6cdbf1c4283ab505cd8f4b28, type: 3}
+  - _id: 4
+    _title: Magnetic Acceleration
+    _description: Move faster with magnetic gravity.
+    _numbers: +{0:P0} magnetic move speed
+    _category: 1
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.15
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: a0b9c4b44226c9d45900bdcecb69fe1b, type: 3}
+  - _id: 5
+    _title: Auto Feed
+    _description: Magnetic turns feed rounds from reserve.
+    _numbers: Up to {0:0} rounds / {1:0.##} s cooldown
+    _category: 1
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 3
+    _seconds: 1
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 99bdb7cdea68f374bb513759887a337b, type: 3}
+  - _id: 6
+    _title: Freefall
+    _description: Deal more damage when firing without support.
+    _numbers: +{0:P0} airborne shot damage
+    _category: 1
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.25
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 1d721b4530114ce42ba4dff3463dd2e1, type: 3}
+  - _id: 7
+    _title: Second Draft
+    _description: RESET primes one high-damage shot.
+    _numbers: +{0:P0} shot damage / {1:0.##} s
+    _category: 2
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.75
+    _seconds: 2
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 52138881d56ad7a4c8ae3b10acebb49a, type: 3}
+  - _id: 8
+    _title: Quality Assurance
+    _description: Gain protection after RESET.
+    _numbers: -{0:P0} incoming damage / {1:0.##} s
+    _category: 2
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.35
+    _seconds: 1.5
+    _radius: 0
+    _icon: {fileID: 21300000, guid: d82d2008a0e7fd349b76874148119beb, type: 3}
+  - _id: 9
+    _title: Exploit Window
+    _description: OVERRIDE opens a brief damage window.
+    _numbers: +{0:P0} shot damage / {1:0.##} s
+    _category: 3
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.3
+    _seconds: 1.5
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 46fca75186741ba4c88fa6806777ac73, type: 3}
+  - _id: 10
+    _title: Residual Memory
+    _description: OVERRIDE destabilizes living hostiles.
+    _numbers: +{0:P0} damage taken / {1:0.##} s
+    _category: 3
+    _rarity: 2
+    _maxLevel: 1
+    _magnitude: 0.35
+    _seconds: 3
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 34df2bcfd4bcf6943b9bab638ffd3105, type: 3}
+  - _id: 11
+    _title: Efficient Recall
+    _description: Use less chronoenergy during RECALL.
+    _numbers: -{0:P0} RECALL cost
+    _category: 4
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.25
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: aed8db18ec77895408f74d921552b3bb, type: 3}
+  - _id: 12
+    _title: Safe Return
+    _description: Gain protection after RECALL.
+    _numbers: -{0:P0} incoming damage / {1:0.##} s
+    _category: 4
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.4
+    _seconds: 1.5
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 1d802464e42d42f4e84180d042dd46b3, type: 3}
+  - _id: 13
+    _title: Bad Take
+    _description: Detonate a temporal echo at the RECALL origin.
+    _numbers: '{0:0} damage / {2:0.##} m radius'
+    _category: 4
+    _rarity: 2
+    _maxLevel: 1
+    _magnitude: 35
+    _seconds: 0
+    _radius: 2.5
+    _icon: {fileID: 21300000, guid: c88996f3a9ef13146966b7b89ea3df02, type: 3}
+  - _id: 14
+    _title: Accelerated Processing
+    _description: Cycle the ARC-01 faster in BULLET TIME.
+    _numbers: +{0:P0} fire rate
+    _category: 5
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.35
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 2ee841e81fcbd1b4ea5fef8a59beebcb, type: 3}
+  - _id: 15
+    _title: Hypervelocity
+    _description: Launch faster bolts during BULLET TIME.
+    _numbers: +{0:P0} projectile speed
+    _category: 5
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.5
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: 3f95360ef2e0054489344df96b57e14d, type: 3}
+  - _id: 16
+    _title: Extended Battery
+    _description: Expand your capacity and charge the difference.
+    _numbers: +{0:0} max and current per level
+    _category: 6
+    _rarity: 0
+    _maxLevel: 2
+    _magnitude: 25
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: a84f3fdc6f62be74b925f2f278e9d576, type: 3}
+  - _id: 17
+    _title: Performance Bonus
+    _description: Earn extra charge for each unique takedown.
+    _numbers: +{0:0} chronoenergy per first kill
+    _category: 6
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 5
+    _seconds: 0
+    _radius: 0
+    _icon: {fileID: 21300000, guid: e14b63f9eb2cc644c9c4562a30cedd3a, type: 3}
+  _rarityWeights: {x: 55, y: 35, z: 10}
+  _synergyWeight: 1.35
+  _maxSynergyWeight: 1.5

@@ -22,6 +22,8 @@ namespace Overtime
 
         internal event Action LegacyShotFired;
         internal PlayerCombat Combat => _combat;
+        internal GravityMotor Motor => _motor;
+        internal PlaygroundInput Input => _input;
         internal CapsuleCollider Capsule => _capsule;
 
         internal Ray AimRay => _cameraRig.AimRay;
@@ -88,6 +90,11 @@ namespace Overtime
         internal void ConfirmLegacyShot()
         {
             LegacyShotFired?.Invoke();
+        }
+
+        internal void SetRewardSelection(bool active)
+        {
+            _input.SetRewardSelection(active);
         }
 
         internal void SetGameOver(bool active)

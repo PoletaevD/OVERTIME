@@ -13,6 +13,7 @@ namespace Overtime
         private AudioClip _impact;
         private AudioClip _shield;
         private AudioClip _charge;
+        private AudioClip _feed;
         private AudioSource _weapon;
         private AudioSource[] _voices;
         private GameObject _voicePool;
@@ -41,11 +42,13 @@ namespace Overtime
             _impact = BuildClip("Projectile Impact", 0.07f, 450f, 175f, 0.38f, 3f);
             _shield = BuildClip("Shield Deflection", 0.19f, 620f, 395f, 0.03f, 3.2f);
             _charge = BuildClip("Auditor Charge", 0.55f, 170f, 510f, 0.01f, 1.3f);
+            _feed = BuildClip("Magnetic Feed", 0.10f, 840f, 1250f, 0.04f, 2.5f);
         }
 
         private void OnEnable()
         {
             _player.Combat.Weapon.ShotFired += OnShot;
+            _player.Combat.Weapon.AutoFed += OnFeed;
             _director.ProjectileHit += OnImpact;
             _director.AuditorCharging += OnCharge;
         }
@@ -53,6 +56,7 @@ namespace Overtime
         private void OnDisable()
         {
             _player.Combat.Weapon.ShotFired -= OnShot;
+            _player.Combat.Weapon.AutoFed -= OnFeed;
             _director.ProjectileHit -= OnImpact;
             _director.AuditorCharging -= OnCharge;
         }
@@ -63,12 +67,18 @@ namespace Overtime
             Destroy(_impact);
             Destroy(_shield);
             Destroy(_charge);
+            Destroy(_feed);
             Destroy(_voicePool);
         }
 
         private void OnShot()
         {
             _weapon.PlayOneShot(_shot, 0.31f);
+        }
+
+        private void OnFeed()
+        {
+            _weapon.PlayOneShot(_feed, 0.24f);
         }
 
         private void OnImpact(ProjectileImpact impact)

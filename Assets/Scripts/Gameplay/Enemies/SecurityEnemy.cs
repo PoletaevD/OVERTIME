@@ -69,6 +69,17 @@ namespace Overtime
         private Quaternion _homeRotation;
 
         internal SecurityEnemyKind Kind => _kind;
+        internal bool EncounterReady => _encounterReady;
+        internal float InstabilityRemaining => _state.InstabilityRemaining;
+
+        internal void ApplyInstability(float magnitude, float seconds)
+        {
+            if (_encounterReady && _health.Alive)
+            {
+                _state.InstabilityRemaining = seconds;
+                _state.InstabilityMagnitude = magnitude;
+            }
+        }
         internal CombatHealth Health => _health;
         internal Collider Body => _body;
         internal SecurityEnemyState State => _state.State;
@@ -131,7 +142,8 @@ namespace Overtime
                 return default;
             }
 
-            var result = _health.ApplyDamage(weakPoint ? Mathf.RoundToInt(amount * _weakPointMultiplier) : amount);
+            var vulnerability = _state.InstabilityRemaining > 0f ? 1f + _state.InstabilityMagnitude : 1f;
+            var result = _health.ApplyDamage(Mathf.RoundToInt(amount * vulnerability * (weakPoint ? _weakPointMultiplier : 1f)));
             if (result.Amount == 0)
             {
                 return result;
@@ -164,6 +176,7 @@ namespace Overtime
                 return;
             }
 
+            _state.InstabilityRemaining = Mathf.Max(0f, _state.InstabilityRemaining - step);
             _state.PhaseRemaining = Mathf.Max(0f, _state.PhaseRemaining - step);
             _state.Cooldown = Mathf.Max(0f, _state.Cooldown - step);
             _state.Recoil = Mathf.MoveTowards(_state.Recoil, 0f, 7f * step);
@@ -254,7 +267,22 @@ namespace Overtime
                 return;
             }
 
-            if (_projectiles.TryLaunch(AttackOrigin, _state.Aim, _projectileSpeed, _projectileLifetime, _projectileRadius, _damage, _kind == SecurityEnemyKind.Drone, transform))
+            var origin = AttackOrigin;
+            if (_kind == SecurityEnemyKind.Enforcer)
+            {
+                if (Vector3.Dot(transform.forward, _state.Aim) <= 0.2f)
+                {
+                    return;
+                }
+
+                origin += _state.Aim * _projectileRadius;
+                if (Physics.Linecast(AttackOrigin, origin, _geometry, QueryTriggerInteraction.Ignore))
+                {
+                    return;
+                }
+            }
+
+            if (_projectiles.TryLaunch(origin, _state.Aim, _projectileSpeed, _projectileLifetime, _projectileRadius, _damage, _kind == SecurityEnemyKind.Drone, transform))
             {
                 _state.Attacks++;
                 _state.Recoil = 1f;
@@ -508,7 +536,7 @@ namespace Overtime
             var firing = _kind == SecurityEnemyKind.Auditor && _state.State == SecurityEnemyState.Attacking;
             var charge = aiming ? 1f - _state.PhaseRemaining / _aimSeconds : 0f;
             var time = (timeline.Cursor + timeline.ForwardFraction - timeline.PreviewFraction) * (float)TemporalTimeline.TickDuration;
-            _presentation.Present(time, _state.Aim, AttackOrigin, _state.Recoil, _state.DeathTime, _state.State, aiming, firing, charge, _state.DirectionLocked, _state.BeamDistance);
+            _presentation.Present(time, _state.Aim, AttackOrigin, _state.Recoil, _state.DeathTime, _state.State, aiming, firing, charge, _state.DirectionLocked, _state.BeamDistance, _state.InstabilityRemaining > 0f);
         }
 
         private protected override Snapshot CaptureState()
@@ -566,6 +594,8 @@ namespace Overtime
             internal int Waypoint;
             internal int ShotsRemaining;
             internal float PhaseRemaining;
+            internal float InstabilityRemaining;
+            internal float InstabilityMagnitude;
             internal float Cooldown;
             internal float Pitch;
             internal float BeamDistance;

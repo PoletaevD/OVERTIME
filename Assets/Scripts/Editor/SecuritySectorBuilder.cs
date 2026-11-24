@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Unity.Cinemachine;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -42,6 +43,92 @@ namespace Overtime.Editor
             CombatPlaygroundBuilder.RegisterScene(ScenePath);
         }
 
+        [MenuItem("OVERTIME/Install Security Sector Run Protocols")]
+        public static void InstallRunProtocols()
+        {
+            if (EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                throw new InvalidOperationException("Exit Play Mode before installing run protocols.");
+            }
+
+            var scene = SceneManager.GetSceneByPath(ScenePath);
+            var wasLoaded = scene.isLoaded;
+            if (wasLoaded && scene.isDirty)
+            {
+                throw new InvalidOperationException("Save the Security Sector scene before installing run protocols.");
+            }
+
+            if (!wasLoaded)
+            {
+                scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive);
+            }
+
+            SectorRoute route = null;
+            PlaygroundPlayer player = null;
+            foreach (var root in scene.GetRootGameObjects())
+            {
+                route ??= root.GetComponentInChildren<SectorRoute>();
+                player ??= root.GetComponentInChildren<PlaygroundPlayer>();
+            }
+
+            if (route == null || player == null)
+            {
+                throw new InvalidOperationException("The Security Sector scene requires a route and a player.");
+            }
+
+            if (route.GetComponent<RunProgression>() == null)
+            {
+                AddRunProtocols(route, player, player.GetComponentInChildren<PlaygroundHud>());
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+
+            if (!wasLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+
+        private static void AddRunProtocols(SectorRoute route, PlaygroundPlayer player, PlaygroundHud movement)
+        {
+            var catalog = new RunUpgradeAssets().LoadOrCreate();
+            var director = route.GetComponent<TemporalDirector>();
+            var progression = route.gameObject.AddComponent<RunProgression>();
+            PlaygroundSceneBuilder.Wire(progression, "_catalog", catalog);
+            PlaygroundSceneBuilder.Wire(route, "_progression", progression);
+
+            var echo = PlaygroundSceneBuilder.Child("RECALL Echo", route.transform).gameObject;
+            var outline = echo.AddComponent<LineRenderer>();
+            outline.useWorldSpace = false;
+            outline.loop = true;
+            outline.positionCount = 16;
+            outline.startWidth = 0.06f;
+            outline.endWidth = 0.06f;
+            outline.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/Temporal Playground/Temporal Trace.mat");
+            outline.shadowCastingMode = ShadowCastingMode.Off;
+            outline.receiveShadows = false;
+            outline.enabled = false;
+            var presentation = echo.AddComponent<RecallEchoPresentation>();
+            PlaygroundSceneBuilder.Wire(presentation, "_progression", progression, "_director", director, "_outline", outline);
+
+            new PlaygroundHudBuilder(PlaygroundSceneBuilder.TMPAsset()).BuildUpgrades(movement, route, director, player, progression);
+            var viewmodel = player.GetComponentInChildren<WeaponPresentation>();
+            var chargeStrips = new List<Renderer>(2);
+            foreach (var renderer in viewmodel.GetComponentsInChildren<Renderer>())
+            {
+                if (renderer.name == "Charge Strip")
+                {
+                    chargeStrips.Add(renderer);
+                }
+            }
+
+            PlaygroundSceneBuilder.Wire(viewmodel, "_chargeStrips", chargeStrips.ToArray());
+            PrefabUtility.RecordPrefabInstancePropertyModifications(viewmodel);
+            var bindings = movement.transform.Find("Controls/Bindings").GetComponent<TMPro.TMP_Text>();
+            bindings.text = bindings.text.Replace("F3  DEBUG   F4  MOTION   H  HINTS", "TAB  BUILD   F4  MOTION   H  HINTS");
+            PrefabUtility.RecordPrefabInstancePropertyModifications(bindings);
+        }
+
         private void Build(Scene scene)
         {
             var root = _art.Root;
@@ -81,6 +168,7 @@ namespace Overtime.Editor
             var combatHud = hud.BuildCombat(movement, director, player);
             hud.BuildSector(movement, combatHud, player, director, route, player.GetComponentInChildren<Camera>());
             chamber.BuildTemporalEffects(director, rig, pulse);
+            AddRunProtocols(route, player, movement);
         }
 
         private EncounterController BuildRoom(string number, string title, float start, float length, float width, float height, Material accent, TemporalDirector director, TemporalProjectileEmitter pool)

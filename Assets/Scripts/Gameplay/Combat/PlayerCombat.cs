@@ -10,12 +10,19 @@ namespace Overtime
         [SerializeField, Min(0.1f)] private float _recoverySeconds = 2f;
 
         private double _recoveryRemaining;
+        private PlayerUpgradeEffects _effects;
 
         internal CombatHealth Health => _health;
         internal CombatWeapon Weapon => _weapon;
         internal bool Alive => _health.Alive;
         internal bool GameOver { get; private set; }
         internal double RecoveryRemaining => _recoveryRemaining;
+
+        internal void BindUpgrades(RunUpgradeState build, PlayerUpgradeEffects effects)
+        {
+            _effects = effects;
+            _weapon.BindUpgrades(build, effects);
+        }
 
         internal bool TakeDamage(int amount)
         {
@@ -24,7 +31,7 @@ namespace Overtime
                 return false;
             }
 
-            var result = _health.ApplyDamage(amount);
+            var result = _health.ApplyDamage(Mathf.RoundToInt(amount * (_effects?.IncomingDamageMultiplier ?? 1f)));
             if (result.Amount == 0)
             {
                 return false;
@@ -58,13 +65,14 @@ namespace Overtime
 
         internal Snapshot Capture()
         {
-            return new Snapshot(_health.Current, _weapon.Capture());
+            return new Snapshot(_health.Current, _weapon.Capture(), _effects?.State ?? default);
         }
 
         internal void Restore(in Snapshot snapshot)
         {
             _health.Restore(snapshot.HitPoints);
             _weapon.Restore(snapshot.Weapon);
+            _effects?.Restore(snapshot.Effects);
             if (Alive)
             {
                 _recoveryRemaining = 0d;
@@ -76,10 +84,13 @@ namespace Overtime
             internal readonly int HitPoints;
             internal readonly CombatWeapon.Snapshot Weapon;
 
-            internal Snapshot(int hitPoints, CombatWeapon.Snapshot weapon)
+            internal readonly PlayerUpgradeEffects.Snapshot Effects;
+
+            internal Snapshot(int hitPoints, CombatWeapon.Snapshot weapon, PlayerUpgradeEffects.Snapshot effects)
             {
                 HitPoints = hitPoints;
                 Weapon = weapon;
+                Effects = effects;
             }
         }
     }

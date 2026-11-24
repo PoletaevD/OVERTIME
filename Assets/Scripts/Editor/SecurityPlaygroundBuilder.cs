@@ -14,6 +14,7 @@ namespace Overtime.Editor
         private const string ScenePath = "Assets/Scenes/Security Playground.unity";
         private const string ArtPath = "Assets/Art/Security Playground";
         private const string PrefabPath = "Assets/Prefabs/Security";
+        private readonly Vector3 _enforcerEmitter = new(0.61f, 0.50f, 0.99f);
         private const int SecurityLayer = 8;
         private static readonly string[] s_names = { "Security Unit", "Surveillance Drone", "Laser Auditor", "Compliance Enforcer" };
 
@@ -177,7 +178,7 @@ namespace Overtime.Editor
             var attackOrigin = kind == SecurityEnemyKind.Drone ? Vector3.zero : new Vector3(0f, 0.36f, 0f);
             if (kind == SecurityEnemyKind.Enforcer)
             {
-                attackOrigin = new Vector3(0.47f, 0.60f, 0.22f);
+                attackOrigin = _enforcerEmitter;
             }
 
             aim.localPosition = attackOrigin;
@@ -250,7 +251,7 @@ namespace Overtime.Editor
             Block(model, "Gorget", 0f, 0.54f, 0.03f, 0.78f, 0.16f, 0.66f, _graphite);
             Block(model, "Visor Housing", 0f, 0.76f, 0.06f, 0.62f, 0.42f, 0.55f, _graphite);
             Block(model, "Visor Slit", 0f, 0.79f, 0.347f, 0.47f, 0.07f, 0.038f, _cyan);
-            lens = Lens(aim, "Containment Launcher", new Vector3(0.02f, 0f, 0.29f), 0.33f, _orange);
+            lens = Lens(aim, "Containment Launcher", new Vector3(0f, 0f, -0.09f), 0.28f, _orange);
 
             for (var side = -1; side <= 1; side += 2)
             {
@@ -259,15 +260,12 @@ namespace Overtime.Editor
                 Block(model, "Traction Boot", side * 0.32f, -0.91f, 0.12f, 0.42f, 0.17f, 0.62f, _shell);
             }
 
-            var face = Block(root, "Front Shield", 0f, -0.19f, 0.65f, 1.50f, 1.30f, 0.27f, _graphite, true);
+            var face = Block(root, "Front Shield", 0f, 0.08f, 0.65f, 1.94f, 2.16f, 0.28f, _graphite, true);
             face.gameObject.layer = SecurityLayer;
             shield = face.GetComponent<Collider>();
             feedback = face.gameObject.AddComponent<CombatShield>();
             PlaygroundSceneBuilder.Wire(feedback, "_surface", face.GetComponent<Renderer>());
-            Block(face, "Shield Edge", 0f, 0.452f, 0.53f, 0.95f, 0.062f, 0.12f, _cyan);
-            Block(face, "Seal Stripe", 0f, -0.37f, 0.51f, 0.86f, 0.09f, 0.07f, _orange);
-            Block(face, "Left Reinforcement", -0.39f, 0.02f, 0.52f, 0.12f, 0.63f, 0.16f, _shell);
-            Block(face, "Right Reinforcement", 0.39f, 0.02f, 0.52f, 0.12f, 0.63f, 0.16f, _shell);
+            DetailEnforcerShield(face);
 
             Block(model, "Power Cell Housing", 0f, 0.37f, -0.45f, 0.67f, 0.51f, 0.22f, _graphite);
             var core = Block(root, "Exposed Rear Power Cell", 0f, 0.38f, -0.57f, 0.45f, 0.34f, 0.18f, _orange, true);
@@ -277,6 +275,75 @@ namespace Overtime.Editor
             Object.DestroyImmediate(core.GetComponent<MeshFilter>());
             Block(model, "Rear Power Cell", 0f, 0.38f, -0.57f, 0.45f, 0.34f, 0.18f, _orange);
             return shell;
+        }
+
+        [MenuItem("OVERTIME/Update Compliance Enforcer Shield")]
+        public static void UpdateEnforcerShield()
+        {
+            var path = $"{PrefabPath}/Compliance Enforcer.prefab";
+            var root = PrefabUtility.LoadPrefabContents(path);
+            try
+            {
+                var builder = new SecurityPlaygroundBuilder(new PlaygroundArt(false), root.transform);
+                var face = root.transform.Find("Front Shield");
+                face.localPosition = new Vector3(0f, 0.08f, 0.65f);
+                face.localScale = new Vector3(1.94f, 2.16f, 0.28f);
+                builder.DetailEnforcerShield(face);
+
+                var pivot = root.transform.Find("Model/Aim Pivot");
+                pivot.localPosition = builder._enforcerEmitter;
+                var recoil = pivot.Find("Recoil Pivot");
+                foreach (Transform child in recoil)
+                {
+                    if (child.name == "Containment Launcher / Aperture")
+                    {
+                        child.localPosition = new Vector3(0f, 0f, -0.09f);
+                        child.localScale = new Vector3(0.378f, 0.11f, 0.378f);
+                        break;
+                    }
+                }
+                var lens = recoil.Find("Containment Launcher");
+                lens.localPosition = new Vector3(0f, 0f, 0.007f);
+                lens.localScale = new Vector3(0.28f, 0.035f, 0.28f);
+
+                var actor = new SerializedObject(root.GetComponent<SecurityEnemy>());
+                actor.FindProperty("_attackOrigin").vector3Value = builder._enforcerEmitter;
+                actor.ApplyModifiedPropertiesWithoutUndo();
+                PrefabUtility.SaveAsPrefabAsset(root, path);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(root);
+            }
+        }
+
+        private void DetailEnforcerShield(Transform face)
+        {
+            ShieldDetail(face, "Shield Edge", new Vector3(0f, 0.47f, 0.54f), new Vector3(0.91f, 0.022f, 0.17f), _cyan);
+            ShieldDetail(face, "Seal Stripe", new Vector3(0f, -0.40f, 0.53f), new Vector3(0.78f, 0.04f, 0.11f), _orange);
+            ShieldDetail(face, "Left Reinforcement", new Vector3(-0.445f, 0f, 0.54f), new Vector3(0.072f, 0.85f, 0.2f), _shell);
+            ShieldDetail(face, "Right Reinforcement", new Vector3(0.445f, 0f, 0.54f), new Vector3(0.072f, 0.85f, 0.2f), _shell);
+            ShieldDetail(face, "Viewport Frame", new Vector3(0f, 0.342f, 0.55f), new Vector3(0.43f, 0.118f, 0.2f), _shell);
+            ShieldDetail(face, "Reinforced Viewport", new Vector3(0f, 0.345f, 0.66f), new Vector3(0.35f, 0.065f, 0.13f), _cyan);
+            ShieldDetail(face, "Emitter Mount", new Vector3(0.314f, 0.194f, 0.72f), new Vector3(0.22f, 0.19f, 0.55f), _shell);
+            for (var index = 0; index < 5; index++)
+            {
+                var stripe = ShieldDetail(face, $"Hazard Mark {index + 1}", new Vector3(-0.22f + 0.11f * index, -0.326f, 0.56f), new Vector3(0.027f, 0.065f, 0.12f), _orange);
+                stripe.localRotation = Quaternion.Euler(0f, 0f, -30f);
+            }
+        }
+
+        private Transform ShieldDetail(Transform parent, string name, Vector3 position, Vector3 size, Material material)
+        {
+            var part = parent.Find(name);
+            if (part == null)
+            {
+                return Block(parent, name, position.x, position.y, position.z, size.x, size.y, size.z, material);
+            }
+
+            part.localPosition = position;
+            part.localScale = size;
+            return part;
         }
 
         private Renderer BuildDrone(Transform model, Transform aim, out Renderer lens)

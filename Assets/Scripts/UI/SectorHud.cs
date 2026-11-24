@@ -54,6 +54,10 @@ namespace Overtime
                     _status.SetText("CLEAR    /    +30 RESERVE");
                     Announce("CLEAR");
                 }
+                else if (_state == EncounterState.RewardSelection)
+                {
+                    _status.SetText("CLEAR    /    PROTOCOL PENDING");
+                }
                 else if (_state == EncounterState.Waiting)
                 {
                     _status.SetText("ENTER COMBAT ZONE");

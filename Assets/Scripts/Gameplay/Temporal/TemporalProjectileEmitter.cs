@@ -6,6 +6,7 @@ namespace Overtime
 {
     internal sealed class TemporalProjectileEmitter : TemporalActor
     {
+        private static readonly int s_baseColor = Shader.PropertyToID("_BaseColor");
         private const int TraceSamples = 6;
         private const int TraceSpacing = 4;
 
@@ -24,6 +25,7 @@ namespace Overtime
         private readonly Collider[] _overlaps = new Collider[64];
         private bool _playerPool;
         private Material _fallbackMaterial;
+        private MaterialPropertyBlock _boltProperties;
         private Visual[] _visuals;
         private Projectile[] _live;
         private Projectile[] _history;
@@ -38,6 +40,7 @@ namespace Overtime
         internal void ConfigurePlayerPool(TemporalDirector director, int capacity, Material material)
         {
             _playerPool = true;
+            _boltProperties = new MaterialPropertyBlock();
             _automatic = false;
             _combatDirector = director;
             _radius = 0.045f;
@@ -185,7 +188,7 @@ namespace Overtime
             });
         }
 
-        internal bool TryLaunchPlayer(Ray aim, Vector3 aimUp, Vector3 muzzleOffset, float speed, float lifetime, float range, float radius, int damage, int layers)
+        internal bool TryLaunchPlayer(Ray aim, Vector3 aimUp, Vector3 muzzleOffset, float speed, float lifetime, float range, float radius, int damage, int layers, bool charged = false, bool hypervelocity = false)
         {
             var owner = _combatDirector.PlayerCapsule.transform;
             var aimDistance = FindHit(aim.origin, 0f, aim.direction, range, layers, owner, out var aimHit) ? aimHit.distance : range;
@@ -221,7 +224,9 @@ namespace Overtime
                 Radius = radius,
                 Damage = damage,
                 Owner = owner,
-                Layers = layers
+                Layers = layers,
+                Charged = charged,
+                Hypervelocity = hypervelocity
             });
         }
 
@@ -418,7 +423,7 @@ namespace Overtime
                     {
                         trace.enabled = current.Travelled > 0f;
                         trace.SetPosition(0, position);
-                        trace.SetPosition(1, position - current.Direction * Mathf.Min(current.Travelled, 0.34f));
+                        trace.SetPosition(1, position - current.Direction * Mathf.Min(current.Travelled, current.Hypervelocity ? 0.85f : 0.34f));
                     }
                     else
                     {
@@ -493,9 +498,25 @@ namespace Overtime
             {
                 visual.rotation = Quaternion.LookRotation(projectile.Direction);
                 visual.localScale = style.Scale * (projectile.Radius / _radius);
+                if (_playerPool && style.Trace != null)
+                {
+                    style.Trace.startColor = projectile.Charged ? new Color(1f, 0.61f, 0.27f) : Color.white;
+                    style.Trace.endColor = projectile.Charged ? new Color(1f, 0.31f, 0.13f, 0f) : Color.white;
+                }
+
                 if (style.Mesh != null)
                 {
                     style.Mesh.sharedMaterial = projectile.Drone && _droneBolt != null ? _droneBolt : style.Material;
+                    if (_playerPool)
+                    {
+                        _boltProperties.Clear();
+                        if (projectile.Charged)
+                        {
+                            _boltProperties.SetColor(s_baseColor, new Color(2.6f, 0.83f, 0.24f));
+                        }
+
+                        style.Mesh.SetPropertyBlock(_boltProperties);
+                    }
                 }
             }
         }
@@ -530,6 +551,8 @@ namespace Overtime
             internal int Damage;
             internal uint Generation;
             internal bool Drone;
+            internal bool Charged;
+            internal bool Hypervelocity;
             internal bool Hit;
             internal bool Active => !Hit && Remaining > 0f && Range > 0f;
         }

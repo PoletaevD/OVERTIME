@@ -31,6 +31,8 @@ namespace Overtime
         private Vector3 _ruptureScale;
         private Vector3 _wreckRest;
         private float _flashPeak;
+        private bool _unstable;
+        private float _flash;
 
         private void Awake()
         {
@@ -62,10 +64,16 @@ namespace Overtime
             ApplyHitFlash(0f);
         }
 
-        internal void Present(float time, Vector3 aim, Vector3 origin, float recoil, float deathTime, SecurityEnemyState state, bool aiming, bool firing, float charge, bool locked, float beamDistance)
+        internal void Present(float time, Vector3 aim, Vector3 origin, float recoil, float deathTime, SecurityEnemyState state, bool aiming, bool firing, float charge, bool locked, float beamDistance, bool unstable)
         {
             var dead = state == SecurityEnemyState.Dead;
             var collapsing = dead && deathTime < 0.42f;
+            var showInstability = !dead && unstable;
+            if (_unstable != showInstability)
+            {
+                _unstable = showInstability;
+                ApplyHitFlash(_flash);
+            }
             Toggle(_model, !dead || collapsing);
             Toggle(_wreck, dead && !collapsing && deathTime < 1.3f);
             Toggle(_rupture, dead && deathTime < 0.30f);
@@ -134,7 +142,9 @@ namespace Overtime
 
         private void ApplyHitFlash(float value)
         {
-            _shellProperties.SetColor(s_baseColor, Color.Lerp(_shellColor, new Color(1f, 0.52f, 0.26f), value * _flashPeak));
+            _flash = value;
+            var color = _unstable ? Color.Lerp(_shellColor, new Color(0.63f, 0.32f, 0.98f), 0.55f) : _shellColor;
+            _shellProperties.SetColor(s_baseColor, Color.Lerp(color, new Color(1f, 0.52f, 0.26f), value * _flashPeak));
             _shell.SetPropertyBlock(_shellProperties);
         }
 

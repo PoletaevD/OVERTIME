@@ -11,6 +11,7 @@ namespace Overtime
         [SerializeField] private Transform _swayPivot;
         [SerializeField] private Transform _recoilPivot;
         [SerializeField] private Transform _muzzleFlash;
+        [SerializeField] private Renderer[] _chargeStrips;
 
         [Header("Motion")]
         [SerializeField, Min(0f)] private float _idleSway = 0.005f;
@@ -27,6 +28,10 @@ namespace Overtime
         [SerializeField, Min(0f)] private float _recoilAngle = 8f;
         [SerializeField, Min(0.01f)] private float _recoveryTime = 0.16f;
 
+        private static readonly int s_emission = Shader.PropertyToID("_EmissionColor");
+
+        private MaterialPropertyBlock _chargeProperties;
+        private bool _isCharged;
         private float _idlePhase;
         private float _airOffset;
         private float _motionImpulse;
@@ -52,6 +57,10 @@ namespace Overtime
         {
             _player = GetComponentInParent<PlaygroundPlayer>();
             _weapon = _player.Combat?.Weapon;
+            if (_chargeStrips is { Length: > 0 })
+            {
+                _chargeProperties ??= new MaterialPropertyBlock();
+            }
             if (_weapon != null)
             {
                 _weapon.ShotFired += Fire;
@@ -81,6 +90,7 @@ namespace Overtime
             _motor.Jumped -= OnJumped;
             _motor.Landed -= OnLanded;
             _motor.GravityChanged -= OnGravityChanged;
+            SetChargeGlow(false);
             _motionTween?.Kill();
             _gravityTween?.Kill();
             _recoilTween?.Kill();
@@ -102,6 +112,7 @@ namespace Overtime
                 SyncTemporalMotion();
             }
 
+            SetChargeGlow(_weapon?.HasQueuedBoost == true);
             var deltaTime = Time.unscaledDeltaTime;
             if (_flashTime > 0f)
             {
@@ -131,6 +142,26 @@ namespace Overtime
             var temporal = _cameraRig.ReducedMotion ? 0f : _resetKick;
             _recoilPivot.localPosition = Vector3.back * (_recoil * _recoilDistance * motion + temporal * 0.035f);
             _recoilPivot.localRotation = Quaternion.Euler(-_recoil * _recoilAngle * motion + temporal * 4f, 0f, _recoil * _recoilRoll * motion);
+        }
+
+        private void SetChargeGlow(bool charged)
+        {
+            if (_chargeProperties == null || _isCharged == charged)
+            {
+                return;
+            }
+
+            _isCharged = charged;
+            _chargeProperties.Clear();
+            if (charged)
+            {
+                _chargeProperties.SetColor(s_emission, new Color(2.9f, 0.88f, 0.24f));
+            }
+
+            foreach (var strip in _chargeStrips)
+            {
+                strip.SetPropertyBlock(_chargeProperties);
+            }
         }
 
         private void SyncTemporalMotion()

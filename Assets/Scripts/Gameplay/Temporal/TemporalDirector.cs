@@ -12,6 +12,16 @@ namespace Overtime
         BulletTime
     }
 
+    internal enum TemporalExitReason
+    {
+        Input,
+        EnergyDepleted,
+        HistoryStart,
+        Service,
+        FocusLost,
+        GameOver
+    }
+
     internal sealed class TemporalDirector : MonoBehaviour
     {
         private const double MaxFrameTime = 0.1d;
@@ -25,6 +35,7 @@ namespace Overtime
         [SerializeField, Range(0.1f, 8f)] private float _overrideRate = 2f;
         [SerializeField, Range(0.1f, 8f)] private float _recallRate = 2f;
         [SerializeField, Range(0.05f, 1f)] private float _bulletTimeRate = 0.25f;
+        [SerializeField, Min(0.01f)] private float _minimumRestoredHistory = 0.25f;
         [SerializeField] private TemporalActor[] _worldActors = Array.Empty<TemporalActor>();
         [SerializeField] private SectorRoute _sector;
         [SerializeField] private TemporalDestructible _testTarget;
@@ -49,12 +60,23 @@ namespace Overtime
         private double _projectileCredit;
         private TemporalProjectileEmitter _playerProjectiles;
 
+        private RunProgression _progression;
+        private RecallEchoPresentation.Snapshot[] _echoFrames;
+        private long _abilityPlayerStart;
+        private long _abilityWorldStart;
+        private Vector3 _abilityOrigin;
+        private bool _rewardSelection;
+
         internal event Action<TemporalMode> ModeChanged;
+        internal event Action<TemporalMode, Vector3> AbilityStarted;
+        internal event Action<TemporalMode, Vector3> AbilityCompleted;
         internal event Action<Vector3> DirectionalDamage;
         internal event Action<ProjectileImpact> ProjectileHit;
         internal event Action<Vector3> AuditorCharging;
         internal TemporalProjectileEmitter PlayerProjectiles => _playerProjectiles;
         internal bool ReducedMotion => _player.ReducedMotion;
+        internal bool RewardSelection => _rewardSelection;
+        internal SecurityEnemy[] CurrentEnemies => _sector != null ? _sector.Current.Enemies : Array.Empty<SecurityEnemy>();
 
         internal ChronoEnergy Energy => _energy;
         internal float EnergyCost => _energy.Cost(Mode);
@@ -68,7 +90,7 @@ namespace Overtime
         internal TemporalMode Mode { get; private set; }
         internal bool IsRewinding => IsPlayerProtected || WorldTimeline?.Direction == TemporalDirection.Reverse;
         internal bool IsPlayerProtected => PlayerTimeline?.Direction == TemporalDirection.Reverse;
-        internal bool CanDamageWorld => WorldTimeline?.Direction == TemporalDirection.Forward && _player.Combat?.GameOver != true;
+        internal bool CanDamageWorld => !_rewardSelection && WorldTimeline?.Direction == TemporalDirection.Forward && _player.Combat?.GameOver != true;
         internal bool CanAffectWorld => !IsPlayerProtected && CanDamageWorld;
         internal long SimulationTick { get; private set; }
         internal int PlayerSteps { get; private set; }
@@ -88,6 +110,12 @@ namespace Overtime
             if (_sector != null)
             {
                 _worldActors = _sector.Prepare();
+                _progression = _sector.Progression;
+                if (_progression != null)
+                {
+                    _progression.Initialize(this, player);
+                    _echoFrames = new RecallEchoPresentation.Snapshot[WorldTimeline.Capacity];
+                }
             }
 
             foreach (var actor in _worldActors)
@@ -108,6 +136,7 @@ namespace Overtime
             player.SetTemporalCollision(_collision);
             Physics.SyncTransforms();
             CaptureBaseline();
+            _sector?.StartRun(this, player);
         }
 
         internal bool Advance(double elapsed, in TemporalInput input)
@@ -132,7 +161,7 @@ namespace Overtime
                 return false;
             }
 
-            if (_player.Combat?.GameOver == true || _sector?.Finished == true)
+            if (_rewardSelection || _player.Combat?.GameOver == true || _sector?.Finished == true)
             {
                 return false;
             }
@@ -141,7 +170,7 @@ namespace Overtime
             var wasDead = _player.Combat is { Alive: false };
             if (!input.Focused)
             {
-                ChangeMode(TemporalMode.Normal);
+                ChangeMode(TemporalMode.Normal, TemporalExitReason.FocusLost);
                 ClearPendingInput();
                 ResolveRecovery(realElapsed);
                 return false;
@@ -225,13 +254,22 @@ namespace Overtime
             }
         }
 
-        private void ChangeMode(TemporalMode mode)
+        private void ChangeMode(TemporalMode mode, TemporalExitReason reason = TemporalExitReason.Input)
         {
             if (mode == Mode)
             {
                 return;
             }
 
+            var previousMode = Mode;
+            var origin = _abilityOrigin;
+            var restoredTicks = previousMode switch
+            {
+                TemporalMode.Reset => Math.Max(_abilityPlayerStart - PlayerTimeline.Cursor, _abilityWorldStart - WorldTimeline.Cursor),
+                TemporalMode.Override => _abilityWorldStart - WorldTimeline.Cursor,
+                TemporalMode.Recall => _abilityPlayerStart - PlayerTimeline.Cursor,
+                _ => 0L
+            };
             var playerWasReversing = IsPlayerProtected;
             var worldWasReversing = WorldTimeline.Direction == TemporalDirection.Reverse;
             var playerReverses = mode == TemporalMode.Reset || mode == TemporalMode.Recall;
@@ -287,6 +325,21 @@ namespace Overtime
             _collision.Refresh(worldReverses);
             _sector?.CountMode(mode);
             ModeChanged?.Invoke(mode);
+
+            // A direct switch between rewinds discards completion effects from the departing activation.
+            var naturalEnd = reason is TemporalExitReason.Input or TemporalExitReason.EnergyDepleted or TemporalExitReason.HistoryStart;
+            if (naturalEnd && !playerReverses && !worldReverses && HasLivingPlayer && restoredTicks * TemporalTimeline.TickDuration + 0.000001d >= _minimumRestoredHistory)
+            {
+                AbilityCompleted?.Invoke(previousMode, origin);
+            }
+
+            if (mode != TemporalMode.Normal)
+            {
+                _abilityPlayerStart = PlayerTimeline.Cursor;
+                _abilityWorldStart = WorldTimeline.Cursor;
+                _abilityOrigin = _player.transform.position;
+                AbilityStarted?.Invoke(mode, _abilityOrigin);
+            }
         }
 
         private void SetTimelineRates()
@@ -370,7 +423,8 @@ namespace Overtime
 
                 _exhaustedButtons |= 1 << (int)mode;
                 elapsed = Math.Max(0d, elapsed - slice);
-                ChangeMode(SelectMode(input.Selection));
+                var reason = _energy?.Empty == true ? TemporalExitReason.EnergyDepleted : TemporalExitReason.HistoryStart;
+                ChangeMode(SelectMode(input.Selection), reason);
             }
 
             RunSchedule(elapsed, input);
@@ -414,7 +468,7 @@ namespace Overtime
 
             if (combat.GameOver)
             {
-                ChangeMode(TemporalMode.Normal);
+                ChangeMode(TemporalMode.Normal, TemporalExitReason.GameOver);
                 ClearPendingInput();
                 _player.SetGameOver(true);
             }
@@ -485,6 +539,7 @@ namespace Overtime
                     {
                         if (_player.Combat?.Alive != false)
                         {
+                            _progression?.PlayerEffects.Simulate(Step);
                             _player.Simulate(input.Move, look, _pendingJump, input.JumpHeld && !_blockJumpHold, Step);
                             SimulatePlayerCombat(input.FireHeld);
                         }
@@ -509,6 +564,7 @@ namespace Overtime
 
         private void SimulateWorld()
         {
+            _progression?.SimulateWorld(Step);
             Physics.SyncTransforms();
             foreach (var actor in _worldActors)
             {
@@ -526,7 +582,7 @@ namespace Overtime
                 }
 
                 var generation = _playerProjectiles.Generation;
-                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, _player.AimUp, _playerProjectiles);
+                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, _player.AimUp, _playerProjectiles, Mode);
                 _worldChangedBetweenSteps |= generation != _playerProjectiles.Generation;
                 return;
             }
@@ -600,6 +656,11 @@ namespace Overtime
             }
 
             _playerProjectiles?.Restore(slot);
+            if (_progression != null)
+            {
+                _progression.RestoreWorld(_echoFrames[slot]);
+            }
+
             _worldChangedBetweenSteps = false;
         }
 
@@ -611,6 +672,11 @@ namespace Overtime
             }
 
             _playerProjectiles?.Capture(slot);
+            if (_progression != null)
+            {
+                _echoFrames[slot] = _progression.Echo;
+            }
+
             _worldChangedBetweenSteps = false;
         }
 
@@ -653,7 +719,7 @@ namespace Overtime
 
         internal void ReplaceEncounter(TemporalActor[] actors)
         {
-            ChangeMode(TemporalMode.Normal);
+            ChangeMode(TemporalMode.Normal, TemporalExitReason.Service);
             foreach (var actor in _worldActors)
             {
                 if (actor != actors[0])
@@ -675,11 +741,11 @@ namespace Overtime
 
         internal void SealHistory()
         {
-            ChangeMode(TemporalMode.Normal);
+            ChangeMode(TemporalMode.Normal, TemporalExitReason.Service);
             ClearPendingInput();
             _projectileCredit = 0d;
             _playerProjectiles?.ClearProjectiles();
-            _sector.EnemyProjectiles.ClearProjectiles();
+            _sector?.EnemyProjectiles.ClearProjectiles();
 
             PlayerTimeline.Clear();
             WorldTimeline.Clear();
@@ -690,6 +756,23 @@ namespace Overtime
             CaptureBaseline();
         }
 
+        internal void SetRewardSelection(bool active)
+        {
+            ClearPendingInput();
+            _rewardSelection = active;
+            _player.SetRewardSelection(active);
+        }
+
+        internal void InvalidateWorldFrame()
+        {
+            _worldChangedBetweenSteps = true;
+        }
+
+        internal void InvalidatePlayerFrame()
+        {
+            _playerChangedBetweenSteps = true;
+        }
+
         internal void RequestRestart()
         {
             _restartRequested = true;
@@ -697,7 +780,7 @@ namespace Overtime
 
         private void Restart()
         {
-            ChangeMode(TemporalMode.Normal);
+            ChangeMode(TemporalMode.Normal, TemporalExitReason.Service);
             ClearPendingInput();
             _blockJumpHold = false;
             PlayerTimeline.Clear();

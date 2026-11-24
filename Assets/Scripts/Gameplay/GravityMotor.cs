@@ -69,6 +69,8 @@ namespace Overtime
         private bool _holdingMagneticJump;
         private bool _waitForNewPress;
 
+        private RunUpgradeState _upgrades;
+
         internal Vector3 Velocity { get; private set; }
         internal Vector3 Up { get; private set; } = Vector3.up;
         internal Vector3 ContactNormal { get; private set; }
@@ -83,11 +85,19 @@ namespace Overtime
         internal bool Transitioning => _rotationProgress < 1f;
         internal bool Obstructed { get; private set; }
         internal float Speed => Vector3.ProjectOnPlane(Velocity, Up).magnitude;
-        internal float SpeedRatio => Mathf.Clamp01(Speed / _walkSpeed);
+        private float MagneticSpeedMultiplier => _magnetic ? 1f + (_upgrades?.Bonus(UpgradeId.MagneticAcceleration) ?? 0f) : 1f;
+        internal float MovementSpeed => _walkSpeed * MagneticSpeedMultiplier;
+        internal float SpeedRatio => Mathf.Clamp01(Speed / MovementSpeed);
 
         internal event Action<float> Landed;
         internal event Action Jumped;
         internal event Action<Quaternion> GravityChanged;
+        internal event Action SurfaceChanged;
+
+        internal void BindUpgrades(RunUpgradeState upgrades)
+        {
+            _upgrades = upgrades;
+        }
 
         private void Awake()
         {
@@ -460,7 +470,7 @@ namespace Overtime
         {
             var vertical = Vector3.Dot(Velocity, Up);
             var horizontal = Vector3.ProjectOnPlane(Velocity, Up);
-            var target = wish * _walkSpeed;
+            var target = wish * MovementSpeed;
             if (wish.sqrMagnitude > 0.001f || hasSupport)
             {
                 var rate = wish.sqrMagnitude > 0.001f ? _acceleration : _deceleration;
@@ -477,7 +487,7 @@ namespace Overtime
                 vertical = hasSupport ? -2.4f : Mathf.Max(-35f, vertical - gravity * deltaTime);
             }
 
-            return Vector3.ClampMagnitude(horizontal, _maximumSpeed) + Up * vertical;
+            return Vector3.ClampMagnitude(horizontal, _maximumSpeed * MagneticSpeedMultiplier) + Up * vertical;
         }
 
         private bool FindSupport(out RaycastHit hit)
@@ -550,6 +560,10 @@ namespace Overtime
             if (Vector3.Dot(previousUp, nextUp) < 0.99999f)
             {
                 GravityChanged?.Invoke(transport);
+                if (!Transitioning)
+                {
+                    SurfaceChanged?.Invoke();
+                }
             }
 
             return transport * wish;
@@ -574,6 +588,7 @@ namespace Overtime
                 if (!Transitioning)
                 {
                     _outerCorner = default;
+                    SurfaceChanged?.Invoke();
                 }
 
                 return;

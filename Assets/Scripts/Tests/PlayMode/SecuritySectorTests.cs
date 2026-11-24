@@ -43,6 +43,16 @@ namespace Overtime.Tests
             var entry = new[] { 4f, 34f, 64f };
             var exits = new[] { 28f, 58f, 92f };
             var combat = _player.Combat;
+            Assert.That(_director.RewardSelection, Is.True);
+            Assert.That(_route.Current.State, Is.EqualTo(EncounterState.Waiting));
+            Assert.That(_route.Progression.Selection.Count, Is.EqualTo(3));
+            Assert.That(_route.Progression.Build.Revision, Is.Zero);
+            Tick(60, TemporalMode.BulletTime, true);
+            Assert.That(_director.SimulationTick, Is.Zero);
+            Assert.That(_route.Elapsed, Is.Zero);
+            Assert.That(_director.Energy.Current, Is.EqualTo(100f));
+            Assert.That(combat.Weapon.Magazine, Is.EqualTo(30));
+            ConfirmReward(1);
             _director.Energy.Spend(35d);
             Assert.That(_director.DamagePlayer(21), Is.True);
 
@@ -84,6 +94,25 @@ namespace Overtime.Tests
                 }
 
                 Tick(1);
+                if (index < sizes.Length - 1)
+                {
+                    Assert.That(room.State, Is.EqualTo(EncounterState.RewardSelection));
+                    Assert.That(gate.enabled, Is.True);
+                    Assert.That(combat.Weapon.Reserve, Is.EqualTo(reserve + 30));
+                    var simulationTick = _director.SimulationTick;
+                    var elapsed = _route.Elapsed;
+                    Tick(30, TemporalMode.Reset, true);
+                    Assert.That(_director.SimulationTick, Is.EqualTo(simulationTick));
+                    Assert.That(_route.Elapsed, Is.EqualTo(elapsed));
+                    Assert.That(room.State, Is.EqualTo(EncounterState.RewardSelection));
+                    Assert.That(combat.Weapon.Reserve, Is.EqualTo(reserve + 30));
+                    ConfirmReward(index + 2);
+                }
+                else
+                {
+                    Assert.That(_director.RewardSelection, Is.False);
+                }
+
                 Assert.That(room.State, Is.EqualTo(EncounterState.Cleared));
                 Assert.That(gate.enabled, Is.False);
                 Assert.That(combat.Weapon.Reserve, Is.EqualTo(reserve + 30));
@@ -120,6 +149,7 @@ namespace Overtime.Tests
                 }
 
                 Assert.That(_director.Energy.Current, Is.EqualTo(energy));
+                Assert.That(_route.Progression.Build.Revision, Is.EqualTo(Mathf.Min(index + 2, 3)));
             }
 
             Assert.That(_route.Finished, Is.True);
@@ -135,6 +165,7 @@ namespace Overtime.Tests
         [Test]
         public void FrontShieldBlocksAndTheRearCellDoublesDamageWithRewindableColliders()
         {
+            ConfirmReward(1);
             MoveTo(4f);
             ClearAndLeave(28f);
             MoveTo(34f);
@@ -153,17 +184,38 @@ namespace Overtime.Tests
                 weak += impact.WeakPoint ? 1 : 0;
             };
 
-            var facing = shield.transform.forward;
-            FireAt(shield.bounds.center + enforcer.transform.forward * 1.55f, shield.bounds.center);
-            Assert.That(enforcer.Health.Current, Is.EqualTo(160));
-            Assert.That(blocked, Is.EqualTo(1));
-            Assert.That(Vector3.Angle(facing, shield.transform.forward), Is.LessThanOrEqualTo(3.01f));
+            var silhouette = new[]
+            {
+                new Vector3(0f, 0.92f, 0f),
+                new Vector3(0f, 0.52f, 0f),
+                new Vector3(0f, 0.04f, 0f),
+                new Vector3(0f, -0.4f, 0f),
+                new Vector3(0f, -0.87f, 0f),
+                new Vector3(-0.55f, 0.36f, 0f),
+                new Vector3(0.55f, 0.36f, 0f)
+            };
+            foreach (var angle in new[] { 0f, -12f, 12f })
+            {
+                foreach (var local in silhouette)
+                {
+                    var target = enforcer.transform.TransformPoint(local);
+                    var approach = Quaternion.AngleAxis(angle, Vector3.up) * shield.transform.forward;
+                    FireAt(target + approach * 1.7f, target);
+                    Assert.That(enforcer.Health.Current, Is.EqualTo(160), $"Front silhouette {local} at {angle} degrees");
+                }
+            }
+
+            var frontCount = silhouette.Length * 3;
+            Assert.That(blocked, Is.EqualTo(frontCount));
 
             var body = enforcer.Body.bounds.center;
             FireAt(body + enforcer.transform.right * 1.55f, body);
             Assert.That(enforcer.Health.Current, Is.EqualTo(148));
+            var rearBody = enforcer.transform.TransformPoint(new Vector3(0.33f, -0.26f, 0f));
+            FireAt(rearBody - enforcer.transform.forward * 1.55f, rearBody);
+            Assert.That(enforcer.Health.Current, Is.EqualTo(136));
             FireAt(cell.bounds.center - enforcer.transform.forward * 1.55f, cell.bounds.center);
-            Assert.That(enforcer.Health.Current, Is.EqualTo(124));
+            Assert.That(enforcer.Health.Current, Is.EqualTo(112));
             Assert.That(weak, Is.EqualTo(1));
 
             var state = enforcer.State;
@@ -178,7 +230,7 @@ namespace Overtime.Tests
             Assert.That(cell.enabled, Is.True);
             Assert.That(enforcer.State, Is.EqualTo(state));
             Assert.That(Vector3.Angle(direction, shield.transform.forward), Is.LessThan(1.3f));
-            Assert.That(blocked, Is.EqualTo(1));
+            Assert.That(blocked, Is.EqualTo(frontCount));
             Assert.That(weak, Is.EqualTo(1));
         }
 
@@ -190,7 +242,18 @@ namespace Overtime.Tests
             }
 
             Tick(1);
+            ConfirmReward(_route.RoomIndex + 2);
             MoveTo(exit);
+        }
+
+        private void ConfirmReward(int expectedRevision)
+        {
+            Assert.That(_route.ConfirmUpgrade(0), Is.True);
+            Assert.That(_route.ConfirmUpgrade(0), Is.False);
+            Assert.That(_director.RewardSelection, Is.False);
+            Assert.That(_route.Progression.Build.Revision, Is.EqualTo(expectedRevision));
+            Assert.That(_director.PlayerTimeline.Count, Is.EqualTo(1));
+            Assert.That(_director.WorldTimeline.Count, Is.EqualTo(1));
         }
 
         private void FireAt(Vector3 origin, Vector3 target)

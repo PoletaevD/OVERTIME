@@ -19,13 +19,67 @@ namespace Overtime
         [SerializeField] private Vector3 _launchOffset = new(0.31f, -0.23f, 0.99f);
 
         private Snapshot _state;
+        private RunUpgradeState _upgrades;
+        private PlayerUpgradeEffects _effects;
+
+        internal int MagazineCapacity => _magazineSize + Mathf.RoundToInt(Bonus(UpgradeId.ExtendedMagazine));
+        internal int EffectiveDamage => RoundDamage(BuildDamage);
+        internal float ReloadSeconds => Bonus(UpgradeId.RapidService) > 0f ? Mathf.Max(0.05f, _reloadSeconds * (1f - Bonus(UpgradeId.RapidService))) : _reloadSeconds;
+        private float BuildDamage => _damage * (1f + Bonus(UpgradeId.OverclockedReceiver));
 
         internal int Magazine => _state.Magazine;
         internal int Reserve => _state.Reserve;
-        internal float ReloadProgress => IsReloading ? 1f - (float)(_state.ReloadRemaining / _reloadSeconds) : 0f;
+        internal float ReloadProgress => IsReloading ? 1f - (float)(_state.ReloadRemaining / _state.ReloadDuration) : 0f;
         internal bool IsReloading => _state.ReloadRemaining > 0d;
         internal event Action ShotFired;
+        internal event Action AutoFed;
         internal int ProjectileCapacity => _projectileCapacity;
+        internal bool HasQueuedBoost => _effects?.Charged == true;
+
+        internal void BindUpgrades(RunUpgradeState upgrades, PlayerUpgradeEffects effects)
+        {
+            _upgrades = upgrades;
+            _effects = effects;
+        }
+
+        internal float RoundsPerMinute(TemporalMode mode)
+        {
+            return mode == TemporalMode.BulletTime ? _roundsPerMinute * (1f + Bonus(UpgradeId.AcceleratedProcessing)) : _roundsPerMinute;
+        }
+
+        internal float ProjectileSpeed(TemporalMode mode)
+        {
+            return mode == TemporalMode.BulletTime ? _projectileSpeed * (1f + Bonus(UpgradeId.Hypervelocity)) : _projectileSpeed;
+        }
+
+        internal bool TryAutoFeed(int rounds)
+        {
+            if (TransferReserve(rounds) == 0)
+            {
+                return false;
+            }
+
+            AutoFed?.Invoke();
+            return true;
+        }
+
+        private int TransferReserve(int rounds)
+        {
+            var transferred = Mathf.Clamp(rounds, 0, Mathf.Max(0, Mathf.Min(MagazineCapacity - Magazine, Reserve)));
+            _state.Magazine += transferred;
+            _state.Reserve -= transferred;
+            return transferred;
+        }
+
+        private float Bonus(UpgradeId id)
+        {
+            return _upgrades?.Bonus(id) ?? 0f;
+        }
+
+        private int RoundDamage(float damage)
+        {
+            return Mathf.Max(0, Mathf.FloorToInt(damage + 0.5f));
+        }
 
         internal void AddReserve(int rounds)
         {
@@ -36,7 +90,7 @@ namespace Overtime
         {
             _state = new Snapshot
             {
-                Magazine = _magazineSize,
+                Magazine = MagazineCapacity,
                 Reserve = _startingReserve
             };
         }
@@ -51,7 +105,7 @@ namespace Overtime
             _state = snapshot;
         }
 
-        internal void Simulate(double step, bool fire, bool reload, bool canShoot, Ray aim, Vector3 aimUp, TemporalProjectileEmitter projectiles)
+        internal void Simulate(double step, bool fire, bool reload, bool canShoot, Ray aim, Vector3 aimUp, TemporalProjectileEmitter projectiles, TemporalMode mode = TemporalMode.Normal)
         {
             const double tolerance = 0.0000001d;
             var cooling = _state.Cooldown > 0d;
@@ -61,15 +115,14 @@ namespace Overtime
                 _state.ReloadRemaining -= step;
                 if (_state.ReloadRemaining <= tolerance)
                 {
-                    var transferred = Mathf.Min(_magazineSize - Magazine, Reserve);
-                    _state.Magazine += transferred;
-                    _state.Reserve -= transferred;
+                    TransferReserve(Reserve);
                     _state.ReloadRemaining = 0d;
                 }
             }
-            else if (reload && Magazine < _magazineSize && Reserve > 0)
+            else if (reload && Magazine < MagazineCapacity && Reserve > 0)
             {
-                _state.ReloadRemaining = _reloadSeconds;
+                _state.ReloadDuration = ReloadSeconds;
+                _state.ReloadRemaining = _state.ReloadDuration;
             }
 
             if (!canShoot || !fire || IsReloading || Magazine <= 0)
@@ -83,16 +136,19 @@ namespace Overtime
                 return;
             }
 
+            var damage = RoundDamage(_effects?.ModifyShotDamage(BuildDamage) ?? BuildDamage);
+            var hypervelocity = mode == TemporalMode.BulletTime && Bonus(UpgradeId.Hypervelocity) > 0f;
             Physics.SyncTransforms();
-            if (!projectiles.TryLaunchPlayer(aim, aimUp, _launchOffset, _projectileSpeed, _projectileLifetime, _range, _projectileRadius, _damage, _hitLayers))
+            if (!projectiles.TryLaunchPlayer(aim, aimUp, _launchOffset, ProjectileSpeed(mode), _projectileLifetime, _range, _projectileRadius, damage, _hitLayers, _effects?.Charged == true, hypervelocity))
             {
                 _state.Cooldown = 0d;
                 return;
             }
 
-            var interval = 60d / _roundsPerMinute;
+            var interval = 60d / RoundsPerMinute(mode);
             _state.Cooldown = interval + (cooling ? _state.Cooldown : 0d);
             _state.Magazine--;
+            _effects?.ConfirmShot();
             ShotFired?.Invoke();
         }
 
@@ -102,6 +158,7 @@ namespace Overtime
             internal int Reserve;
             internal double Cooldown;
             internal double ReloadRemaining;
+            internal float ReloadDuration;
         }
     }
 

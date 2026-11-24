@@ -16,9 +16,9 @@ namespace Overtime.Editor
 
         internal Transform Root { get; }
 
-        internal PlaygroundArt()
+        internal PlaygroundArt(bool createRoot = true)
         {
-            Root = new GameObject("MERIDIAN | Gravity Test Facility").transform;
+            Root = createRoot ? new GameObject("MERIDIAN | Gravity Test Facility").transform : null;
             _concrete = Material("Warm Composite", new Color(0.65f, 0.65f, 0.60f));
             _panel = Material("Ceramic Panel", new Color(0.37f, 0.43f, 0.48f));
             _graphite = Material("Graphite Alloy", new Color(0.09f, 0.13f, 0.17f));

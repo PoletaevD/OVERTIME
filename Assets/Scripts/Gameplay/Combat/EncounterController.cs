@@ -7,7 +7,8 @@ namespace Overtime
         Waiting,
         Active,
         Cleared,
-        Completed
+        Completed,
+        RewardSelection
     }
 
     internal sealed class EncounterController : MonoBehaviour
@@ -52,7 +53,13 @@ namespace Overtime
             _gate.SetOpen(false, true);
         }
 
-        internal void Advance(TemporalDirector director, PlaygroundPlayer player)
+        internal void UnlockExit(PlaygroundPlayer player)
+        {
+            State = EncounterState.Cleared;
+            _gate.SetOpen(true, player.ReducedMotion);
+        }
+
+        internal void Advance(TemporalDirector director, PlaygroundPlayer player, SectorRoute route)
         {
             var capsule = player.Capsule;
             var position = capsule.transform.TransformPoint(capsule.center);
@@ -68,10 +75,14 @@ namespace Overtime
                     State = EncounterState.Active;
                     break;
                 case EncounterState.Active when director.HasLivingPlayer && LivingEnemies == 0:
-                    player.Combat.Weapon.AddReserve(_reserveReward);
+                    State = EncounterState.RewardSelection;
                     director.SealHistory();
-                    State = EncounterState.Cleared;
-                    _gate.SetOpen(true, player.ReducedMotion);
+                    player.Combat.Weapon.AddReserve(_reserveReward);
+                    if (!route.OpenRoomReward())
+                    {
+                        director.SealHistory();
+                        UnlockExit(player);
+                    }
                     break;
                 case EncounterState.Cleared when _exitZone.bounds.Contains(position):
                     _gate.SetOpen(false, player.ReducedMotion);

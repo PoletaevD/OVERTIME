@@ -15,10 +15,21 @@ namespace Overtime
 
         private readonly HashSet<int> _paidTargets = new(8);
         private double _current;
+        private RunUpgradeState _upgrades;
 
         internal float Current => (float)_current;
-        internal float Maximum => _maximum;
+        internal float Maximum => _maximum + (_upgrades?.Bonus(UpgradeId.ExtendedBattery) ?? 0f);
         internal bool Empty => _current <= 0d;
+
+        internal void BindUpgrades(RunUpgradeState upgrades)
+        {
+            _upgrades = upgrades;
+        }
+
+        internal void AddEnergy(float amount)
+        {
+            _current = Math.Min(Maximum, _current + amount);
+        }
 
         internal void ResetRun()
         {
@@ -35,7 +46,7 @@ namespace Overtime
         {
             if (id > 0 && _paidTargets.Add(id))
             {
-                _current = Math.Min(Maximum, _current + _targetReward);
+                AddEnergy(_targetReward + (_upgrades?.Bonus(UpgradeId.PerformanceBonus) ?? 0f));
             }
         }
 
@@ -59,7 +70,7 @@ namespace Overtime
             {
                 TemporalMode.Reset => _resetCost,
                 TemporalMode.Override => _overrideCost,
-                TemporalMode.Recall => _recallCost,
+                TemporalMode.Recall => _recallCost * Mathf.Max(0.01f, 1f - (_upgrades?.Bonus(UpgradeId.EfficientRecall) ?? 0f)),
                 TemporalMode.BulletTime => _bulletTimeCost,
                 _ => 0f
             };

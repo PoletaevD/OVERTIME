@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace Overtime.Tests
@@ -544,6 +545,61 @@ namespace Overtime.Tests
             Assert.That(_motor.JumpInFlight, Is.False);
             Assert.That(_motor.Surface?.name, Is.EqualTo(surface));
             Assert.That(gravityChanges, Is.Zero);
+        }
+
+        [Test]
+        public void GravityProtocolsUseCompletedTransitionsAndActualSurfaceSupport()
+        {
+            var catalog = AssetDatabase.LoadAssetAtPath<RunUpgradeCatalog>("Assets/Settings/Run Upgrades.asset");
+            var build = new RunUpgradeState();
+            foreach (var id in new[] { UpgradeId.KineticCharge, UpgradeId.MagneticAcceleration, UpgradeId.AutoFeed, UpgradeId.Freefall })
+            {
+                build.Acquire(catalog.Definitions[(int)id]);
+            }
+
+            var gun = _motor.gameObject.AddComponent<CombatWeapon>();
+            gun.BindUpgrades(build, null);
+            var startingAmmo = new CombatWeapon.Snapshot
+            {
+                Magazine = 20,
+                Reserve = 4
+            };
+            gun.Restore(startingAmmo);
+            var effects = new PlayerUpgradeEffects(build, _motor, gun);
+            _motor.BindUpgrades(build);
+            try
+            {
+                Reset(new Vector3(0f, 0.88f, 3.8f));
+                Assert.That(_motor.MovementSpeed, Is.EqualTo(9f));
+                Step(Vector2.up, true, HoldSteps - 1);
+                Assert.That(effects.Charged, Is.False);
+                Assert.That(gun.Magazine, Is.EqualTo(20));
+
+                StepUntil(() => effects.Charged, Vector2.up, true, 100);
+                Assert.That(_motor.Transitioning, Is.False);
+                Assert.That(_motor.MovementSpeed, Is.EqualTo(10.35f).Within(0.001f));
+                Assert.That(gun.Magazine, Is.EqualTo(23));
+                Assert.That(gun.Reserve, Is.EqualTo(1));
+                Assert.That(effects.State.AutoFeed, Is.EqualTo(1f));
+                StepUntil(() => _motor.Grounded, Vector2.up, false, 35);
+                effects.ConfirmShot();
+                Assert.That(effects.ModifyShotDamage(12f), Is.EqualTo(12f));
+
+                StepUntil(() => _motor.Up == Vector3.down && !_motor.Transitioning, Vector2.up, false, 170);
+                Assert.That(effects.Charged, Is.True);
+                Assert.That(gun.Magazine, Is.EqualTo(23));
+                Assert.That(gun.Reserve, Is.EqualTo(1));
+
+                effects.Simulate(1.1f);
+                AttachNorthWall();
+                StepUntil(() => !_motor.Transitioning, Vector2.up, true, 90);
+                Assert.That(gun.Magazine, Is.EqualTo(24));
+                Assert.That(gun.Reserve, Is.Zero);
+            }
+            finally
+            {
+                effects.Unbind();
+            }
         }
 
         private void AttachNorthWall()

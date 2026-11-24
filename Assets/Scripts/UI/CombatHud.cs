@@ -52,8 +52,10 @@ namespace Overtime
         private Color _healthColor;
         private Color _ammoColor;
         private float _energy = -1f;
+        private float _maximumEnergy = -1f;
         private int _health = -1;
         private int _magazine = -1;
+        private int _capacity = -1;
         private int _reserve = -1;
         private bool _nearStation;
         private bool _showDeath;
@@ -213,9 +215,9 @@ namespace Overtime
 
         private void RefreshAmmo(CombatWeapon weapon)
         {
-            if (_magazine != weapon.Magazine || _reserve != weapon.Reserve)
+            if (_magazine != weapon.Magazine || _reserve != weapon.Reserve || _capacity != weapon.MagazineCapacity)
             {
-                _ammoLabel.SetText("{0:00}  <size=55%>/ {1:000}</size>", weapon.Magazine, weapon.Reserve);
+                _ammoLabel.SetText("{0:00} <size=55%>/ {1:00}    RES {2:000}</size>", weapon.Magazine, weapon.MagazineCapacity, weapon.Reserve);
                 _ammoColor = weapon.Magazine == 0 ? s_damage : s_chrono;
                 if (!_director.IsPlayerProtected)
                 {
@@ -223,6 +225,7 @@ namespace Overtime
                 }
 
                 _magazine = weapon.Magazine;
+                _capacity = weapon.MagazineCapacity;
                 _reserve = weapon.Reserve;
             }
 
@@ -234,7 +237,7 @@ namespace Overtime
         {
             var energy = _director.Energy;
             var value = energy.Current;
-            if (!Mathf.Approximately(_energy, value))
+            if (!Mathf.Approximately(_energy, value) || !Mathf.Approximately(_maximumEnergy, energy.Maximum))
             {
                 _energyLabel.SetText("CHRONO  {0:0.0} / {1:0}", value, energy.Maximum);
                 SetFill(_energyFill, value / energy.Maximum);
@@ -244,6 +247,7 @@ namespace Overtime
                 }
 
                 _energy = value;
+                _maximumEnergy = energy.Maximum;
             }
 
             var cost = _director.EnergyCost;
@@ -258,7 +262,7 @@ namespace Overtime
             }
             else if (cost > 0f)
             {
-                _costLabel.SetText(_director.Mode == TemporalMode.BulletTime ? "-{0:0} / REAL SECOND" : "-{0:0} / REWOUND SECOND", cost);
+                _costLabel.SetText(_director.Mode == TemporalMode.BulletTime ? "-{0:0} / REAL SECOND" : "-{0:0.0} / REWOUND SECOND", cost);
             }
             else
             {

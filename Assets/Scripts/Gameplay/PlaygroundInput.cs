@@ -28,6 +28,8 @@ namespace Overtime
         private bool _combatBindings;
         private bool _blockFireHold;
         private bool _gameOver;
+        private bool _rewardSelection;
+        private bool _blockJumpHold;
         private bool _captureRequested;
         private bool _fireRequested;
         private bool _reloadRequested;
@@ -35,8 +37,8 @@ namespace Overtime
         private bool _rechargeRequested;
 
         internal Vector2 Move => _captured ? _move.ReadValue<Vector2>() : Vector2.zero;
-        internal bool JumpPressed => _captured && _jump.WasPressedThisFrame();
-        internal bool JumpHeld => _captured && _jump.IsPressed();
+        internal bool JumpPressed => _captured && !_blockJumpHold && _jump.WasPressedThisFrame();
+        internal bool JumpHeld => _captured && !_blockJumpHold && _jump.IsPressed();
         internal bool Focused => _focused;
         internal bool FirePressed { get; private set; }
         internal bool FireHeld => _captured && !_blockFireHold && _attack.IsPressed();
@@ -116,6 +118,18 @@ namespace Overtime
             }
         }
 
+        internal void SetRewardSelection(bool active)
+        {
+            _rewardSelection = active;
+            _focusBlockedButtons |= _temporalSelection.Held;
+            _temporalSelection = default;
+            FirePressed = false;
+            ClearCombatCommands();
+            _blockFireHold = true;
+            _blockJumpHold = true;
+            SetCapture(!active && _focused && !_gameOver);
+        }
+
         internal void ClearCombatCommands()
         {
             _captureRequested = false;
@@ -162,6 +176,10 @@ namespace Overtime
                 _focusBlockedButtons &= ~button;
                 _temporalSelection.Release(mode);
             }
+            else if (context.performed && _rewardSelection)
+            {
+                _focusBlockedButtons |= button;
+            }
             else if (context.performed && (_focusBlockedButtons & button) == 0)
             {
                 _temporalSelection.Press(mode);
@@ -171,7 +189,7 @@ namespace Overtime
         internal void Poll()
         {
             FirePressed = false;
-            if (!_focused || _gameOver)
+            if (!_focused || _gameOver || _rewardSelection)
             {
                 return;
             }
@@ -191,6 +209,11 @@ namespace Overtime
                 SetCapture(true);
                 _blockFireHold = true;
                 return;
+            }
+
+            if (!_jump.IsPressed())
+            {
+                _blockJumpHold = false;
             }
 
             if (!_attack.IsPressed())

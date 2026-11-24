@@ -7,8 +7,16 @@ namespace Overtime
     {
         [SerializeField] private EncounterController[] _rooms;
         [SerializeField] private TemporalProjectileEmitter _enemyProjectiles;
+        [SerializeField] private RunProgression _progression;
+
+        private TemporalDirector _director;
+        private PlaygroundPlayer _player;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        private int _debugReward;
+#endif
 
         internal int RoomIndex { get; private set; }
+        internal RunProgression Progression => _progression;
         internal EncounterController Current => _rooms[RoomIndex];
         internal int EnemiesDefeated { get; private set; }
         internal int PowersUsed { get; private set; }
@@ -30,13 +38,13 @@ namespace Overtime
         {
             Elapsed += elapsed;
             var before = Current.State;
-            Current.Advance(director, player);
+            Current.Advance(director, player, this);
             if (before == Current.State)
             {
                 return;
             }
 
-            if (Current.State == EncounterState.Cleared)
+            if (Current.State is EncounterState.Cleared or EncounterState.RewardSelection)
             {
                 EnemiesDefeated += Current.Enemies.Length;
             }
@@ -54,6 +62,59 @@ namespace Overtime
                 director.ReplaceEncounter(RoomActors());
             }
         }
+
+        internal void StartRun(TemporalDirector director, PlaygroundPlayer player)
+        {
+            _director = director;
+            _player = player;
+            OpenReward(0);
+        }
+
+        internal bool OpenRoomReward()
+        {
+            return RoomIndex < _rooms.Length - 1 && OpenReward(RoomIndex + 1);
+        }
+
+        internal bool ConfirmUpgrade(int card)
+        {
+            if (!_director.RewardSelection || !_progression.Confirm(card))
+            {
+                return false;
+            }
+
+            _director.SealHistory();
+            if (Current.State == EncounterState.RewardSelection)
+            {
+                Current.UnlockExit(_player);
+            }
+
+            _director.SetRewardSelection(false);
+            return true;
+        }
+
+        private bool OpenReward(int reward)
+        {
+            if (_progression == null || !_progression.Selection.Open(reward))
+            {
+                return false;
+            }
+
+            _director.SetRewardSelection(true);
+            return true;
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        internal bool DebugOffer()
+        {
+            if (!_director.HasLivingPlayer || Finished || _director.RewardSelection)
+            {
+                return false;
+            }
+
+            _director.SealHistory();
+            return OpenReward(--_debugReward);
+        }
+#endif
 
         internal void CountMode(TemporalMode mode)
         {
