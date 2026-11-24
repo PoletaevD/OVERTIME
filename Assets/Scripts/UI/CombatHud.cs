@@ -70,13 +70,17 @@ namespace Overtime
             if (_damageDirection != null)
             {
                 _directionPulse = BuildPulse(0.55f, value => _damageDirection.alpha = value * 0.85f);
+            }
+
+            if (_remainingLabel != null)
+            {
                 _remainingPulse = BuildPulse(0.38f, value => _remainingLabel.color = Color.Lerp(s_chrono, s_weak, value));
             }
         }
 
         private void OnEnable()
         {
-            _player.Combat.Weapon.ShotFired += OnShot;
+            _director.ProjectileHit += OnImpact;
             _player.Combat.Health.Damaged += OnDamage;
             _director.ModeChanged += OnModeChanged;
             _director.DirectionalDamage += OnDirectionalDamage;
@@ -84,7 +88,7 @@ namespace Overtime
 
         private void OnDisable()
         {
-            _player.Combat.Weapon.ShotFired -= OnShot;
+            _director.ProjectileHit -= OnImpact;
             _player.Combat.Health.Damaged -= OnDamage;
             _director.ModeChanged -= OnModeChanged;
             _director.DirectionalDamage -= OnDirectionalDamage;
@@ -115,10 +119,11 @@ namespace Overtime
             if (_remainingLabel != null)
             {
                 RefreshEncounter();
-                if (_damageDirection.alpha > 0f)
-                {
-                    OrientDamageArrow();
-                }
+            }
+
+            if (_damageDirection != null && _damageDirection.alpha > 0f)
+            {
+                OrientDamageArrow();
             }
         }
 
@@ -212,7 +217,11 @@ namespace Overtime
             {
                 _ammoLabel.SetText("{0:00}  <size=55%>/ {1:000}</size>", weapon.Magazine, weapon.Reserve);
                 _ammoColor = weapon.Magazine == 0 ? s_damage : s_chrono;
-                _ammoPulse.Restart();
+                if (!_director.IsPlayerProtected)
+                {
+                    _ammoPulse.Restart();
+                }
+
                 _magazine = weapon.Magazine;
                 _reserve = weapon.Reserve;
             }
@@ -300,24 +309,24 @@ namespace Overtime
             _wasGameOver = combat.GameOver;
         }
 
-        private void OnShot(CombatShot shot)
+        private void OnImpact(ProjectileImpact shot)
         {
-            if (shot.Damage.Amount == 0)
+            if (!shot.FromPlayer || (shot.Damage.Amount == 0 && !shot.Shielded))
             {
                 return;
             }
 
-            _hitMarker.color = shot.Damage.Killed ? s_damage : shot.WeakPoint ? s_weak : s_text;
+            _hitMarker.color = shot.Shielded ? new Color(0.48f, 0.70f, 1f) : shot.Damage.Killed ? s_damage : shot.WeakPoint ? s_weak : s_text;
             _hitLabel.color = _hitMarker.color;
-            _hitMarker.SetText(shot.Damage.Killed ? "X" : shot.WeakPoint ? "<>" : "+");
-            _hitLabel.SetText(shot.Damage.Killed ? "TARGET DESTROYED" : shot.WeakPoint ? "WEAK POINT  {0:0}" : "{0:0}", shot.Damage.Amount);
+            _hitMarker.SetText(shot.Shielded ? "[]" : shot.Damage.Killed ? "X" : shot.WeakPoint ? "<>" : "+");
+            _hitLabel.SetText(shot.Shielded ? "SHIELD BLOCK" : shot.Damage.Killed ? "TARGET DESTROYED" : shot.WeakPoint ? "WEAK POINT  {0:0}" : "{0:0}", shot.Damage.Amount);
             PresentHitPulse(1f);
             _hitPulse.Restart();
         }
 
         private void OnModeChanged(TemporalMode mode)
         {
-            if (!_director.CanAffectWorld)
+            if (!_director.CanDamageWorld)
             {
                 _hitPulse.Pause();
                 _hitGroup.alpha = 0f;

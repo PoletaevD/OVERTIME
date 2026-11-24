@@ -11,6 +11,10 @@ namespace Overtime
         internal abstract void Capture(int slot);
         internal abstract void Restore(int slot);
 
+        internal virtual void ReleaseHistory()
+        {
+        }
+
         internal virtual void CollectColliders(List<Collider> colliders)
         {
         }
@@ -28,6 +32,11 @@ namespace Overtime
         {
             _history = new T[capacity];
             ResetState();
+        }
+
+        internal override void ReleaseHistory()
+        {
+            _history = null;
         }
 
         internal sealed override void Capture(int slot)

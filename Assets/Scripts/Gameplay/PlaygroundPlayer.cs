@@ -25,6 +25,7 @@ namespace Overtime
         internal CapsuleCollider Capsule => _capsule;
 
         internal Ray AimRay => _cameraRig.AimRay;
+        internal Vector3 AimUp => _cameraRig.AimUp;
         internal bool ReducedMotion => _cameraRig.ReducedMotion;
 
         private void Start()
@@ -143,8 +144,12 @@ namespace Overtime
 
         internal void SetTemporalCollision(TemporalCollision collision)
         {
-            _capsule = GetComponent<CapsuleCollider>();
-            _capsuleWasTrigger = _capsule.isTrigger;
+            if (_capsule == null)
+            {
+                _capsule = GetComponent<CapsuleCollider>();
+                _capsuleWasTrigger = _capsule.isTrigger;
+            }
+
             _motor.SetTemporalCollision(collision);
         }
 

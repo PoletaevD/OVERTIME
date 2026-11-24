@@ -8,7 +8,8 @@ namespace Overtime
     {
         Guard,
         Drone,
-        Auditor
+        Auditor,
+        Enforcer
     }
 
     internal enum SecurityEnemyState
@@ -32,6 +33,8 @@ namespace Overtime
         [SerializeField] private CombatHealth _health;
         [SerializeField] private Collider _body;
         [SerializeField] private Collider _weakPoint;
+        [SerializeField] private Collider _shield;
+        [SerializeField] private CombatShield _shieldFeedback;
         [SerializeField, Min(1f)] private float _weakPointMultiplier = 1.5f;
         [SerializeField, Min(1)] private int _rewardId = 1;
         [SerializeField] private TemporalDirector _director;
@@ -59,6 +62,8 @@ namespace Overtime
         [SerializeField, Min(0.05f)] private float _projectileLifetime = 2.2f;
         [SerializeField, Min(0.01f)] private float _projectileRadius = 0.13f;
 
+        private SecurityEnemy[] _neighbors;
+        private bool _encounterReady = true;
         private AiState _state;
         private Vector3 _home;
         private Quaternion _homeRotation;
@@ -93,12 +98,28 @@ namespace Overtime
             }));
         }
 
+        internal void SetEncounterReady(bool ready)
+        {
+            _encounterReady = ready;
+            SetHitboxes(ready && _health.Alive);
+        }
+
+        internal void SetNeighbors(SecurityEnemy[] neighbors)
+        {
+            _neighbors = neighbors;
+        }
+
         internal override void CollectColliders(List<Collider> colliders)
         {
             colliders.Add(_body);
             if (_weakPoint != null)
             {
                 colliders.Add(_weakPoint);
+            }
+
+            if (_shield != null)
+            {
+                colliders.Add(_shield);
             }
         }
 
@@ -138,6 +159,11 @@ namespace Overtime
                 return;
             }
 
+            if (!_encounterReady)
+            {
+                return;
+            }
+
             _state.PhaseRemaining = Mathf.Max(0f, _state.PhaseRemaining - step);
             _state.Cooldown = Mathf.Max(0f, _state.Cooldown - step);
             _state.Recoil = Mathf.MoveTowards(_state.Recoil, 0f, 7f * step);
@@ -173,6 +199,12 @@ namespace Overtime
             }
 
             TurnToward(toPlayer, step);
+            if (_kind == SecurityEnemyKind.Enforcer)
+            {
+                AdvanceEnforcer(toPlayer, step);
+                toPlayer = target - AttackOrigin;
+            }
+
             if (!sawPlayer)
             {
                 _state.State = SecurityEnemyState.Alert;
@@ -191,7 +223,7 @@ namespace Overtime
                 {
                     MoveOnRoute(step);
                 }
-                else
+                else if (_kind == SecurityEnemyKind.Drone)
                 {
                     MoveDrone(target, step);
                 }
@@ -222,7 +254,7 @@ namespace Overtime
                 return;
             }
 
-            if (_projectiles.TryLaunch(AttackOrigin, _state.Aim, _projectileSpeed, _projectileLifetime, _projectileRadius, _damage, _kind == SecurityEnemyKind.Drone))
+            if (_projectiles.TryLaunch(AttackOrigin, _state.Aim, _projectileSpeed, _projectileLifetime, _projectileRadius, _damage, _kind == SecurityEnemyKind.Drone, transform))
             {
                 _state.Attacks++;
                 _state.Recoil = 1f;
@@ -233,6 +265,27 @@ namespace Overtime
             if (_state.ShotsRemaining == 0)
             {
                 _state.Cooldown = _cooldownSeconds;
+            }
+        }
+
+        private void AdvanceEnforcer(Vector3 toPlayer, float step)
+        {
+            var horizontal = Vector3.ProjectOnPlane(toPlayer, Vector3.up);
+            if (horizontal.sqrMagnitude <= _preferredRange * _preferredRange)
+            {
+                return;
+            }
+
+            var direction = horizontal.normalized;
+            if (Vector3.Dot(direction, transform.forward) <= 0.5f || TryMove(direction, step))
+            {
+                return;
+            }
+
+            var sidestep = Vector3.Cross(Vector3.up, direction);
+            if (!TryMove((direction + sidestep * 1.5f).normalized, step))
+            {
+                TryMove((direction - sidestep * 1.5f).normalized, step);
             }
         }
 
@@ -266,6 +319,7 @@ namespace Overtime
             {
                 _state.State = SecurityEnemyState.Aiming;
                 _state.PhaseRemaining = _aimSeconds;
+                _director.StartAuditorCharge(AttackOrigin);
             }
 
             if (!_state.DirectionLocked)
@@ -276,7 +330,12 @@ namespace Overtime
                     _state.DirectionLocked = true;
                 }
 
-                _state.PhaseRemaining = Mathf.Max(_state.PhaseRemaining, lockedTime);
+                if (!_encounterReady)
+            {
+                return;
+            }
+
+            _state.PhaseRemaining = Mathf.Max(_state.PhaseRemaining, lockedTime);
                 _state.BeamDistance = BeamDistance(AttackOrigin, false, out _);
                 return;
             }
@@ -336,7 +395,7 @@ namespace Overtime
             }
 
             var delta = _patrol[_state.Waypoint].position - transform.position;
-            if (_kind == SecurityEnemyKind.Guard)
+            if (_kind is SecurityEnemyKind.Guard or SecurityEnemyKind.Enforcer)
             {
                 delta.y = 0f;
             }
@@ -402,18 +461,45 @@ namespace Overtime
             var position = transform.position;
             var direction = delta / length;
             var distance = Mathf.Min(length, step * _moveSpeed);
-            var halfSegment = _kind == SecurityEnemyKind.Guard ? Vector3.up * 0.40f : Vector3.zero;
+            var halfSegment = _kind is SecurityEnemyKind.Guard or SecurityEnemyKind.Enforcer ? Vector3.up * 0.40f : Vector3.zero;
             var blocked = halfSegment == Vector3.zero
                 ? Physics.SphereCast(position, _moveRadius, direction, out _, distance + 0.03f, _geometry, QueryTriggerInteraction.Ignore)
                 : Physics.CapsuleCast(position - halfSegment, position + halfSegment, _moveRadius, direction, out _, distance + 0.03f, _geometry, QueryTriggerInteraction.Ignore);
 
-            if (blocked)
+            var candidate = position + direction * distance;
+            if (blocked || MovesIntoNeighbor(position, candidate))
             {
                 return false;
             }
 
-            transform.position = position + direction * distance;
+            transform.position = candidate;
             return true;
+        }
+
+        private bool MovesIntoNeighbor(Vector3 position, Vector3 candidate)
+        {
+            if (_neighbors == null)
+            {
+                return false;
+            }
+
+            foreach (var neighbor in _neighbors)
+            {
+                if (neighbor == this || !neighbor.Health.Alive)
+                {
+                    continue;
+                }
+
+                var minimum = _moveRadius + neighbor._moveRadius;
+                var other = neighbor.transform.position;
+                var offset = candidate - other;
+                if (offset.sqrMagnitude < minimum * minimum && offset.sqrMagnitude < (position - other).sqrMagnitude)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal override void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
@@ -435,8 +521,9 @@ namespace Overtime
             _state = snapshot.Ai;
             transform.SetPositionAndRotation(snapshot.Position, snapshot.Rotation);
             _health.Restore(snapshot.HitPoints);
-            SetHitboxes(_health.Alive);
+            SetHitboxes(_encounterReady && _health.Alive);
             _presentation.ClearHit();
+            _shieldFeedback?.Clear();
         }
 
         private void SetHitboxes(bool alive)
@@ -445,6 +532,12 @@ namespace Overtime
             if (_weakPoint != null)
             {
                 _weakPoint.enabled = alive;
+            }
+
+            if (_shield != null)
+            {
+                _shield.enabled = alive;
+                _shield.gameObject.SetActive(_health.Alive);
             }
         }
 

@@ -26,6 +26,7 @@ namespace Overtime
         [SerializeField, Range(0.1f, 8f)] private float _recallRate = 2f;
         [SerializeField, Range(0.05f, 1f)] private float _bulletTimeRate = 0.25f;
         [SerializeField] private TemporalActor[] _worldActors = Array.Empty<TemporalActor>();
+        [SerializeField] private SectorRoute _sector;
         [SerializeField] private TemporalDestructible _testTarget;
         [SerializeField] private ChronoEnergy _energy;
         [SerializeField] private Transform _rechargeStation;
@@ -45,9 +46,15 @@ namespace Overtime
         private bool _worldChangedBetweenSteps;
         private bool _blockJumpHold;
         private int _exhaustedButtons;
+        private double _projectileCredit;
+        private TemporalProjectileEmitter _playerProjectiles;
 
         internal event Action<TemporalMode> ModeChanged;
         internal event Action<Vector3> DirectionalDamage;
+        internal event Action<ProjectileImpact> ProjectileHit;
+        internal event Action<Vector3> AuditorCharging;
+        internal TemporalProjectileEmitter PlayerProjectiles => _playerProjectiles;
+        internal bool ReducedMotion => _player.ReducedMotion;
 
         internal ChronoEnergy Energy => _energy;
         internal float EnergyCost => _energy.Cost(Mode);
@@ -61,10 +68,12 @@ namespace Overtime
         internal TemporalMode Mode { get; private set; }
         internal bool IsRewinding => IsPlayerProtected || WorldTimeline?.Direction == TemporalDirection.Reverse;
         internal bool IsPlayerProtected => PlayerTimeline?.Direction == TemporalDirection.Reverse;
-        internal bool CanAffectWorld => !IsPlayerProtected && WorldTimeline?.Direction == TemporalDirection.Forward;
+        internal bool CanDamageWorld => WorldTimeline?.Direction == TemporalDirection.Forward && _player.Combat?.GameOver != true;
+        internal bool CanAffectWorld => !IsPlayerProtected && CanDamageWorld;
         internal long SimulationTick { get; private set; }
         internal int PlayerSteps { get; private set; }
         internal int WorldSteps { get; private set; }
+        internal int WorldActorCount => _worldActors.Length + (_playerProjectiles != null ? 1 : 0);
         internal int DynamicOverlaps => _collision?.OverlapCount ?? 0;
         internal int PhasedColliders => _collision?.PhasedCount ?? 0;
 
@@ -76,10 +85,23 @@ namespace Overtime
             WorldTimeline = new TemporalTimeline(_historySeconds);
             SetTimelineRates();
             _playerFrames = new PlaygroundPlayer.Snapshot[PlayerTimeline.Capacity];
+            if (_sector != null)
+            {
+                _worldActors = _sector.Prepare();
+            }
 
             foreach (var actor in _worldActors)
             {
                 actor.Initialize(WorldTimeline.Capacity);
+            }
+
+            if (player.Combat != null)
+            {
+                var pool = new GameObject("ARC-01 Projectile Pool");
+                pool.transform.SetParent(transform, false);
+                _playerProjectiles = pool.AddComponent<TemporalProjectileEmitter>();
+                _playerProjectiles.ConfigurePlayerPool(this, player.Combat.Weapon.ProjectileCapacity, Resources.Load<Material>("ARC-01 Bolt"));
+                _playerProjectiles.Initialize(WorldTimeline.Capacity);
             }
 
             _collision = new TemporalCollision(player.GetComponent<CapsuleCollider>(), _worldActors);
@@ -97,12 +119,20 @@ namespace Overtime
             if (input.DebugReset || _restartRequested)
             {
                 _restartRequested = false;
-                Restart();
+                if (_sector != null)
+                {
+                    _sector.Restart();
+                }
+                else
+                {
+                    Restart();
+                }
+
                 _exhaustedButtons = input.Selection.Held;
                 return false;
             }
 
-            if (_player.Combat?.GameOver == true)
+            if (_player.Combat?.GameOver == true || _sector?.Finished == true)
             {
                 return false;
             }
@@ -146,6 +176,17 @@ namespace Overtime
             }
 
             AdvanceModes(elapsed, realPerSimulatedSecond, input);
+            if (_sector != null)
+            {
+                var room = _sector.Current;
+                var state = room.State;
+                _sector.Advance(realElapsed, this, _player);
+                if (room.State != state)
+                {
+                    _exhaustedButtons |= input.Selection.Held;
+                }
+            }
+
             ResolveRecovery(wasDead ? realElapsed : 0d);
             Present();
             return acceptsInput;
@@ -220,6 +261,7 @@ namespace Overtime
             if (worldReverses)
             {
                 WorldTimeline.BeginReverse();
+                _projectileCredit = 0d;
                 if (_worldChangedBetweenSteps)
                 {
                     // A hit between world ticks is newer than the current world snapshot.
@@ -243,6 +285,7 @@ namespace Overtime
 
             Physics.SyncTransforms();
             _collision.Refresh(worldReverses);
+            _sector?.CountMode(mode);
             ModeChanged?.Invoke(mode);
         }
 
@@ -381,6 +424,11 @@ namespace Overtime
         {
             PlayerTimeline.Accumulate(elapsed);
             WorldTimeline.Accumulate(elapsed);
+            var projectilesAdvance = _playerProjectiles != null && CanDamageWorld;
+            if (projectilesAdvance)
+            {
+                _projectileCredit += elapsed * TemporalTimeline.TicksPerSecond;
+            }
 
             var look = Vector2.zero;
             if (!IsPlayerProtected && PlayerTimeline.StepsDue > 0)
@@ -389,14 +437,24 @@ namespace Overtime
                 _pendingLook = Vector2.zero;
             }
 
-            while (PlayerTimeline.StepDue || WorldTimeline.StepDue)
+            while (PlayerTimeline.StepDue || WorldTimeline.StepDue || (projectilesAdvance && _projectileCredit + 0.00001d >= 1d))
             {
                 var playerTime = PlayerTimeline.StepDue ? PlayerTimeline.NextStepOffset : double.PositiveInfinity;
                 var worldTime = WorldTimeline.StepDue ? WorldTimeline.NextStepOffset : double.PositiveInfinity;
-                var stepWorld = worldTime <= playerTime + SimultaneousTickTolerance;
-                var stepPlayer = playerTime <= worldTime + SimultaneousTickTolerance;
+                var projectileTime = projectilesAdvance && _projectileCredit + 0.00001d >= 1d ? (1d - _projectileCredit) * TemporalTimeline.TickDuration : double.PositiveInfinity;
+                var nextTime = Math.Min(projectileTime, Math.Min(playerTime, worldTime)) + SimultaneousTickTolerance;
+                var stepWorld = worldTime <= nextTime;
+                var stepPlayer = playerTime <= nextTime;
                 var recordWorld = stepWorld && WorldTimeline.Direction == TemporalDirection.Forward;
                 SimulationTick++;
+
+                // Advance existing bolts before the player can launch a new one at this instant.
+                if (projectileTime <= nextTime)
+                {
+                    _projectileCredit = Math.Max(0d, _projectileCredit - 1d);
+                    _worldChangedBetweenSteps |= _playerProjectiles.ActiveCount > 0;
+                    _playerProjectiles.Simulate(Step);
+                }
 
                 if (stepWorld)
                 {
@@ -467,7 +525,9 @@ namespace Overtime
                     _energy.Recharge();
                 }
 
-                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, this);
+                var generation = _playerProjectiles.Generation;
+                _player.Combat.Weapon.Simulate(TemporalTimeline.TickDuration, _pendingFire || fireHeld, _pendingReload, CanAffectWorld, _player.AimRay, _player.AimUp, _playerProjectiles);
+                _worldChangedBetweenSteps |= generation != _playerProjectiles.Generation;
                 return;
             }
 
@@ -482,7 +542,7 @@ namespace Overtime
         internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, int amount, out bool weakPoint)
         {
             weakPoint = false;
-            if (!CanAffectWorld || _player.Combat is not { Alive: true, GameOver: false })
+            if (!CanDamageWorld)
             {
                 return default;
             }
@@ -497,7 +557,17 @@ namespace Overtime
             return damage;
         }
 
-        internal bool CanDamagePlayer => CanAffectWorld && HasLivingPlayer;
+        internal void StartAuditorCharge(Vector3 origin)
+        {
+            AuditorCharging?.Invoke(origin);
+        }
+
+        internal void PublishImpact(in ProjectileImpact impact)
+        {
+            ProjectileHit?.Invoke(impact);
+        }
+
+        internal bool CanDamagePlayer => CanAffectWorld && HasLivingPlayer && (_sector == null || _sector.Current.State != EncounterState.Active || _sector.Current.LivingEnemies > 0);
 
         internal bool DamagePlayer(int amount, Vector3? source = null)
         {
@@ -529,6 +599,7 @@ namespace Overtime
                 actor.Restore(slot);
             }
 
+            _playerProjectiles?.Restore(slot);
             _worldChangedBetweenSteps = false;
         }
 
@@ -539,6 +610,7 @@ namespace Overtime
                 actor.Capture(slot);
             }
 
+            _playerProjectiles?.Capture(slot);
             _worldChangedBetweenSteps = false;
         }
 
@@ -557,6 +629,8 @@ namespace Overtime
             {
                 actor.Present(WorldTimeline, Mode, !_player.ReducedMotion);
             }
+
+            _playerProjectiles?.Present(WorldTimeline, Mode, !_player.ReducedMotion);
         }
 
         internal void PresentPlayerTrace(LineRenderer trace)
@@ -577,6 +651,45 @@ namespace Overtime
             }
         }
 
+        internal void ReplaceEncounter(TemporalActor[] actors)
+        {
+            ChangeMode(TemporalMode.Normal);
+            foreach (var actor in _worldActors)
+            {
+                if (actor != actors[0])
+                {
+                    actor.ReleaseHistory();
+                }
+            }
+
+            _worldActors = actors;
+            for (var index = 1; index < actors.Length; index++)
+            {
+                actors[index].Initialize(WorldTimeline.Capacity);
+            }
+
+            _collision = new TemporalCollision(PlayerCapsule, _worldActors);
+            _player.SetTemporalCollision(_collision);
+            SealHistory();
+        }
+
+        internal void SealHistory()
+        {
+            ChangeMode(TemporalMode.Normal);
+            ClearPendingInput();
+            _projectileCredit = 0d;
+            _playerProjectiles?.ClearProjectiles();
+            _sector.EnemyProjectiles.ClearProjectiles();
+
+            PlayerTimeline.Clear();
+            WorldTimeline.Clear();
+            SetTimelineRates();
+            _playerChangedBetweenSteps = false;
+            Physics.SyncTransforms();
+            _collision.Refresh(false);
+            CaptureBaseline();
+        }
+
         internal void RequestRestart()
         {
             _restartRequested = true;
@@ -591,6 +704,8 @@ namespace Overtime
             WorldTimeline.Clear();
             SetTimelineRates();
             SimulationTick = 0;
+            _projectileCredit = 0d;
+            _playerProjectiles?.ResetState();
 
             foreach (var actor in _worldActors)
             {

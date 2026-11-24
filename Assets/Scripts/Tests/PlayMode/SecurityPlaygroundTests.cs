@@ -38,7 +38,7 @@ namespace Overtime.Tests
             _drone = FindEnemy("Surveillance Drone");
             _auditor = FindEnemy("Laser Auditor");
             _roster = new[] { _guard, _secondGuard, _drone, _auditor };
-            _pool = Object.FindAnyObjectByType<TemporalProjectileEmitter>();
+            _pool = GameObject.Find("Enemy Projectile Pool").GetComponent<TemporalProjectileEmitter>();
             _player.enabled = false;
             Restart();
         }
@@ -567,7 +567,9 @@ namespace Overtime.Tests
         private void FireAt(Vector3 origin, Vector3 target)
         {
             var ray = new Ray(origin, (target - origin).normalized);
-            _player.Combat.Weapon.Simulate(Step, true, false, true, ray, _director);
+            _player.Combat.Weapon.Simulate(Step, true, false, true, ray, Vector3.up, _director.PlayerProjectiles);
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
+            Tick(Mathf.CeilToInt(Vector3.Distance(origin, target) / (45f * (float)Step)) + 1);
         }
 
         private void LaunchAtPlayer(int damage, float speed, float distance)

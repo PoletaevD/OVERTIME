@@ -57,19 +57,9 @@ namespace Overtime.Editor
                 chamber.BuildRoute();
             }
 
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Gravity Player.prefab");
-            var playerObject = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
-            playerObject.layer = IgnoreRaycastLayer;
-            playerObject.transform.position = new Vector3(0f, 0.89f, security ? -8.2f : -7f);
-            PrefabUtility.RecordPrefabInstancePropertyModifications(playerObject);
-            PrefabUtility.RecordPrefabInstancePropertyModifications(playerObject.transform);
-            var player = playerObject.GetComponent<PlaygroundPlayer>();
-            var rig = playerObject.GetComponent<GravityCamera>();
-            var health = playerObject.AddComponent<CombatHealth>();
-            var weapon = playerObject.AddComponent<CombatWeapon>();
-            var combat = playerObject.AddComponent<PlayerCombat>();
-            PlaygroundSceneBuilder.Wire(combat, "_health", health, "_weapon", weapon);
-            PlaygroundSceneBuilder.Wire(player, "_combat", combat, "_temporalDirector", director);
+            var player = BuildPlayer(scene, director, new Vector3(0f, 0.89f, security ? -8.2f : -7f));
+            var playerObject = player.gameObject;
+            var rig = player.GetComponent<GravityCamera>();
             chamber.BuildImpact(director, player);
 
             var hud = new PlaygroundHudBuilder(PlaygroundSceneBuilder.TMPAsset());
@@ -87,6 +77,28 @@ namespace Overtime.Editor
                 throw new InvalidOperationException($"Failed to save {path}.");
             }
 
+            RegisterScene(path);
+        }
+
+        internal static PlaygroundPlayer BuildPlayer(Scene scene, TemporalDirector director, Vector3 position)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Gravity Player.prefab");
+            var playerObject = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            playerObject.layer = IgnoreRaycastLayer;
+            playerObject.transform.position = position;
+            PrefabUtility.RecordPrefabInstancePropertyModifications(playerObject);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(playerObject.transform);
+            var player = playerObject.GetComponent<PlaygroundPlayer>();
+            var health = playerObject.AddComponent<CombatHealth>();
+            var weapon = playerObject.AddComponent<CombatWeapon>();
+            var combat = playerObject.AddComponent<PlayerCombat>();
+            PlaygroundSceneBuilder.Wire(combat, "_health", health, "_weapon", weapon);
+            PlaygroundSceneBuilder.Wire(player, "_combat", combat, "_temporalDirector", director);
+            return player;
+        }
+
+        internal static void RegisterScene(string path)
+        {
             var scenes = EditorBuildSettings.scenes;
             if (!Array.Exists(scenes, entry => entry.path == path))
             {
@@ -101,7 +113,7 @@ namespace Overtime.Editor
             }
         }
 
-        private sealed class Chamber
+        internal sealed class Chamber
         {
             private readonly PlaygroundArt _art;
             private readonly Transform _room;

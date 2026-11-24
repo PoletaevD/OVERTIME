@@ -35,7 +35,7 @@ namespace Overtime.Tests
             _weapon = _combat.Weapon;
             _dummy = GameObject.Find("Training Dummy 01").GetComponent<CombatTarget>();
             _armor = GameObject.Find("Armored Dummy").GetComponent<CombatTarget>();
-            _emitter = Object.FindAnyObjectByType<TemporalProjectileEmitter>();
+            _emitter = GameObject.Find("Projectile Lane Emitter").GetComponent<TemporalProjectileEmitter>();
             _player.enabled = false;
             ResetDrill();
         }
@@ -132,29 +132,95 @@ namespace Overtime.Tests
         }
 
         [Test]
-        public void HitscanUsesTheAimRayAndTheArmoredCoreDoublesDamage()
+        public void ProjectileUsesTheAimRayAndTheArmoredCoreDoublesDamage()
         {
             var torso = Body(_armor).bounds.center;
-            MoveTo(new Vector3(torso.x, 0.89f, -6f));
+            MoveTo(new Vector3(torso.x + 0.35f, 0.89f, -3.6f));
             Tick(1, Input(fire: true));
+            Assert.That(_armor.Health.Current, Is.EqualTo(160));
+            Tick(40);
             Assert.That(_armor.Health.Current, Is.EqualTo(148));
 
             var weak = _armor.transform.Find("Live Target/Weak Point").GetComponent<Collider>();
             var verticalOffset = weak.bounds.center.y - _player.AimRay.origin.y;
-            MoveTo(_player.transform.position + Vector3.up * verticalOffset);
-            Tick(12, Input(fire: true));
+            MoveTo(new Vector3(weak.bounds.center.x, _player.transform.position.y + verticalOffset, _player.transform.position.z));
+            Tick(1, Input(fire: true));
+            Tick(40);
             Assert.That(_armor.Health.Current, Is.EqualTo(124));
         }
 
         [Test]
-        public void CeilingHitscanUsesTheGravityAlignedAimRay()
+        public void CeilingFireUsesTheGravityAlignedAimRay()
         {
             var ceiling = GameObject.Find("Ceiling Training Dummy").GetComponent<CombatTarget>();
             var rotation = Quaternion.AngleAxis(180f, Vector3.forward);
             _player.GetComponent<GravityMotor>().ResetAt(new Vector3(1f, 6.11f, 4f), rotation);
             _player.GetComponent<GravityCamera>().ResetView(rotation);
             Tick(1, Input(fire: true));
+            Assert.That(ceiling.Health.Current, Is.EqualTo(60));
+            Tick(24);
             Assert.That(ceiling.Health.Current, Is.EqualTo(48));
+        }
+
+        [Test]
+        public void WallFireUsesTheGravityAlignedMuzzle()
+        {
+            var screen = new GameObject("Wall Shooting Target");
+            try
+            {
+                var rotation = Quaternion.AngleAxis(90f, Vector3.forward);
+                _player.GetComponent<GravityMotor>().ResetAt(new Vector3(-6.11f, 3.35f, -2f), rotation);
+                _player.GetComponent<GravityCamera>().ResetView(rotation);
+                var aim = _player.AimRay;
+                screen.transform.position = aim.GetPoint(4f);
+                screen.AddComponent<BoxCollider>().size = new Vector3(1f, 1f, 0.02f);
+                var point = Vector3.zero;
+                _director.ProjectileHit += impact =>
+                {
+                    if (impact.FromPlayer)
+                    {
+                        point = impact.Point;
+                    }
+                };
+
+                Tick(1, Input(fire: true));
+                Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
+                Assert.That(point, Is.EqualTo(Vector3.zero));
+                Tick(15);
+                Assert.That(Vector3.Distance(point, screen.transform.position), Is.LessThan(0.12f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(screen);
+            }
+        }
+
+        [Test]
+        public void AShotDuringGravityTransitionStopsOnTheAdjacentWall()
+        {
+            var motor = _player.GetComponent<GravityMotor>();
+            var rig = _player.GetComponent<GravityCamera>();
+            var facingWall = Quaternion.Euler(0f, 90f, 0f);
+            motor.ResetAt(new Vector3(5.8f, 0.89f, -5f), facingWall);
+            rig.ResetView(facingWall);
+            Physics.SyncTransforms();
+            var approach = new TemporalInput(Vector2.up, default, true, true, false, default(TemporalSelection));
+            Tick(1, approach);
+            var hold = new TemporalInput(Vector2.up, default, false, true, false, default(TemporalSelection));
+            for (var step = 0; step < 20 && !motor.Transitioning; step++)
+            {
+                Tick(1, hold);
+            }
+
+            Assert.That(motor.Transitioning, Is.True);
+            var impacts = 0;
+            _director.ProjectileHit += impact => impacts += impact.FromPlayer ? 1 : 0;
+            Tick(1, new TemporalInput(Vector2.up, default, false, true, true, default(TemporalSelection)));
+            Assert.That(_director.PlayerProjectiles.Generation, Is.EqualTo(1));
+            Assert.That(impacts, Is.Zero);
+            Tick(30);
+            Assert.That(impacts, Is.EqualTo(1));
+            Assert.That(_dummy.Health.Current, Is.EqualTo(60));
         }
 
         [Test]
@@ -181,16 +247,18 @@ namespace Overtime.Tests
             Tick(12);
             var body = Body(_dummy);
             Tick(49, Input(fire: true));
+            Tick(32);
             Assert.That(_dummy.Health.Current, Is.Zero);
             Assert.That(body.gameObject.activeInHierarchy, Is.False);
             Assert.That(_dummy.transform.Find("Wreck").gameObject.activeSelf, Is.True);
             Assert.That(_director.DamageTarget(_dummy, body, 12, out _).Amount, Is.Zero);
 
-            Tick(25, Input(TemporalMode.Override));
+            Tick(40, Input(TemporalMode.Override));
             Assert.That(_dummy.Health.Current, Is.EqualTo(60));
             Assert.That(body.gameObject.activeInHierarchy, Is.True);
             Assert.That(_dummy.transform.Find("Wreck").gameObject.activeSelf, Is.False);
-            Tick(12, Input(fire: true));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
+            Tick(25);
             Assert.That(_dummy.Health.Current, Is.EqualTo(48));
         }
 
@@ -201,63 +269,192 @@ namespace Overtime.Tests
         {
             Tick(30);
             Tick(49, Input(fire: true));
+            Tick(32);
             Assert.That(_dummy.Health.Current, Is.Zero);
             Assert.That(_director.DamagePlayer(40), Is.True);
             Tick(1);
 
             var world = _director.WorldTimeline.Cursor;
-            Tick(30, Input((TemporalMode)modeValue));
+            Tick(50, Input((TemporalMode)modeValue));
             Assert.That(_combat.Health.Current, Is.EqualTo(health));
             Assert.That(_weapon.Magazine, Is.EqualTo(magazine));
             Assert.That(_dummy.Health.Current, Is.EqualTo(targetHealth));
             if ((TemporalMode)modeValue == TemporalMode.Recall)
             {
-                Assert.That(_director.WorldTimeline.Cursor, Is.EqualTo(world + 30));
+                Assert.That(_director.WorldTimeline.Cursor, Is.EqualTo(world + 50));
             }
         }
 
-        [TestCase((int)TemporalMode.Normal, 48)]
-        [TestCase((int)TemporalMode.Override, 60)]
-        [TestCase((int)TemporalMode.Recall, 48)]
-        public void BulletTimeHitsBeforeTheNextWorldTickAndTransitionsApplyTheCorrectBranch(int modeValue, int targetHealth)
+        [TestCase(false)]
+        [TestCase(true)]
+        public void WorldRewindDiscardsAProjectileLaunchedBetweenWorldTicks(bool reset)
         {
             Tick(12);
             var world = _director.WorldTimeline.Cursor;
             Tick(1, Input(TemporalMode.BulletTime, fire: true));
-            Assert.That(_dummy.Health.Current, Is.EqualTo(48));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
             Assert.That(_director.WorldTimeline.Cursor, Is.EqualTo(world));
-            Assert.That(_director.DamageTarget(_armor, Body(_armor), 12, out _).Amount, Is.EqualTo(12));
-            Assert.That(_director.DamageTarget(_armor, Body(_armor), 12, out _).Amount, Is.EqualTo(12));
 
-            Tick(1, Input((TemporalMode)modeValue));
-            Assert.That(_dummy.Health.Current, Is.EqualTo(targetHealth));
-            Assert.That(_armor.Health.Current, Is.EqualTo(targetHealth == 60 ? 160 : 136));
+            _director.Advance(0d, Input(reset ? TemporalMode.Reset : TemporalMode.Override));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.Zero);
+            Assert.That(_weapon.Magazine, Is.EqualTo(29), "At the instant rewind starts, the player tick containing the shot still exists.");
+            Tick(1, Input(reset ? TemporalMode.Reset : TemporalMode.Override));
+            Assert.That(_weapon.Magazine, Is.EqualTo(reset ? 30 : 29));
+            Tick(35);
+            Assert.That(_dummy.Health.Current, Is.EqualTo(60));
+        }
+
+        [Test]
+        public void ImpactBetweenWorldTicksIsRolledBackWithoutPublishingItAgain()
+        {
             Tick(12);
-            Assert.That(_dummy.Health.Current, Is.EqualTo(targetHealth), "World ticks do not replay past hits.");
+            Tick(1, Input(fire: true));
+            Tick(24);
+            Assert.That(_dummy.Health.Current, Is.EqualTo(60));
+            var world = _director.WorldTimeline.Cursor;
+            var impacts = 0;
+            _director.ProjectileHit += impact => impacts += impact.FromPlayer ? 1 : 0;
+
+            Tick(1, Input(TemporalMode.BulletTime));
+            Assert.That(_director.WorldTimeline.Cursor, Is.EqualTo(world));
+            Assert.That(_dummy.Health.Current, Is.EqualTo(48));
+            Assert.That(impacts, Is.EqualTo(1));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.Zero);
+
+            _director.Advance(0d, Input(TemporalMode.Override));
+            Assert.That(_dummy.Health.Current, Is.EqualTo(60));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
+            Assert.That(impacts, Is.EqualTo(1));
+            Tick(1);
+            Assert.That(_dummy.Health.Current, Is.EqualTo(48));
+            Assert.That(impacts, Is.EqualTo(2));
         }
 
         [Test]
         public void SequentialRewindsCommitIndependentBranches()
         {
             Tick(24);
-            Tick(25, Input(fire: true));
+            Tick(1, Input(fire: true));
+            Tick(4);
             Assert.That(_director.DamagePlayer(15), Is.True);
             Tick(1);
             Tick(2, Input(TemporalMode.Reset));
-            Assert.That(_weapon.Magazine, Is.EqualTo(28));
-            Assert.That(_dummy.Health.Current, Is.EqualTo(36));
-
-            Tick(6, Input(TemporalMode.Override));
-            Assert.That(_weapon.Magazine, Is.EqualTo(28));
-            Assert.That(_combat.Health.Current, Is.EqualTo(100));
-            Assert.That(_dummy.Health.Current, Is.EqualTo(48));
-
-            Tick(9, Input(TemporalMode.Recall));
             Assert.That(_weapon.Magazine, Is.EqualTo(29));
-            Assert.That(_dummy.Health.Current, Is.EqualTo(48));
-            Tick(12, Input(fire: true));
-            Assert.That(_weapon.Magazine, Is.EqualTo(28));
-            Assert.That(_dummy.Health.Current, Is.EqualTo(36));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
+
+            Tick(2, Input(TemporalMode.Override));
+            Assert.That(_weapon.Magazine, Is.EqualTo(29));
+            Assert.That(_combat.Health.Current, Is.EqualTo(100));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.Zero);
+
+            Tick(2, Input(TemporalMode.Recall));
+            Assert.That(_weapon.Magazine, Is.EqualTo(30));
+            Tick(30);
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.Zero);
+            Assert.That(_dummy.Health.Current, Is.EqualTo(60));
+        }
+
+        [Test]
+        public void RecallLetsAnExistingBoltKillAndPayItsReward()
+        {
+            Tick(85);
+            Assert.That(_director.DamageTarget(_dummy, Body(_dummy), 48, out _).Amount, Is.EqualTo(48));
+            Tick(1);
+            _director.Energy.Spend(50d);
+            Tick(1, Input(fire: true));
+            Assert.That(_dummy.Health.Current, Is.EqualTo(12));
+            Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
+
+            Tick(30, Input(TemporalMode.Recall, fire: true));
+            Assert.That(_dummy.Health.Alive, Is.False);
+            Assert.That(_weapon.Magazine, Is.EqualTo(30));
+            Assert.That(_director.Energy.Current, Is.EqualTo(57f).Within(0.0001f));
+
+            Tick(2);
+            Tick(8, Input(TemporalMode.Override));
+            Assert.That(_dummy.Health.Alive, Is.True);
+            var energy = _director.Energy.Current;
+            Tick(22);
+            Assert.That(_dummy.Health.Alive, Is.False);
+            Assert.That(_director.Energy.Current, Is.EqualTo(energy));
+        }
+
+        [Test]
+        public void ExistingBoltCanKillDuringLethalRecovery()
+        {
+            Tick(85);
+            Assert.That(_director.DamageTarget(_dummy, Body(_dummy), 48, out _).Amount, Is.EqualTo(48));
+            Tick(1, Input(fire: true));
+            Assert.That(_director.DamagePlayer(100), Is.True);
+            Tick(30);
+            Assert.That(_combat.GameOver, Is.False);
+            Assert.That(_dummy.Health.Alive, Is.False);
+        }
+
+        [Test]
+        public void BulletTimeAndNormalUseTheSameProjectileSpeedWithoutADuplicateStep()
+        {
+            Tick(1, Input(fire: true));
+            var pool = _director.PlayerProjectiles;
+            var bolt = pool.transform.GetChild(0);
+            var start = bolt.position;
+            Tick(4, Input(TemporalMode.BulletTime));
+            Assert.That(Vector3.Distance(start, bolt.position), Is.EqualTo(1.5f).Within(0.001f));
+            var middle = bolt.position;
+            Tick(4);
+            Assert.That(Vector3.Distance(middle, bolt.position), Is.EqualTo(1.5f).Within(0.001f));
+            Assert.That(pool.Generation, Is.EqualTo(1));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void SweptCollisionBlocksThinCoverAndAnObstructedMuzzle(bool acrossMuzzle)
+        {
+            var wall = new GameObject("Thin Test Screen");
+            try
+            {
+                var collider = wall.AddComponent<BoxCollider>();
+                var eye = _player.AimRay.origin;
+                wall.transform.position = eye + (acrossMuzzle ? new Vector3(0.19f, -0.13f, 0.58f) : Vector3.forward * 3f);
+                collider.size = new Vector3(acrossMuzzle ? 0.13f : 2f, acrossMuzzle ? 0.22f : 2f, 0.015f);
+                var shots = 0;
+                var impacts = 0;
+                _weapon.ShotFired += () => shots++;
+                _director.ProjectileHit += impact => impacts += impact.FromPlayer ? 1 : 0;
+
+                Tick(1, Input(fire: true));
+                Assert.That(shots, Is.EqualTo(1));
+                Assert.That(impacts, Is.Zero);
+                Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
+
+                Tick(11);
+                Assert.That(impacts, Is.EqualTo(1));
+                Assert.That(_dummy.Health.Current, Is.EqualTo(60));
+                Assert.That(_director.PlayerProjectiles.ActiveCount, Is.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(wall);
+            }
+        }
+
+        [Test]
+        public void FullProjectilePoolDoesNotSpendAmmoOrEvictAProjectile()
+        {
+            var pool = _director.PlayerProjectiles;
+            for (var index = 0; index < pool.PoolCapacity; index++)
+            {
+                Assert.That(pool.TryLaunchPlayer(_player.AimRay, _player.AimUp, Vector3.zero, 0.1f, 20f, 20f, 0.045f, 12, Physics.DefaultRaycastLayers), Is.True);
+            }
+
+            var generation = pool.Generation;
+            var shots = 0;
+            _weapon.ShotFired += () => shots++;
+            Tick(1, Input(fire: true));
+            Assert.That(_weapon.Magazine, Is.EqualTo(30));
+            Assert.That(shots, Is.Zero);
+            Assert.That(pool.ActiveCount, Is.EqualTo(pool.PoolCapacity));
+            Assert.That(pool.Generation, Is.EqualTo(generation));
         }
 
         [Test]
@@ -464,19 +661,19 @@ namespace Overtime.Tests
         public IEnumerator CombatKeyboardUsesF5ForDebugReset()
         {
             Tick(1, Input(fire: true));
-            var keyboard = InputSystem.AddDevice<Keyboard>();
+            using var keyboard = new SyntheticKeyboard();
             var input = _player.GetComponent<PlaygroundInput>();
             input.SendMessage("OnApplicationFocus", true);
             _player.enabled = true;
             try
             {
-                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.R));
+                InputSystem.QueueStateEvent(keyboard.Device, new KeyboardState(Key.R));
                 InputSystem.Update();
                 Assert.That(input.ResetPressed, Is.False);
                 yield return null;
                 Assert.That(_weapon.Magazine, Is.EqualTo(29));
 
-                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.F5));
+                InputSystem.QueueStateEvent(keyboard.Device, new KeyboardState(Key.F5));
                 InputSystem.Update();
                 Assert.That(input.ResetPressed, Is.True);
                 yield return null;
@@ -485,7 +682,6 @@ namespace Overtime.Tests
             finally
             {
                 _player.enabled = false;
-                InputSystem.RemoveDevice(keyboard);
             }
         }
 

@@ -244,7 +244,8 @@ namespace Overtime.Tests
         public IEnumerator NewInputSystemQStartsAndReleasesReset()
         {
             Tick(120);
-            var keyboard = InputSystem.AddDevice<Keyboard>();
+            using var synthetic = new SyntheticKeyboard();
+            var keyboard = synthetic.Device;
             var input = _player.GetComponent<PlaygroundInput>();
             input.SendMessage("OnApplicationFocus", true);
             _player.enabled = true;
@@ -264,7 +265,6 @@ namespace Overtime.Tests
             finally
             {
                 _player.enabled = false;
-                InputSystem.RemoveDevice(keyboard);
             }
         }
 
@@ -667,7 +667,8 @@ namespace Overtime.Tests
         public IEnumerator NewInputSystemSwitchesToMostRecentHeldPowerAndFallsBackOnRelease()
         {
             Tick(360);
-            var keyboard = InputSystem.AddDevice<Keyboard>();
+            using var synthetic = new SyntheticKeyboard();
+            var keyboard = synthetic.Device;
             var input = _player.GetComponent<PlaygroundInput>();
             input.SendMessage("OnApplicationFocus", true);
             _player.enabled = true;
@@ -706,7 +707,6 @@ namespace Overtime.Tests
             finally
             {
                 _player.enabled = false;
-                InputSystem.RemoveDevice(keyboard);
             }
         }
 

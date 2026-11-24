@@ -76,10 +76,53 @@ namespace Overtime.Editor
             var remaining = Label("Remaining Hostiles", panel.transform, new Vector2(13f, 6f), new Vector2(222f, 30f), string.Empty, 18f, s_cyan);
             remaining.alignment = TextAlignmentOptions.Center;
 
+            PlaygroundSceneBuilder.Wire(hud, "_enemies", enemies, "_remainingLabel", remaining);
+            BuildDamageDirection(root, hud, view);
+        }
+
+        internal void BuildSector(PlaygroundHud movement, CombatHud combat, PlaygroundPlayer player, TemporalDirector director, SectorRoute route, Camera view)
+        {
+            var root = movement.transform;
+            root.Find("Controls/Bindings").GetComponent<TMP_Text>().text = "WASD  MOVE   MOUSE  LOOK\nSPACE  JUMP / GRAVITY   LMB  FIRE\nR  RELOAD   F5  RETRY SECTOR\nQ  RESET   E  OVERRIDE   C  RECALL\nSHIFT  BULLET TIME   ESC  RELEASE\nF3  DEBUG   F4  MOTION   H  HINTS";
+            BuildDamageDirection(root, combat, view);
+            var top = new Vector2(0.5f, 1f);
+            var card = Panel("Sector Encounter", root, top, Vector2.zero, new Vector2(357f, 113f), s_ink);
+            card.rectTransform.pivot = top;
+            card.rectTransform.anchoredPosition = new Vector2(0f, -38f);
+            Panel("Sector Accent", card.transform, Vector2.zero, new Vector2(0f, 0f), new Vector2(3f, 113f), s_cyan);
+            var room = Label("Room Number", card.transform, new Vector2(17f, 81f), new Vector2(280f, 20f), string.Empty, 15f, s_cyan);
+            var title = Label("Room Title", card.transform, new Vector2(17f, 47f), new Vector2(326f, 31f), string.Empty, 23f, s_paper);
+            var state = Label("Encounter Status", card.transform, new Vector2(17f, 16f), new Vector2(325f, 23f), string.Empty, 15f, s_orange);
+            var arrow = CenterLabel("Exit Direction", card.transform, new Vector2(145f, -29f), new Vector2(30f, 30f), "^", 24f, s_cyan);
+            arrow.gameObject.SetActive(false);
+
+            var announcement = CenterLabel("Room Announcement", root, new Vector2(0f, 230f), new Vector2(750f, 56f), string.Empty, 35f, s_cyan);
+            var intro = AddOverlayGroup(announcement.gameObject);
+            var win = Panel("Sector Success", root, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.035f, 0.059f, 0.084f, 0.96f));
+            win.rectTransform.anchorMax = Vector2.one;
+            var success = AddOverlayGroup(win.gameObject);
+            CenterLabel("Sector Clear Title", win.transform, new Vector2(0f, 143f), new Vector2(1200f, 88f), "SECURITY SECTOR CLEARED", 58f, s_paper);
+            var stats = CenterLabel("Sector Statistics", win.transform, new Vector2(0f, -9f), new Vector2(760f, 185f), string.Empty, 25f, s_cyan);
+            CenterLabel("Replay Instructions", win.transform, new Vector2(0f, -158f), new Vector2(480f, 38f), "F5  /  RETRY SECTOR", 17f, s_orange);
+
+            var debugPanel = (RectTransform)root.Find("Debug Overlay");
+            debugPanel.sizeDelta += Vector2.up * 49f;
+            var telemetry = (RectTransform)debugPanel.Find("Telemetry");
+            telemetry.anchoredPosition += Vector2.up * 49f;
+            UnityEditor.PrefabUtility.RecordPrefabInstancePropertyModifications(debugPanel);
+            UnityEditor.PrefabUtility.RecordPrefabInstancePropertyModifications(telemetry);
+            var debug = Label("Projectile and Encounter Readout", debugPanel, new Vector2(16f, 5f), new Vector2(390f, 40f), string.Empty, 13f, s_muted);
+
+            var sector = root.gameObject.AddComponent<SectorHud>();
+            PlaygroundSceneBuilder.Wire(sector, "_route", route, "_director", director, "_player", player, "_view", view, "_roomNumber", room, "_roomTitle", title, "_status", state, "_exitArrow", arrow, "_intro", intro, "_introText", announcement, "_success", success, "_stats", stats, "_debug", debug);
+        }
+
+        private void BuildDamageDirection(Transform root, CombatHud hud, Camera view)
+        {
             var damageDirection = Rect("Directional Damage", root, Vector2.one * 0.5f, Vector2.zero, Vector2.zero);
             var arrow = CenterLabel("Impact Direction", damageDirection, new Vector2(0f, 86f), new Vector2(64f, 34f), "^", 32f, s_orange);
             var directionGroup = AddOverlayGroup(damageDirection.gameObject);
-            PlaygroundSceneBuilder.Wire(hud, "_enemies", enemies, "_remainingLabel", remaining, "_damageDirection", directionGroup, "_damageArrow", arrow, "_view", view);
+            PlaygroundSceneBuilder.Wire(hud, "_damageDirection", directionGroup, "_damageArrow", arrow, "_view", view);
         }
 
         private Image Meter(string name, Transform parent, float y, float height, Color color)

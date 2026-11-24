@@ -15,7 +15,7 @@ namespace Overtime.Editor
         private const string ArtPath = "Assets/Art/Security Playground";
         private const string PrefabPath = "Assets/Prefabs/Security";
         private const int SecurityLayer = 8;
-        private static readonly string[] s_names = { "Security Unit", "Surveillance Drone", "Laser Auditor" };
+        private static readonly string[] s_names = { "Security Unit", "Surveillance Drone", "Laser Auditor", "Compliance Enforcer" };
 
         private readonly PlaygroundArt _art;
         private readonly Transform _room;
@@ -124,10 +124,10 @@ namespace Overtime.Editor
             light.color = color;
         }
 
-        private TemporalProjectileEmitter BuildPool(TemporalDirector director)
+        internal TemporalProjectileEmitter BuildPool(TemporalDirector director, int capacity = 20, Material droneBolt = null)
         {
             var root = PlaygroundSceneBuilder.Child("Enemy Projectile Pool", _room);
-            var slots = new Transform[20];
+            var slots = new Transform[capacity];
             for (var index = 0; index < slots.Length; index++)
             {
                 var bolt = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -142,14 +142,14 @@ namespace Overtime.Editor
             }
 
             var pool = root.gameObject.AddComponent<TemporalProjectileEmitter>();
-            PlaygroundSceneBuilder.Wire(pool, "_projectiles", slots, "_combatDirector", director, "_droneBolt", _cyan);
+            PlaygroundSceneBuilder.Wire(pool, "_projectiles", slots, "_combatDirector", director, "_droneBolt", droneBolt != null ? droneBolt : _cyan);
             var data = new SerializedObject(pool);
             data.FindProperty("_automatic").boolValue = false;
             data.ApplyModifiedPropertiesWithoutUndo();
             return pool;
         }
 
-        private GameObject GetPrefab(SecurityEnemyKind kind)
+        internal GameObject GetPrefab(SecurityEnemyKind kind)
         {
             var name = s_names[(int)kind];
             var path = $"{PrefabPath}/{name}.prefab";
@@ -170,9 +170,16 @@ namespace Overtime.Editor
             var enemy = root.AddComponent<SecurityEnemy>();
             var body = root.AddComponent<BoxCollider>();
             Collider weak = null;
+            Collider shield = null;
+            CombatShield shieldFeedback = null;
             Renderer shell;
             Renderer lens;
             var attackOrigin = kind == SecurityEnemyKind.Drone ? Vector3.zero : new Vector3(0f, 0.36f, 0f);
+            if (kind == SecurityEnemyKind.Enforcer)
+            {
+                attackOrigin = new Vector3(0.47f, 0.60f, 0.22f);
+            }
+
             aim.localPosition = attackOrigin;
             LineRenderer line = null;
 
@@ -186,6 +193,11 @@ namespace Overtime.Editor
                     body.size = new Vector3(1.28f, 0.66f, 0.94f);
                     shell = BuildDrone(model, recoil, out lens);
                     wreck.localPosition = new Vector3(0f, -0.68f, 0f);
+                    break;
+                case SecurityEnemyKind.Enforcer:
+                    body.center = new Vector3(0f, 0.04f, 0f);
+                    body.size = new Vector3(1.18f, 1.95f, 0.94f);
+                    shell = BuildEnforcer(root.transform, model, recoil, out lens, out shield, out shieldFeedback, out weak);
                     break;
                 default:
                     body.center = new Vector3(0f, -0.13f, 0f);
@@ -205,7 +217,7 @@ namespace Overtime.Editor
 
             BuildWreck(wreck);
             PlaygroundSceneBuilder.Wire(presentation, "_model", model, "_aimPivot", aim, "_recoilPivot", recoil, "_wreck", wreck, "_rupture", rupture, "_shell", shell, "_lens", lens, "_beam", line);
-            PlaygroundSceneBuilder.Wire(enemy, "_health", health, "_body", body, "_weakPoint", weak, "_presentation", presentation);
+            PlaygroundSceneBuilder.Wire(enemy, "_health", health, "_body", body, "_weakPoint", weak, "_shield", shield, "_shieldFeedback", shieldFeedback, "_presentation", presentation);
             Configure(kind, enemy, presentation, health, attackOrigin);
             var prefab = PrefabUtility.SaveAsPrefabAsset(root, path);
             Object.DestroyImmediate(root);
@@ -229,6 +241,41 @@ namespace Overtime.Editor
             Block(aim, "Weapon Housing", 0.28f, -0.12f, 0.24f, 0.38f, 0.31f, 0.56f, _graphite);
             Block(aim, "Weapon Shroud", 0.28f, -0.08f, 0.49f, 0.32f, 0.22f, 0.34f, _shell);
             Block(aim, "Muzzle", 0.28f, -0.08f, 0.675f, 0.19f, 0.15f, 0.06f, _orange);
+            return shell;
+        }
+
+        private Renderer BuildEnforcer(Transform root, Transform model, Transform aim, out Renderer lens, out Collider shield, out CombatShield feedback, out Collider weakPoint)
+        {
+            var shell = Block(model, "Containment Harness", 0f, 0.09f, 0f, 1.12f, 0.80f, 0.71f, _shell).GetComponent<Renderer>();
+            Block(model, "Gorget", 0f, 0.54f, 0.03f, 0.78f, 0.16f, 0.66f, _graphite);
+            Block(model, "Visor Housing", 0f, 0.76f, 0.06f, 0.62f, 0.42f, 0.55f, _graphite);
+            Block(model, "Visor Slit", 0f, 0.79f, 0.347f, 0.47f, 0.07f, 0.038f, _cyan);
+            lens = Lens(aim, "Containment Launcher", new Vector3(0.02f, 0f, 0.29f), 0.33f, _orange);
+
+            for (var side = -1; side <= 1; side += 2)
+            {
+                Block(model, "Load Bearing Shoulder", side * 0.51f, 0.34f, 0f, 0.32f, 0.32f, 0.58f, _graphite);
+                Block(model, "Armored Greave", side * 0.32f, -0.58f, 0.01f, 0.38f, 0.62f, 0.49f, _graphite);
+                Block(model, "Traction Boot", side * 0.32f, -0.91f, 0.12f, 0.42f, 0.17f, 0.62f, _shell);
+            }
+
+            var face = Block(root, "Front Shield", 0f, -0.19f, 0.65f, 1.50f, 1.30f, 0.27f, _graphite, true);
+            face.gameObject.layer = SecurityLayer;
+            shield = face.GetComponent<Collider>();
+            feedback = face.gameObject.AddComponent<CombatShield>();
+            PlaygroundSceneBuilder.Wire(feedback, "_surface", face.GetComponent<Renderer>());
+            Block(face, "Shield Edge", 0f, 0.452f, 0.53f, 0.95f, 0.062f, 0.12f, _cyan);
+            Block(face, "Seal Stripe", 0f, -0.37f, 0.51f, 0.86f, 0.09f, 0.07f, _orange);
+            Block(face, "Left Reinforcement", -0.39f, 0.02f, 0.52f, 0.12f, 0.63f, 0.16f, _shell);
+            Block(face, "Right Reinforcement", 0.39f, 0.02f, 0.52f, 0.12f, 0.63f, 0.16f, _shell);
+
+            Block(model, "Power Cell Housing", 0f, 0.37f, -0.45f, 0.67f, 0.51f, 0.22f, _graphite);
+            var core = Block(root, "Exposed Rear Power Cell", 0f, 0.38f, -0.57f, 0.45f, 0.34f, 0.18f, _orange, true);
+            core.gameObject.layer = SecurityLayer;
+            weakPoint = core.GetComponent<Collider>();
+            Object.DestroyImmediate(core.GetComponent<MeshRenderer>());
+            Object.DestroyImmediate(core.GetComponent<MeshFilter>());
+            Block(model, "Rear Power Cell", 0f, 0.38f, -0.57f, 0.45f, 0.34f, 0.18f, _orange);
             return shell;
         }
 
@@ -311,8 +358,9 @@ namespace Overtime.Editor
         {
             var drone = kind == SecurityEnemyKind.Drone;
             var turret = kind == SecurityEnemyKind.Auditor;
+            var heavy = kind == SecurityEnemyKind.Enforcer;
             var healthData = new SerializedObject(health);
-            healthData.FindProperty("_maximum").intValue = turret ? 90 : drone ? 45 : 70;
+            healthData.FindProperty("_maximum").intValue = heavy ? 160 : turret ? 90 : drone ? 45 : 70;
             healthData.ApplyModifiedPropertiesWithoutUndo();
 
             var visualData = new SerializedObject(presentation);
@@ -322,22 +370,29 @@ namespace Overtime.Editor
             var data = new SerializedObject(enemy);
             data.FindProperty("_kind").enumValueIndex = (int)kind;
             data.FindProperty("_attackOrigin").vector3Value = attackOrigin;
-            data.FindProperty("_moveRadius").floatValue = drone ? 0.80f : 0.48f;
-            data.FindProperty("_moveSpeed").floatValue = turret ? 0f : drone ? 4.5f : 3.5f;
-            data.FindProperty("_detectionRange").floatValue = turret ? 25f : drone ? 22f : 18f;
-            data.FindProperty("_yawSpeed").floatValue = turret ? 500f : drone ? 420f : 320f;
-            data.FindProperty("_pitchSpeed").floatValue = turret ? 340f : drone ? 360f : 120f;
-            data.FindProperty("_damage").intValue = turret ? 30 : drone ? 13 : 8;
-            data.FindProperty("_burstSize").intValue = drone ? 1 : 3;
-            data.FindProperty("_cooldownSeconds").floatValue = turret ? 2.2f : drone ? 1.65f : 1.3f;
-            data.FindProperty("_projectileSpeed").floatValue = drone ? 9f : 16f;
-            data.FindProperty("_projectileRadius").floatValue = drone ? 0.19f : 0.13f;
-            data.FindProperty("_projectileLifetime").floatValue = drone ? 2.6f : 2.2f;
+            data.FindProperty("_moveRadius").floatValue = heavy ? 0.62f : drone ? 0.80f : 0.48f;
+            data.FindProperty("_moveSpeed").floatValue = heavy ? 2f : turret ? 0f : drone ? 4.5f : 3.5f;
+            data.FindProperty("_detectionRange").floatValue = heavy ? 20f : turret ? 25f : drone ? 22f : 18f;
+            data.FindProperty("_yawSpeed").floatValue = heavy ? 72f : turret ? 500f : drone ? 420f : 320f;
+            data.FindProperty("_pitchSpeed").floatValue = heavy ? 160f : turret ? 340f : drone ? 360f : 120f;
+            data.FindProperty("_damage").intValue = heavy ? 18 : turret ? 30 : drone ? 13 : 8;
+            data.FindProperty("_burstSize").intValue = drone || heavy ? 1 : 3;
+            data.FindProperty("_cooldownSeconds").floatValue = heavy ? 1.8f : turret ? 2.2f : drone ? 1.65f : 1.3f;
+            data.FindProperty("_projectileSpeed").floatValue = heavy ? 10f : drone ? 9f : 16f;
+            data.FindProperty("_projectileRadius").floatValue = heavy ? 0.24f : drone ? 0.19f : 0.13f;
+            data.FindProperty("_projectileLifetime").floatValue = heavy ? 2.7f : drone ? 2.6f : 2.2f;
             data.FindProperty("_flightHalfExtents").vector3Value = new Vector3(5.35f, 2.12f, 12f);
+            if (heavy)
+            {
+                data.FindProperty("_preferredRange").floatValue = 4.5f;
+                data.FindProperty("_weakPointMultiplier").floatValue = 2f;
+                data.FindProperty("_reactionSeconds").floatValue = 0.50f;
+            }
+
             data.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        private SecurityEnemy PlaceEnemy(GameObject prefab, string name, int id, Vector3 position, TemporalDirector director, TemporalProjectileEmitter projectiles, params Vector3[] points)
+        internal SecurityEnemy PlaceEnemy(GameObject prefab, string name, int id, Vector3 position, TemporalDirector director, TemporalProjectileEmitter projectiles, params Vector3[] points)
         {
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(prefab, _room);
             instance.name = name;

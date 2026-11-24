@@ -56,6 +56,7 @@ namespace Overtime
         internal float Lateral => _lateral;
         internal bool ReducedMotion { get; set; }
         internal bool IsRewinding { get; private set; }
+        internal Vector3 AimUp => _display * Vector3.up;
         internal Ray AimRay => new(_motor.transform.position + _display * Vector3.up * _eyeHeight, (_display * LocalLook(_yaw, _pitch)) * Vector3.forward);
 
         private void OnEnable()

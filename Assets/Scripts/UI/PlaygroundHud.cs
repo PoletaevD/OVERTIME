@@ -47,6 +47,7 @@ namespace Overtime
         private Tween _landingTween;
         private Tween _gravityTween;
         private Tween _shotTween;
+        private CombatWeapon _weapon;
         private Tween _jumpTween;
         private Tween _hintsTween;
         private bool _showHints = true;
@@ -57,6 +58,8 @@ namespace Overtime
             _reticle = _reticleArms[0].parent;
             _panelOrigin = _movementPanel.anchoredPosition;
             _cameraRig.ReducedMotion = _reducedMotion;
+            _weapon = GetComponentInParent<PlaygroundPlayer>()?.Combat?.Weapon;
+            _shotTween = DOTween.To(() => _shot, value => _shot = value, 0f, 0.18f).From(_crosshairRecoil, false).SetUpdate(true).SetAutoKill(false).SetEase(Ease.OutCubic).Pause();
         }
 
         private void OnEnable()
@@ -64,6 +67,10 @@ namespace Overtime
             _motor.Jumped += OnJumped;
             _motor.Landed += OnLanded;
             _motor.GravityChanged += OnGravityChanged;
+            if (_weapon != null)
+            {
+                _weapon.ShotFired += OnShot;
+            }
         }
 
         private void OnDisable()
@@ -73,9 +80,26 @@ namespace Overtime
             _motor.GravityChanged -= OnGravityChanged;
             _landingTween?.Kill();
             _gravityTween?.Kill();
-            _shotTween?.Kill();
+            if (_weapon != null)
+            {
+                _weapon.ShotFired -= OnShot;
+            }
+
+            _shotTween?.Pause();
+            _shot = 0f;
             _jumpTween?.Kill();
             _hintsTween?.Kill();
+        }
+
+        private void OnDestroy()
+        {
+            _shotTween?.Kill();
+        }
+
+        private void OnShot()
+        {
+            _shot = _crosshairRecoil;
+            _shotTween.Restart();
         }
 
         private void LateUpdate()
@@ -121,11 +145,9 @@ namespace Overtime
 
         private void ProcessInput()
         {
-            if (_input.FirePressed)
+            if (_weapon == null && _input.FirePressed)
             {
-                _shotTween?.Kill();
-                _shot = _crosshairRecoil;
-                _shotTween = DOTween.To(() => _shot, value => _shot = value, 0f, 0.18f).SetUpdate(true).SetEase(Ease.OutCubic);
+                OnShot();
             }
 
             if (_input.DebugPressed)

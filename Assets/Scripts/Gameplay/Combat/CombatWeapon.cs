@@ -12,6 +12,11 @@ namespace Overtime
         [SerializeField, Min(0.01f)] private float _reloadSeconds = 1.5f;
         [SerializeField, Min(0.1f)] private float _range = 80f;
         [SerializeField] private LayerMask _hitLayers = Physics.DefaultRaycastLayers;
+        [SerializeField, Min(0.1f)] private float _projectileSpeed = 45f;
+        [SerializeField, Min(0.01f)] private float _projectileRadius = 0.045f;
+        [SerializeField, Min(0.01f)] private float _projectileLifetime = 1.8f;
+        [SerializeField, Min(1)] private int _projectileCapacity = 48;
+        [SerializeField] private Vector3 _launchOffset = new(0.31f, -0.23f, 0.99f);
 
         private Snapshot _state;
 
@@ -19,7 +24,13 @@ namespace Overtime
         internal int Reserve => _state.Reserve;
         internal float ReloadProgress => IsReloading ? 1f - (float)(_state.ReloadRemaining / _reloadSeconds) : 0f;
         internal bool IsReloading => _state.ReloadRemaining > 0d;
-        internal event Action<CombatShot> ShotFired;
+        internal event Action ShotFired;
+        internal int ProjectileCapacity => _projectileCapacity;
+
+        internal void AddReserve(int rounds)
+        {
+            _state.Reserve += rounds;
+        }
 
         internal void ResetState()
         {
@@ -40,7 +51,7 @@ namespace Overtime
             _state = snapshot;
         }
 
-        internal void Simulate(double step, bool fire, bool reload, bool canShoot, Ray aim, TemporalDirector director)
+        internal void Simulate(double step, bool fire, bool reload, bool canShoot, Ray aim, Vector3 aimUp, TemporalProjectileEmitter projectiles)
         {
             const double tolerance = 0.0000001d;
             var cooling = _state.Cooldown > 0d;
@@ -72,24 +83,17 @@ namespace Overtime
                 return;
             }
 
+            Physics.SyncTransforms();
+            if (!projectiles.TryLaunchPlayer(aim, aimUp, _launchOffset, _projectileSpeed, _projectileLifetime, _range, _projectileRadius, _damage, _hitLayers))
+            {
+                _state.Cooldown = 0d;
+                return;
+            }
+
             var interval = 60d / _roundsPerMinute;
             _state.Cooldown = interval + (cooling ? _state.Cooldown : 0d);
             _state.Magazine--;
-            Physics.SyncTransforms();
-            var shot = new CombatShot();
-            if (Physics.Raycast(aim, out var hit, _range, _hitLayers, QueryTriggerInteraction.Ignore))
-            {
-                shot.HasImpact = true;
-                shot.Point = hit.point;
-                shot.Normal = hit.normal;
-                var target = hit.collider.GetComponentInParent<ICombatDamageable>();
-                if (target != null)
-                {
-                    shot.Damage = director.DamageTarget(target, hit.collider, _damage, out shot.WeakPoint);
-                }
-            }
-
-            ShotFired?.Invoke(shot);
+            ShotFired?.Invoke();
         }
 
         internal struct Snapshot
@@ -101,12 +105,23 @@ namespace Overtime
         }
     }
 
-    internal struct CombatShot
+    internal readonly struct ProjectileImpact
     {
-        internal bool HasImpact;
-        internal bool WeakPoint;
-        internal Vector3 Point;
-        internal Vector3 Normal;
-        internal DamageResult Damage;
+        internal readonly Vector3 Point;
+        internal readonly Vector3 Normal;
+        internal readonly DamageResult Damage;
+        internal readonly bool WeakPoint;
+        internal readonly bool Shielded;
+        internal readonly bool FromPlayer;
+
+        internal ProjectileImpact(Vector3 point, Vector3 normal, DamageResult damage, bool weakPoint, bool shielded, bool fromPlayer)
+        {
+            Point = point;
+            Normal = normal;
+            Damage = damage;
+            WeakPoint = weakPoint;
+            Shielded = shielded;
+            FromPlayer = fromPlayer;
+        }
     }
 }

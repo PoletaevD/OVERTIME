@@ -41,7 +41,7 @@ namespace Overtime
             _recoilRest = _recoilPivot.localPosition;
             _ruptureScale = _rupture.localScale;
             _wreckRest = _wreck.localPosition;
-            _hitFlash = DOVirtual.Float(1f, 0f, 0.18f, ApplyHitFlash).SetEase(Ease.OutQuad).SetAutoKill(false).Pause();
+            _hitFlash = DOVirtual.Float(1f, 0f, 0.18f, ApplyHitFlash).SetUpdate(true).SetEase(Ease.OutQuad).SetAutoKill(false).Pause();
         }
 
         private void OnDestroy()
@@ -83,8 +83,9 @@ namespace Overtime
                 _recoilPivot.localPosition = _recoilRest - Vector3.forward * (recoil * 0.085f);
             }
 
+            var telegraph = state == SecurityEnemyState.Alert || state == SecurityEnemyState.Aiming;
             var beamColor = firing ? s_beam : Color.Lerp(s_scan, s_locked, charge);
-            var emission = aiming || firing ? beamColor * (1.1f + charge * 3.5f + (firing ? 5f : 0f)) : _lensEmission * (1f + recoil * 1.4f);
+            var emission = aiming || firing ? beamColor * (1.1f + charge * 3.5f + (firing ? 5f : 0f)) : telegraph ? Color.Lerp(_lensEmission, s_scan * 2.5f, 0.65f) : _lensEmission * (1f + recoil * 1.4f);
             _lensProperties.SetColor(s_emission, dead ? Color.black : emission);
             _lens.SetPropertyBlock(_lensProperties);
 

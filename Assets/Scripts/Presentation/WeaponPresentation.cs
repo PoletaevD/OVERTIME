@@ -54,7 +54,7 @@ namespace Overtime
             _weapon = _player.Combat?.Weapon;
             if (_weapon != null)
             {
-                _weapon.ShotFired += OnShot;
+                _weapon.ShotFired += Fire;
             }
             else
             {
@@ -71,7 +71,7 @@ namespace Overtime
         {
             if (_weapon != null)
             {
-                _weapon.ShotFired -= OnShot;
+                _weapon.ShotFired -= Fire;
             }
             else
             {
@@ -156,11 +156,6 @@ namespace Overtime
                     .Append(DOTween.To(() => _resetKick, value => _resetKick = value, 1f, 0.10f).SetEase(Ease.OutQuad))
                     .Append(DOTween.To(() => _resetKick, value => _resetKick = value, 0.32f, 0.26f).SetEase(Ease.OutCubic));
             }
-        }
-
-        private void OnShot(CombatShot shot)
-        {
-            Fire();
         }
 
         private void Fire()
