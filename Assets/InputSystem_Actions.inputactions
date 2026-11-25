@@ -6,6 +6,24 @@
             "id": "df70fa95-8a34-4494-b137-73ab6b9c7d37",
             "actions": [
                 {
+                    "name": "Melee",
+                    "type": "Button",
+                    "id": "907ad434-cedf-4860-a89c-c69fbd6781f0",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
+                    "name": "Aim",
+                    "type": "Button",
+                    "id": "c0887818-9e1c-425a-976e-c844fcb09da6",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                },
+                {
                     "name": "PrimaryWeapon",
                     "type": "Button",
                     "id": "0483b05e-3eed-4125-9024-64176c72240a",
@@ -178,6 +196,28 @@
                 }
             ],
             "bindings": [
+                {
+                    "name": "",
+                    "id": "6023b78d-8d83-4f2b-8f85-12d2c3411bbe",
+                    "path": "<Keyboard>/f",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Melee",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "46f6d696-0fb0-4025-b4c7-c08d8943412b",
+                    "path": "<Mouse>/rightButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "Keyboard&Mouse",
+                    "action": "Aim",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
                 {
                     "name": "",
                     "id": "f14a5915-4a39-4b9d-b5ed-8e032039af09",
@@ -654,7 +694,7 @@
                 {
                     "name": "",
                     "id": "1c04ea5f-b012-41d1-a6f7-02e963b52893",
-                    "path": "<Keyboard>/e",
+                    "path": "<Keyboard>/g",
                     "interactions": "",
                     "processors": "",
                     "groups": "Keyboard&Mouse",

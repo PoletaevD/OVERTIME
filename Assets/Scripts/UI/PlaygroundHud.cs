@@ -13,6 +13,7 @@ namespace Overtime
         [SerializeField] private RectTransform _movementPanel;
         [SerializeField] private RectTransform[] _reticleArms;
         [SerializeField] private RectTransform _chargeReticle;
+        [SerializeField] private DeadlineScope _deadlineScope;
         [SerializeField] private Image[] _chargeTicks;
         [SerializeField] private Image _gravityIndicator;
         [SerializeField] private Image _speedFill;
@@ -64,6 +65,10 @@ namespace Overtime
             var player = GetComponentInParent<PlaygroundPlayer>();
             _weapon = player?.Combat?.Weapon;
             _aimView = player?.GetComponentInChildren<Camera>();
+            if (_weapon != null && _deadlineScope == null)
+            {
+                _deadlineScope = DeadlineScope.Create(transform);
+            }
             _shotTween = DOTween.To(() => _shot, value => _shot = value, 0f, 0.18f).From(_crosshairRecoil, false).SetUpdate(true).SetAutoKill(false).SetEase(Ease.OutCubic).Pause();
         }
 
@@ -131,7 +136,17 @@ namespace Overtime
         private void PresentReticle(float motion, float blend)
         {
             var type = _weapon?.ActiveType ?? WeaponType.Carbine;
-            var charged = type == WeaponType.Charged && _chargeReticle != null;
+            var blendIntoSight = _weapon?.AimBlend ?? 0f;
+            var aiming = _weapon?.Aiming == true || blendIntoSight > 0.08f;
+            var scope = _weapon?.ActiveDefinition?.Id == WeaponId.Deadline ? DeadlineScope.Blend(blendIntoSight) : 0f;
+            _deadlineScope?.Present(scope, _weapon?.ChargeProgress ?? 0f);
+            var charged = !aiming && type == WeaponType.Charged && _chargeReticle != null;
+            var showHipArms = !aiming && !charged;
+            if (_reticle.gameObject.activeSelf == aiming)
+            {
+                _reticle.gameObject.SetActive(!aiming);
+            }
+
             var gap = type == WeaponType.Scatter ? SpreadGap() : 8f;
             _gap = Mathf.Lerp(_gap, gap + motion * (_motor.SpeedRatio * _crosshairMovement + _jump + _shot), blend);
             _reticleArms[0].anchoredPosition = Vector2.left * _gap;
@@ -140,9 +155,9 @@ namespace Overtime
             _reticleArms[3].anchoredPosition = Vector2.down * _gap;
             foreach (var arm in _reticleArms)
             {
-                if (arm.gameObject.activeSelf == charged)
+                if (arm.gameObject.activeSelf != showHipArms)
                 {
-                    arm.gameObject.SetActive(!charged);
+                    arm.gameObject.SetActive(showHipArms);
                 }
             }
 
@@ -168,7 +183,8 @@ namespace Overtime
 
         private float SpreadGap()
         {
-            var spread = _weapon.Tuning(_weapon.ActiveSlot).Spread;
+            var slug = _weapon.Instance(_weapon.ActiveSlot)?.Modifier(WeaponModifier.SlugConversion) ?? 0f;
+            var spread = slug > 0f ? 0f : _weapon.Tuning(_weapon.ActiveSlot).Spread * _weapon.AimSpread;
             if (_aimView == null)
             {
                 return Mathf.Max(8f, spread * 8.5f);

@@ -552,7 +552,7 @@ namespace Overtime.Tests
         {
             var catalog = AssetDatabase.LoadAssetAtPath<RunUpgradeCatalog>("Assets/Settings/Run Upgrades.asset");
             var build = new RunUpgradeState();
-            foreach (var id in new[] { UpgradeId.KineticCharge, UpgradeId.MagneticAcceleration, UpgradeId.AutoFeed, UpgradeId.Freefall })
+            foreach (var id in new[] { UpgradeId.KineticCharge, UpgradeId.MagneticAcceleration, UpgradeId.AutoFeed, UpgradeId.Freefall, UpgradeId.MagneticExecution })
             {
                 build.Acquire(catalog.Definitions[(int)id]);
             }
@@ -576,6 +576,7 @@ namespace Overtime.Tests
                 Assert.That(_motor.MovementSpeed, Is.EqualTo(9f));
                 Step(Vector2.up, true, HoldSteps - 1);
                 Assert.That(effects.Charged, Is.False);
+                Assert.That(effects.MeleeExtraReach, Is.Zero);
                 Assert.That(gun.Magazine, Is.EqualTo(20));
 
                 StepUntil(() => effects.Charged, Vector2.up, true, 100);
@@ -584,6 +585,13 @@ namespace Overtime.Tests
                 Assert.That(gun.Magazine, Is.EqualTo(23));
                 Assert.That(gun.Reserve, Is.EqualTo(1));
                 Assert.That(effects.State.AutoFeed, Is.EqualTo(1f));
+                Assert.That(effects.MeleeExtraReach, Is.EqualTo(1f));
+                Assert.That(effects.MeleeDamageMultiplier, Is.EqualTo(1.60f));
+                var timed = effects.State;
+                effects.Simulate(2.01f);
+                Assert.That(effects.MeleeExtraReach, Is.Zero);
+                effects.Restore(timed);
+                Assert.That(effects.MeleeExtraReach, Is.EqualTo(1f));
                 StepUntil(() => _motor.Grounded, Vector2.up, false, 35);
                 effects.ConfirmShot();
                 Assert.That(effects.ModifyShotDamage(12f), Is.EqualTo(12f));

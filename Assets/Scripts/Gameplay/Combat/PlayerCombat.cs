@@ -9,11 +9,15 @@ namespace Overtime
         [SerializeField] private CombatWeapon _weapon;
         [SerializeField, Min(0.1f)] private float _recoverySeconds = 2f;
 
+        [SerializeField] private KnifeTuning _knifeTuning = new();
+
+        private KnifeAttack _knife;
         private double _recoveryRemaining;
         private PlayerUpgradeEffects _effects;
 
         internal CombatHealth Health => _health;
         internal CombatWeapon Weapon => _weapon;
+        internal KnifeAttack Knife => _knife ??= new KnifeAttack(_knifeTuning);
         internal bool Alive => _health.Alive;
         internal bool GameOver { get; private set; }
         internal double RecoveryRemaining => _recoveryRemaining;
@@ -61,11 +65,12 @@ namespace Overtime
             _recoveryRemaining = 0d;
             _health.Restore(_health.Maximum);
             _weapon.ResetState();
+            Knife.Restore(default);
         }
 
         internal Snapshot Capture()
         {
-            return new Snapshot(_health.Current, _weapon.Capture(), _effects?.State ?? default);
+            return new Snapshot(_health.Current, _weapon.Capture(), _effects?.State ?? default, Knife.State);
         }
 
         internal void Restore(in Snapshot snapshot)
@@ -73,6 +78,7 @@ namespace Overtime
             _health.Restore(snapshot.HitPoints);
             _weapon.Restore(snapshot.Weapon);
             _effects?.Restore(snapshot.Effects);
+            Knife.Restore(snapshot.Knife);
             if (Alive)
             {
                 _recoveryRemaining = 0d;
@@ -86,11 +92,14 @@ namespace Overtime
 
             internal readonly PlayerUpgradeEffects.Snapshot Effects;
 
-            internal Snapshot(int hitPoints, CombatWeapon.Snapshot weapon, PlayerUpgradeEffects.Snapshot effects)
+            internal readonly KnifeAttack.Snapshot Knife;
+
+            internal Snapshot(int hitPoints, CombatWeapon.Snapshot weapon, PlayerUpgradeEffects.Snapshot effects, KnifeAttack.Snapshot knife = default)
             {
                 HitPoints = hitPoints;
                 Weapon = weapon;
                 Effects = effects;
+                Knife = knife;
             }
         }
     }

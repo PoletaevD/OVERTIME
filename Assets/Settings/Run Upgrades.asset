@@ -325,6 +325,153 @@ MonoBehaviour:
     _radius: 0
     _limit: 0
     _icon: {fileID: 21300000, guid: 701f0bd40d4bb1042b1cc87678ff5ea5, type: 3}
+  - _id: 26
+    _title: Surgical Strike
+    _description: Kill a hostile for the first time with the knife to recover health.
+    _numbers: +{0:0} HP per unique kill
+    _category: 7
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 8
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 121efb181a47bdd4381ae9340c577884, type: 3}
+  - _id: 27
+    _title: Blood Battery
+    _description: First-time knife kills award additional chronoenergy.
+    _numbers: +{0:0} CHRONO per unique kill
+    _category: 7
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 10
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: b2af5b91a9a91bd4fb0c93b3a3fa4a72, type: 3}
+  - _id: 28
+    _title: Extended Edge
+    _description: Your swing fires a wave that passes targets already hit by the
+      blade.
+    _numbers: '{0:0} wave damage / {2:0} m'
+    _category: 7
+    _rarity: 2
+    _maxLevel: 1
+    _magnitude: 30
+    _seconds: 0
+    _radius: 5
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 220ff3f3d8a0f1647b87eafe1b82fe85, type: 3}
+  - _id: 29
+    _title: Time Sever
+    _description: After a qualified RECALL, your next knife swing triggers one blast.
+    _numbers: '{0:0} damage / {1:0} s window / {2:0.#} m'
+    _category: 7
+    _rarity: 2
+    _maxLevel: 1
+    _magnitude: 35
+    _seconds: 3
+    _radius: 2.1
+    _limit: 0
+    _icon: {fileID: 21300000, guid: e2a8ee58ab4237f4b87690d4ded8b46e, type: 3}
+  - _id: 30
+    _title: Focus Protocol
+    _description: Reduces recoil while aiming down sights.
+    _numbers: -{0:P0} ADS recoil
+    _category: 8
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.3
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: fb6213d73e6b5c447bbcc00ed2221789, type: 3}
+  - _id: 31
+    _title: Precision Lock
+    _description: Hold ADS to prime the next shot to pierce one more hostile.
+    _numbers: +{0:0} target after {1:0} s ADS
+    _category: 8
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 1
+    _seconds: 1
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: b9b7078635b0cc243b6ff27a8c8de4bf, type: 3}
+  - _id: 32
+    _title: Steady Processing
+    _description: Aiming down sights reduces BULLET TIME energy drain.
+    _numbers: -{0:P0} cost while aiming
+    _category: 8
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.25
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 7cd6c6fa68b04304684f7522726589e3, type: 3}
+  - _id: 33
+    _title: Scavenger
+    _description: Improves enemy ammo drop odds in future encounters.
+    _numbers: +20 percentage points
+    _category: 9
+    _rarity: 0
+    _maxLevel: 1
+    _magnitude: 0.2
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: e0669ce92ea68284c8ba959365d75a6c, type: 3}
+  - _id: 34
+    _title: Emergency Supply
+    _description: Once per room, a first-time knife kill drops ammo when your active
+      total is low.
+    _numbers: Triggers at {0:0} rounds or fewer
+    _category: 9
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 5
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 1f5ff2bc39624cb4aad4aea16d1fc1eb, type: 3}
+  - _id: 35
+    _title: Quick Chamber
+    _description: Matching ammo pickups feed the active magazine before filling reserve.
+    _numbers: Up to {0:0} rounds chambered
+    _category: 9
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 3
+    _seconds: 0
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 86edb943c388a3e47a86148f9380e78c, type: 3}
+  - _id: 36
+    _title: Blade & Bullet
+    _description: Land a knife hit to empower your next shot across the entire volley.
+    _numbers: +{0:P0} shot damage / {1:0} s
+    _category: 7
+    _rarity: 1
+    _maxLevel: 1
+    _magnitude: 0.5
+    _seconds: 2
+    _radius: 0
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 989917796fef3ef47aae4eca1272c3ab, type: 3}
+  - _id: 37
+    _title: Magnetic Execution
+    _description: After a magnetic surface change, your next swing gains damage and
+      reach.
+    _numbers: +{0:P0} damage / +{2:0} m / {1:0} s
+    _category: 7
+    _rarity: 2
+    _maxLevel: 1
+    _magnitude: 0.6
+    _seconds: 2
+    _radius: 1
+    _limit: 0
+    _icon: {fileID: 21300000, guid: 2313f7b2ede98c94f8c936d833a3b8e1, type: 3}
   _rarityWeights: {x: 55, y: 35, z: 10}
   _synergyWeight: 1.35
   _maxSynergyWeight: 1.5

@@ -19,14 +19,37 @@ namespace Overtime
         }
 
         internal Snapshot State => _state;
-        internal bool Charged => _state.Kinetic > 0f || _state.SecondDraft > 0f || _state.Exchange > 0f;
+        internal bool Charged => _state.Kinetic > 0f || _state.SecondDraft > 0f || _state.Exchange > 0f || _state.BladeAndBullet > 0f;
+        internal float MeleeExtraReach => _state.MagneticExecution > 0f ? _build.Definition(UpgradeId.MagneticExecution)?.Radius ?? 0f : 0f;
+        internal float MeleeDamageMultiplier => Boost(_state.MagneticExecution, UpgradeId.MagneticExecution);
+
+        internal void ResolveMelee(Ray aim, in RoomTargetMask hits, TemporalDirector director)
+        {
+            _state.MagneticExecution = 0f;
+            if (_state.TimeSever > 0f && _build.Definition(UpgradeId.TimeSever) is { } sever)
+            {
+                _state.TimeSever = 0f;
+                director.PlayerProjectiles.Explode(aim.origin, sever.Radius, sever.Magnitude, director.PlayerCapsule.transform, true);
+            }
+
+            if (_build.Definition(UpgradeId.ExtendedEdge) is { } edge)
+            {
+                director.PlayerProjectiles.LaunchKnifeWave(aim, edge.Radius, edge.Magnitude, hits);
+            }
+        }
+
+        internal void ConfirmMeleeContact()
+        {
+            _state.BladeAndBullet = Duration(UpgradeId.BladeAndBullet);
+        }
+
         internal float IncomingDamageMultiplier => Protection(_state.QualityAssurance, UpgradeId.QualityAssurance) * Protection(_state.SafeReturn, UpgradeId.SafeReturn);
 
         internal float ModifyShotDamage(float damage)
         {
             var freefall = _motor.Grounded ? 1f : 1f + _build.Bonus(UpgradeId.Freefall);
             var vertical = _motor.Magnetic && _motor.Grounded && Vector3.Dot(_motor.Up, Vector3.up) < 0.5f ? 1f + _build.Bonus(UpgradeId.VerticalAdvantage) : 1f;
-            return damage * Boost(_state.Kinetic, UpgradeId.KineticCharge) * Boost(_state.SecondDraft, UpgradeId.SecondDraft) * Boost(_state.ExploitWindow, UpgradeId.ExploitWindow) * Boost(_state.Exchange, UpgradeId.TacticalExchange) * freefall * vertical;
+            return damage * Boost(_state.Kinetic, UpgradeId.KineticCharge) * Boost(_state.SecondDraft, UpgradeId.SecondDraft) * Boost(_state.ExploitWindow, UpgradeId.ExploitWindow) * Boost(_state.Exchange, UpgradeId.TacticalExchange) * Boost(_state.BladeAndBullet, UpgradeId.BladeAndBullet) * freefall * vertical;
         }
 
         internal void ConfirmShot()
@@ -34,6 +57,7 @@ namespace Overtime
             _state.Kinetic = 0f;
             _state.SecondDraft = 0f;
             _state.Exchange = 0f;
+            _state.BladeAndBullet = 0f;
         }
 
         internal void CompleteSwitch()
@@ -56,6 +80,9 @@ namespace Overtime
             _state.QualityAssurance = Mathf.Max(0f, _state.QualityAssurance - step);
             _state.ExploitWindow = Mathf.Max(0f, _state.ExploitWindow - step);
             _state.SafeReturn = Mathf.Max(0f, _state.SafeReturn - step);
+            _state.TimeSever = Mathf.Max(0f, _state.TimeSever - step);
+            _state.MagneticExecution = Mathf.Max(0f, _state.MagneticExecution - step);
+            _state.BladeAndBullet = Mathf.Max(0f, _state.BladeAndBullet - step);
         }
 
         internal bool Complete(TemporalMode mode)
@@ -71,7 +98,8 @@ namespace Overtime
                     return _state.ExploitWindow > 0f;
                 case TemporalMode.Recall:
                     _state.SafeReturn = Duration(UpgradeId.SafeReturn);
-                    return _state.SafeReturn > 0f;
+                    _state.TimeSever = Duration(UpgradeId.TimeSever);
+                    return _state.SafeReturn > 0f || _state.TimeSever > 0f;
                 default:
                     return false;
             }
@@ -90,6 +118,11 @@ namespace Overtime
         private void OnSurfaceChanged()
         {
             _state.Kinetic = Duration(UpgradeId.KineticCharge);
+            if (_canFeed && _motor.Magnetic)
+            {
+                _state.MagneticExecution = Duration(UpgradeId.MagneticExecution);
+            }
+
             var feed = _build.Definition(UpgradeId.AutoFeed);
             if (_canFeed && _motor.Magnetic && feed != null && _state.AutoFeed <= 0f && _weapon.TryAutoFeed(Mathf.RoundToInt(_build.Bonus(UpgradeId.AutoFeed))))
             {
@@ -122,6 +155,9 @@ namespace Overtime
             internal float SafeReturn;
             internal float Exchange;
             internal float ExchangeCooldown;
+            internal float TimeSever;
+            internal float MagneticExecution;
+            internal float BladeAndBullet;
         }
     }
 }

@@ -52,7 +52,8 @@ namespace Overtime
                 if (_state == EncounterState.Cleared)
                 {
                     var reward = _route.CurrentNode?.Reward ?? RoomReward.None;
-                    _status.SetText(reward == RoomReward.None ? "CLEAR    /    +30 RESERVE" : $"CLEAR    /    {RouteCard.RewardText(reward)}");
+                    var status = _route.Seamless ? "CLEAR    /    EXITS OPEN" : reward == RoomReward.None ? "CLEAR    /    +30 RESERVE" : $"CLEAR    /    {RouteCard.RewardText(reward)}";
+                    _status.SetText(status);
                     Announce("CLEAR");
                 }
                 else if (_state == EncounterState.RewardSelection)

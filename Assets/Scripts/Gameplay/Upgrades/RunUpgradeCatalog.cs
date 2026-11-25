@@ -31,7 +31,19 @@ namespace Overtime
         VerticalAdvantage = 23,
         TacticalExchange = 24,
         LastWord = 25,
-        Count = 26
+        SurgicalStrike = 26,
+        BloodBattery = 27,
+        ExtendedEdge = 28,
+        TimeSever = 29,
+        FocusProtocol = 30,
+        PrecisionLock = 31,
+        SteadyProcessing = 32,
+        Scavenger = 33,
+        EmergencySupply = 34,
+        QuickChamber = 35,
+        BladeAndBullet = 36,
+        MagneticExecution = 37,
+        Count = 38
     }
 
     internal enum UpgradeCategory
@@ -42,7 +54,10 @@ namespace Overtime
         Override,
         Recall,
         BulletTime,
-        Energy
+        Energy,
+        Melee,
+        Aim,
+        Scavenging
     }
 
     internal enum UpgradeRarity

@@ -43,6 +43,7 @@ namespace Overtime
             if (_temporalDirector != null)
             {
                 _cameraRig.UseSimulationClock();
+                _cameraRig.BindWeapon(_combat?.Weapon);
                 _temporalDirector.Initialize(this);
             }
         }
@@ -54,7 +55,7 @@ namespace Overtime
             if (_temporalDirector != null)
             {
                 var look = _input.ReadLook(deltaTime);
-                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.TakeTemporalSelection(), _input.ResetPressed, _input.Focused, _input.FireHeld, _input.ReloadPressed, _input.RechargePressed, _input.WeaponSelection);
+                var input = new TemporalInput(Vector2.ClampMagnitude(_input.Move, 1f), look, _input.JumpPressed, _input.JumpHeld, _input.FirePressed, _input.TakeTemporalSelection(), _input.ResetPressed, _input.Focused, _input.FireHeld, _input.ReloadPressed, _input.RechargePressed, _input.WeaponSelection, _input.InteractPressed, _input.MeleePressed, _input.AimHeld);
                 _input.ClearCombatCommands();
                 if (!_temporalDirector.Advance(Time.unscaledDeltaTime, input))
                 {
@@ -92,6 +93,11 @@ namespace Overtime
         internal void ConfirmLegacyShot()
         {
             LegacyShotFired?.Invoke();
+        }
+
+        internal void SealLoadout()
+        {
+            _temporalDirector.SealHistory();
         }
 
         internal void SetRewardSelection(bool active)

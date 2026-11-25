@@ -166,7 +166,7 @@ namespace Overtime.Tests
         }
 
         [Test]
-        public void WallFireUsesTheGravityAlignedMuzzle()
+        public void WallFireUsesTheGravityAlignedAimRay()
         {
             var screen = new GameObject("Wall Shooting Target");
             try
@@ -261,7 +261,7 @@ namespace Overtime.Tests
             Assert.That(body.gameObject.activeInHierarchy, Is.True);
             Assert.That(_dummy.transform.Find("Wreck").gameObject.activeSelf, Is.False);
             Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
-            Tick(25);
+            Tick(34);
             Assert.That(_dummy.Health.Current, Is.EqualTo(48));
         }
 
@@ -312,7 +312,11 @@ namespace Overtime.Tests
         {
             Tick(12);
             Tick(1, Input(fire: true));
-            Tick(24);
+            Assert.That(_director.PlayerProjectiles.TryReadFlight(0, out var ray, out var speed, out _), Is.True);
+            Assert.That(Body(_dummy).Raycast(ray, out var centerHit, 20f), Is.True);
+            var secondsToContact = (centerHit.distance - _weapon.Tuning(0).Radius) / speed;
+            var ticksToContact = Mathf.CeilToInt(secondsToContact / (float)Step);
+            Tick(ticksToContact - 1);
             Assert.That(_dummy.Health.Current, Is.EqualTo(60));
             var world = _director.WorldTimeline.Cursor;
             var impacts = 0;
@@ -411,7 +415,7 @@ namespace Overtime.Tests
 
         [TestCase(false)]
         [TestCase(true)]
-        public void SweptCollisionBlocksThinCoverAndAnObstructedMuzzle(bool acrossMuzzle)
+        public void SweptCollisionFollowsTheAimRayPastTheDecorativeMuzzle(bool acrossMuzzle)
         {
             var wall = new GameObject("Thin Test Screen");
             try
@@ -422,17 +426,33 @@ namespace Overtime.Tests
                 collider.size = new Vector3(acrossMuzzle ? 0.13f : 2f, acrossMuzzle ? 0.22f : 2f, 0.015f);
                 var shots = 0;
                 var impacts = 0;
+                var impactPoint = Vector3.zero;
                 _weapon.ShotFired += () => shots++;
-                _director.ProjectileHit += impact => impacts += impact.FromPlayer ? 1 : 0;
+                _director.ProjectileHit += impact =>
+                {
+                    if (impact.FromPlayer)
+                    {
+                        impacts++;
+                        impactPoint = impact.Point;
+                    }
+                };
 
                 Tick(1, Input(fire: true));
                 Assert.That(shots, Is.EqualTo(1));
                 Assert.That(impacts, Is.Zero);
                 Assert.That(_director.PlayerProjectiles.ActiveCount, Is.EqualTo(1));
 
-                Tick(11);
+                Tick(acrossMuzzle ? 150 : 11);
                 Assert.That(impacts, Is.EqualTo(1));
-                Assert.That(_dummy.Health.Current, Is.EqualTo(60));
+                if (acrossMuzzle)
+                {
+                    Assert.That(Vector3.Distance(impactPoint, wall.transform.position), Is.GreaterThan(1f));
+                }
+                else
+                {
+                    Assert.That(Vector3.Distance(impactPoint, wall.transform.position), Is.LessThan(0.1f));
+                    Assert.That(_dummy.Health.Current, Is.EqualTo(60));
+                }
                 Assert.That(_director.PlayerProjectiles.ActiveCount, Is.Zero);
             }
             finally

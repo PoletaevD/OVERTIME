@@ -159,6 +159,9 @@ namespace Overtime
                 UpgradeCategory.Recall => new Color(1f, 0.72f, 0.40f),
                 UpgradeCategory.BulletTime => new Color(0.36f, 0.93f, 0.81f),
                 UpgradeCategory.Energy => new Color(0.47f, 0.73f, 1f),
+                UpgradeCategory.Melee => new Color(1f, 0.47f, 0.34f),
+                UpgradeCategory.Aim => new Color(0.66f, 0.91f, 1f),
+                UpgradeCategory.Scavenging => new Color(0.96f, 0.77f, 0.35f),
                 _ => new Color(0.90f, 0.94f, 0.96f)
             };
         }

@@ -53,6 +53,7 @@ namespace Overtime
         private uint _confirmedShots;
         private PlaygroundPlayer _player;
         private CombatWeapon _weapon;
+        private Camera _viewCamera;
         private float _resetKick;
         private bool _wasRewinding;
         private Vector2 _sway;
@@ -66,6 +67,7 @@ namespace Overtime
         {
             _player = GetComponentInParent<PlaygroundPlayer>();
             _weapon = _player.Combat?.Weapon;
+            _viewCamera = GetComponentInParent<Camera>();
             _chargeProperties ??= new MaterialPropertyBlock();
             _primaryReceiver = _recoilPivot.Find("ARC-01 Receiver")?.gameObject;
             _primaryModule = _primaryReceiver != null ? _primaryReceiver.transform.Find("Power Cell") : null;
@@ -141,7 +143,9 @@ namespace Overtime
 
 
             var blend = 1f - Mathf.Exp(-deltaTime * 13f);
-            var motion = _cameraRig.ReducedMotion ? 0.25f : 1f;
+            var aim = _weapon?.AimBlend ?? 0f;
+            var aimTuning = _weapon?.ActiveDefinition?.Aim;
+            var motion = (_cameraRig.ReducedMotion ? 0.25f : 1f) * Mathf.Lerp(1f, 0.23f, aim);
             var phase = _cameraRig.BobPhase;
             _idlePhase = Mathf.Repeat(_idlePhase + deltaTime * 1.85f, Mathf.PI * 2f);
 
@@ -149,8 +153,16 @@ namespace Overtime
             var bob = new Vector3(Mathf.Sin(phase), Mathf.Cos(phase * 2f) * 0.65f, 0f) * (_movementBob * _cameraRig.MovementWeight);
             var fall = _motor.Grounded ? 0f : _fallOffset * Mathf.Clamp01(Vector3.Dot(-_motor.Up, _motor.Velocity) / 8f);
             _airOffset = Mathf.Lerp(_airOffset, fall, blend);
-            _movementPivot.localPosition = motion * (idle + bob + Vector3.up * (_airOffset + _motionImpulse));
+            var aimedPose = DOVirtual.EasedValue(0f, 1f, aim, Ease.InOutSine);
+            var calibrated = aimTuning?.HasSight == true && _viewCamera != null;
+            var aimOffset = calibrated ? Vector3.zero : (aimTuning?.Position ?? Vector3.zero) * aimedPose;
+            _movementPivot.localPosition = aimOffset + motion * (idle + bob + Vector3.up * (_airOffset + _motionImpulse));
             _movementPivot.localRotation = Quaternion.Euler(motion * (Mathf.Sin(_idlePhase) * 0.35f + _motionImpulse * 30f), 0f, motion * (-_cameraRig.Lateral * _strafeLean + _gravityImpulse));
+
+            if (!calibrated)
+            {
+                _movementPivot.localRotation = Quaternion.Slerp(Quaternion.identity, aimTuning?.Rotation ?? Quaternion.identity, aim) * _movementPivot.localRotation;
+            }
 
             _sway = Vector2.Lerp(_sway, Vector2.ClampMagnitude(_cameraRig.LookDelta * _mouseSway / Mathf.Max(deltaTime * 60f, 0.3f), 7f), blend);
             _swayPivot.localPosition = new Vector3(-_sway.x, -_sway.y, 0f) * (0.0045f * motion);
@@ -158,7 +170,9 @@ namespace Overtime
             var temporal = _cameraRig.ReducedMotion ? 0f : _resetKick;
             var reload = _weapon?.ReloadProgress ?? 0f;
             var switchProgress = _weapon?.SwitchProgress ?? 0f;
-            var action = Mathf.Max(ActionDip(reload, 0.28f, 0.72f), ActionDip(switchProgress, 0.5f, 0.5f)) * motion;
+            var knife = _player.Combat?.Knife;
+            var melee = knife?.Active == true ? ActionDip(knife.Progress, 0.10f, 0.72f) : 0f;
+            var action = Mathf.Max(melee, Mathf.Max(ActionDip(reload, 0.28f, 0.72f), ActionDip(switchProgress, 0.5f, 0.5f)) * motion);
             var module = _viewmodel != null ? _viewmodel.Module : _primaryModule;
             if (module != null)
             {
@@ -181,6 +195,36 @@ namespace Overtime
             var vibration = new Vector3(Mathf.Sin(Time.unscaledTime * 119f), Mathf.Cos(Time.unscaledTime * 103f), 0f) * (charge * motion * 0.0022f);
             _recoilPivot.localPosition = _recoilPosition * motion + Vector3.back * (temporal * 0.035f) + Vector3.down * (action * 0.27f) + vibration;
             _recoilPivot.localRotation = Quaternion.Euler(_recoilAngles * motion + new Vector3(temporal * 4f + action * 28f, -action * 9f, action * 7f));
+            if (calibrated && aimedPose > 0f)
+            {
+                AlignSights(aimTuning, aimedPose);
+            }
+
+            if (_displayedWeapon == WeaponId.Deadline && _viewmodel != null)
+            {
+                _viewmodel.SetScopeView(DeadlineScope.Blend(aim) >= 0.68f);
+            }
+        }
+
+        private void AlignSights(WeaponAimTuning tuning, float weight)
+        {
+            SightPoints(tuning, out var rear, out var front);
+            var localRear = _movementPivot.InverseTransformPoint(rear);
+            var localFront = _movementPivot.InverseTransformPoint(front);
+            var sightRotation = Quaternion.LookRotation(localFront - localRear, Vector3.up);
+            var camera = _viewCamera.transform;
+            var rotation = camera.rotation * Quaternion.Inverse(sightRotation);
+            var depth = Mathf.Max(0.065f, tuning.EyeRelief + _recoilPosition.z * 0.45f);
+            var position = camera.position + camera.forward * depth - rotation * localRear;
+            _movementPivot.SetPositionAndRotation(Vector3.Lerp(_movementPivot.position, position, weight), Quaternion.Slerp(_movementPivot.rotation, rotation, weight));
+        }
+
+        internal void SightPoints(WeaponAimTuning tuning, out Vector3 rear, out Vector3 front)
+        {
+            var frame = _viewmodel != null ? _viewmodel.transform : _recoilPivot;
+            var slide = _viewmodel?.Slide != null ? _viewmodel.Slide.localPosition : Vector3.zero;
+            rear = frame.TransformPoint(tuning.RearSight + slide);
+            front = frame.TransformPoint(tuning.FrontSight + slide);
         }
 
         private float ActionDip(float progress, float downEnd, float upStart)

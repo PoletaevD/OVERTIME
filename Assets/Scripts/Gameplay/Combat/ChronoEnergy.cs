@@ -42,12 +42,15 @@ namespace Overtime
             _current = Maximum;
         }
 
-        internal void Reward(int id, float? amount = null)
+        internal bool Reward(int id, float? amount = null, float bonus = 0f)
         {
             if (id > 0 && _paidTargets.Add(id))
             {
-                AddEnergy((amount ?? _targetReward) + (_upgrades?.Bonus(UpgradeId.PerformanceBonus) ?? 0f));
+                AddEnergy((amount ?? _targetReward) + (_upgrades?.Bonus(UpgradeId.PerformanceBonus) ?? 0f) + bonus);
+                return true;
             }
+
+            return false;
         }
 
         internal double Affordable(double cost)

@@ -98,6 +98,7 @@ namespace Overtime
             {
                 RoomReward.MedicalSupplies => "+25 HP",
                 RoomReward.ChronoCache => "+35 ENERGY",
+                RoomReward.AmmunitionCache when weapon?.Instance(0) != null => $"+{EncounterLoot.CacheSize(weapon.ActiveDefinition.Id)} {EncounterLoot.AmmoName(weapon.ActiveDefinition.Id)}",
                 RoomReward.AmmunitionCache when weapon?.HasSecondary == true => $"+{weapon.CacheRounds(0)} PRIMARY / +{weapon.CacheRounds(1)} SECONDARY",
                 RoomReward.AmmunitionCache => "+45 PRIMARY RESERVE",
                 RoomReward.PriorityProtocol => "Increased upgrade rarity",

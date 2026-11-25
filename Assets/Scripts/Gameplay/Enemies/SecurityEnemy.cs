@@ -72,6 +72,29 @@ namespace Overtime
         internal SecurityEnemyKind Kind => _kind;
         internal bool EncounterReady => _encounterReady;
         internal float InstabilityRemaining => _state.InstabilityRemaining;
+        internal float ChillRemaining => _state.ChillRemaining;
+
+        internal bool BlockKnife(Vector3 origin, bool reducedMotion)
+        {
+            if (_shieldFeedback == null || _shield == null || !_shield.enabled)
+            {
+                return false;
+            }
+
+            var direction = Vector3.ProjectOnPlane(origin - transform.position, transform.up).normalized;
+            if (Vector3.Dot(transform.forward, direction) < 0.55f)
+            {
+                return false;
+            }
+
+            _shieldFeedback.React(reducedMotion);
+            return true;
+        }
+
+        internal void ApplyChill(float seconds)
+        {
+            _state.ChillRemaining = Mathf.Max(_state.ChillRemaining, seconds);
+        }
 
         internal void ApplyInstability(float magnitude, float seconds)
         {
@@ -212,6 +235,13 @@ namespace Overtime
             }
 
             _state.InstabilityRemaining = Mathf.Max(0f, _state.InstabilityRemaining - step);
+            var chilled = _state.ChillRemaining > 0f;
+            _state.ChillRemaining = Mathf.Max(0f, _state.ChillRemaining - step);
+            if (chilled)
+            {
+                step *= 0.52f;
+            }
+
             _state.PhaseRemaining = Mathf.Max(0f, _state.PhaseRemaining - step);
             _state.Cooldown = Mathf.Max(0f, _state.Cooldown - step);
             _state.Recoil = Mathf.MoveTowards(_state.Recoil, 0f, 7f * step);
@@ -661,6 +691,7 @@ namespace Overtime
             internal float PhaseRemaining;
             internal float SightRemaining;
             internal float InstabilityRemaining;
+            internal float ChillRemaining;
             internal float InstabilityMagnitude;
             internal float Cooldown;
             internal float Pitch;

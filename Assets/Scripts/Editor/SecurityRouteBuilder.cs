@@ -42,6 +42,7 @@ namespace Overtime.Editor
                 var builder = new SecuritySectorBuilder();
                 var library = builder.BuildLibrary();
                 builder.Build(scene, library);
+                WireSeamlessStage(scene);
                 if (!EditorSceneManager.SaveScene(scene, RouteScenePath))
                 {
                     throw new InvalidOperationException($"Failed to save {RouteScenePath}.");
@@ -125,6 +126,7 @@ namespace Overtime.Editor
                 var roster = new List<SpawnSpec>(72);
                 variants = ExpandEncounter(id, size, markers, variants, roster);
                 WriteMarkers(runtime, roster.ToArray());
+                AuthorAmmoSockets(runtime);
                 var thumbnail = AssetDatabase.LoadAssetAtPath<Texture2D>($"{RouteArt}/Surveys/{id}.png");
                 var prefab = PrefabUtility.SaveAsPrefabAsset(room.gameObject, $"{RoutePrefabs}/Rooms/{title}.prefab");
                 if (prefab == null)

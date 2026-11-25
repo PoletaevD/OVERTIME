@@ -41,6 +41,7 @@ namespace Overtime
         private float _fovOffset;
         private bool _moving;
         private bool _simulationClock;
+        private CombatWeapon _weapon;
         private bool _hasPreview;
         private Vector3 _previewPosition;
         private Quaternion _previewDisplay;
@@ -62,7 +63,15 @@ namespace Overtime
         internal bool ReducedMotion { get; set; }
         internal bool IsRewinding { get; private set; }
         internal Vector3 AimUp => _display * Vector3.up;
-        internal Ray AimRay => new(_motor.transform.position + _display * Vector3.up * _eyeHeight, (_display * LocalLook(_yaw, _pitch)) * Vector3.forward);
+        internal Ray AimRay
+        {
+            get
+            {
+                var look = _display * LocalLook(_yaw, _pitch);
+                var eye = _motor.transform.position + _display * Vector3.up * _eyeHeight;
+                return new Ray(eye, look * Vector3.forward);
+            }
+        }
 
         private void OnEnable()
         {
@@ -77,6 +86,13 @@ namespace Overtime
             _motor.Landed -= OnLanded;
             _motor.Jumped -= OnJumped;
             KillTweens();
+        }
+
+        internal bool GravityTransition => _transition < 1f;
+
+        internal void BindWeapon(CombatWeapon weapon)
+        {
+            _weapon = weapon;
         }
 
         internal void ResetView(Quaternion rotation)
@@ -230,7 +246,7 @@ namespace Overtime
         {
             var weight = _motionEffects && !ReducedMotion ? _motionWeight : 0f;
             var bob = new Vector3(Mathf.Cos(_phase) * 0.38f, Mathf.Sin(_phase * 2f), 0f) * (_speed * _bobIntensity);
-            _effectsPivot.localPosition = weight * (bob + Vector3.up * _verticalKick);
+            _effectsPivot.localPosition = _weapon != null ? Vector3.zero : weight * (bob + Vector3.up * _verticalKick);
             _effectsPivot.localRotation = Quaternion.AngleAxis(weight * (-_lateral * _rollIntensity + _gravityKick), Vector3.forward);
 
             var moving = _moving ? _motor.SpeedRatio > 0.53f : _motor.SpeedRatio > 0.7f;
@@ -242,7 +258,9 @@ namespace Overtime
             }
 
             var lens = _cinemachineCamera.Lens;
-            lens.FieldOfView = _fieldOfView + _fovOffset * weight;
+            var aim = _weapon?.AimBlend ?? 0f;
+            var targetFov = _weapon?.ActiveDefinition?.Aim.FieldOfView(_weapon.ActiveType) ?? _fieldOfView;
+            lens.FieldOfView = Mathf.Lerp(_fieldOfView + _fovOffset * weight, targetFov, aim);
             _cinemachineCamera.Lens = lens;
         }
 

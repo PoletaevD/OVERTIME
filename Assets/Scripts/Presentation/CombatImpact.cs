@@ -51,10 +51,10 @@ namespace Overtime
         {
             var impact = _pool[_next];
             _next = (_next + 1) % _pool.Length;
-            var color = shot.Ricochet ? new Color(1f, 0.76f, 0.32f) : shot.Piercing ? new Color(0.43f, 0.74f, 1.4f) : shot.Shielded ? new Color(0.42f, 0.63f, 1f) : !shot.FromPlayer ? new Color(1f, 0.48f, 0.19f) : shot.Damage.Killed ? new Color(1f, 0.37f, 0.16f) : shot.WeakPoint ? new Color(1f, 0.8f, 0.38f) : new Color(0.54f, 0.92f, 1f);
+            var color = shot.Explosion ? new Color(2.2f, 0.55f, 0.16f) : shot.Ricochet ? new Color(1f, 0.76f, 0.32f) : shot.Piercing ? new Color(0.43f, 0.74f, 1.4f) : shot.Shielded ? new Color(0.42f, 0.63f, 1f) : !shot.FromPlayer ? new Color(1f, 0.48f, 0.19f) : shot.Damage.Killed ? new Color(1f, 0.37f, 0.16f) : shot.WeakPoint ? new Color(1f, 0.8f, 0.38f) : new Color(0.54f, 0.92f, 1f);
             _properties.SetColor(s_color, color);
             _properties.SetColor(s_emission, color * (_player.ReducedMotion ? 0.7f : 2f));
-            impact.Show(shot.Point + shot.Normal * 0.025f, shot.Normal, _properties, shot.Damage.Killed && !_player.ReducedMotion);
+            impact.Show(shot.Point + shot.Normal * 0.025f, shot.Normal, _properties, (shot.Damage.Killed || shot.Explosion) && !_player.ReducedMotion);
         }
 
         private void OnModeChanged(TemporalMode mode)

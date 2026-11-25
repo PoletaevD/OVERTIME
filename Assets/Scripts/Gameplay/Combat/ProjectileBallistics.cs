@@ -13,8 +13,14 @@ namespace Overtime
         internal readonly float DistanceBonusLimit;
         internal readonly float CloseBonus;
         internal readonly float CloseDistance;
+        internal readonly float SplitDistance;
+        internal readonly float ExplosionRadius;
+        internal readonly float ChillSeconds;
+        internal readonly float Acceleration;
+        internal readonly bool Overload;
+        internal readonly bool Melee;
 
-        internal ProjectileBallistics(WeaponId weapon, int targetLimit, int ricochetLimit, float penetrationRetention, float ricochetRetention, float distanceBonus, float distanceBonusLimit, float closeBonus, float closeDistance)
+        internal ProjectileBallistics(WeaponId weapon, int targetLimit, int ricochetLimit, float penetrationRetention, float ricochetRetention, float distanceBonus, float distanceBonusLimit, float closeBonus, float closeDistance, float splitDistance = 0f, float explosionRadius = 0f, float chillSeconds = 0f, float acceleration = 0f, bool overload = false, bool melee = false)
         {
             Weapon = weapon;
             TargetLimit = targetLimit;
@@ -25,6 +31,12 @@ namespace Overtime
             DistanceBonusLimit = distanceBonusLimit;
             CloseBonus = closeBonus;
             CloseDistance = closeDistance;
+            SplitDistance = splitDistance;
+            ExplosionRadius = explosionRadius;
+            ChillSeconds = chillSeconds;
+            Acceleration = acceleration;
+            Overload = overload;
+            Melee = melee;
         }
 
         internal float DamageAtDistance(float damage, float distance)

@@ -29,6 +29,7 @@ namespace Overtime
         [SerializeField] private GameObject _viewmodel;
         [SerializeField] private WeaponTuning _tuning = new();
         [SerializeField] private CameraRecoil _cameraRecoil = new();
+        [SerializeField] private WeaponAimTuning _aim = new();
         [SerializeField] private ViewmodelRecoil _viewmodelRecoil = new();
         [SerializeField] private AudioClip _shot;
         [SerializeField] private AudioClip _reload;
@@ -42,10 +43,53 @@ namespace Overtime
         internal GameObject Viewmodel => _viewmodel;
         internal WeaponTuning Tuning => _tuning;
         internal CameraRecoil GameplayRecoil => _cameraRecoil;
+        internal WeaponAimTuning Aim => _aim;
         internal ViewmodelRecoil VisualRecoil => _viewmodelRecoil;
         internal AudioClip Shot => _shot;
         internal AudioClip Reload => _reload;
         internal AudioClip Charge => _charge;
+    }
+
+    [Serializable]
+    internal sealed class WeaponAimTuning
+    {
+        [SerializeField] private Vector3 _position = new(-0.31f, 0.16f, -0.035f);
+        [SerializeField] private Vector3 _rotation;
+        [SerializeField, Range(0f, 75f)] private float _fieldOfView;
+        [SerializeField, Min(0.01f)] private float _transition = 0.18f;
+        [SerializeField, Range(0.1f, 1f)] private float _sensitivity = 0.72f;
+        [SerializeField, Range(0.1f, 1f)] private float _movement = 0.81f;
+        [SerializeField, Range(0.1f, 1f)] private float _spread = 0.51f;
+        [SerializeField, Range(0.1f, 1f)] private float _recoil = 0.84f;
+        [SerializeField] private Vector3 _frontSight;
+        [SerializeField] private Vector3 _rearSight;
+        [SerializeField, Min(0f)] private float _eyeRelief;
+
+        internal Vector3 Position => _position;
+        internal Quaternion Rotation => Quaternion.Euler(_rotation);
+        internal float Transition => _transition;
+        internal float Sensitivity => _sensitivity;
+        internal float Movement => _movement;
+        internal float Spread => _spread;
+        internal float Recoil => _recoil;
+        internal bool HasSight => _eyeRelief > 0f;
+        internal Vector3 FrontSight => _frontSight;
+        internal Vector3 RearSight => _rearSight;
+        internal float EyeRelief => _eyeRelief;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        internal float DebugFov { get => _fieldOfView; set => _fieldOfView = value; }
+#endif
+
+        internal float FieldOfView(WeaponType type)
+        {
+            return _fieldOfView > 0f ? _fieldOfView : type switch
+            {
+                WeaponType.Scatter => 65f,
+                WeaponType.SemiAutomatic => 62f,
+                WeaponType.Charged => 48f,
+                _ => 57f
+            };
+        }
     }
 
     [Serializable]
@@ -66,10 +110,10 @@ namespace Overtime
         internal float DebugDuration { get => _duration; set => _duration = value; }
 #endif
 
-        internal Vector2 Impulse(int index)
+        internal Vector2 Impulse(int index, float sustained = 1f)
         {
             var phase = _pattern is { Length: > 0 } ? _pattern[index % _pattern.Length] : Vector2.zero;
-            var strength = Mathf.Min(_maximumMultiplier, 1f + index * _sustainedPerShot);
+            var strength = Mathf.Min(_maximumMultiplier, 1f + index * _sustainedPerShot * sustained);
             return new Vector2(phase.x * _horizontal, _vertical * (1f + phase.y * _verticalVariation)) * strength;
         }
     }
@@ -166,6 +210,7 @@ namespace Overtime
         internal float ReloadDuration;
         internal double ChargeElapsed;
         internal int RecoilIndex;
+        internal int BurstLeft;
         internal float RecoilIdle;
     }
 

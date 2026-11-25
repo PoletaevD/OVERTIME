@@ -13,6 +13,9 @@ namespace Overtime
         private InputAction _jump;
         private InputAction _attack;
         private InputAction _reload;
+        private InputAction _interact;
+        private InputAction _melee;
+        private InputAction _aim;
         private InputAction _primaryWeapon;
         private InputAction _secondaryWeapon;
         private InputAction _swapWeapon;
@@ -49,6 +52,9 @@ namespace Overtime
         internal bool ResetPressed => _focused && (_combatBindings ? _restartRequested : Keyboard.current?.rKey.wasPressedThisFrame == true);
         internal WeaponSlotInput WeaponSelection => _captured && !_rewardSelection ? _weaponSelection : WeaponSlotInput.None;
         internal bool ReloadPressed => _captured && _reloadRequested;
+        internal bool InteractPressed => _captured && !_rewardSelection && _interact.WasPressedThisFrame();
+        internal bool MeleePressed => _captured && !_rewardSelection && _melee.WasPressedThisFrame();
+        internal bool AimHeld => _captured && !_rewardSelection && _aim.IsPressed();
         internal bool RechargePressed => _captured && _rechargeRequested;
         internal bool DebugPressed => _focused && Keyboard.current?.f3Key.wasPressedThisFrame == true;
         internal bool HintsPressed => _focused && Keyboard.current?.hKey.wasPressedThisFrame == true;
@@ -63,6 +69,9 @@ namespace Overtime
             _jump = map.FindAction("Jump", true);
             _attack = map.FindAction("Attack", true);
             _reload = map.FindAction("Reload", true);
+            _interact = map.FindAction("Interact", true);
+            _melee = map.FindAction("Melee", true);
+            _aim = map.FindAction("Aim", true);
             _primaryWeapon = map.FindAction("PrimaryWeapon", true);
             _secondaryWeapon = map.FindAction("SecondaryWeapon", true);
             _swapWeapon = map.FindAction("SwapWeapon", true);

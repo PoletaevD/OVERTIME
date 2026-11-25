@@ -70,6 +70,11 @@ namespace Overtime
                 SetInspecting(show);
             }
 
+            if (show)
+            {
+                RefreshStats();
+            }
+
             var effects = _progression.PlayerEffects.State;
             Timer(0, effects.Kinetic, "KINETIC  {0:0.0}");
             Timer(1, effects.SecondDraft, "DRAFT  {0:0.0}");
@@ -97,12 +102,17 @@ namespace Overtime
                 }
 
                 var level = build.Level(id);
+                if (index >= _icons.Length)
+                {
+                    break;
+                }
+
                 var icon = _icons[index];
                 icon.gameObject.SetActive(true);
                 icon.sprite = definition.Icon;
                 icon.color = ProtocolCard.CategoryColor(definition.Category);
                 _levels[index].SetText("{0:0}", level);
-                var column = index < 13 ? _left : _right;
+                var column = index < _icons.Length / 2 ? _left : _right;
                 column.Append("<color=#E8F4F7><b>").Append(definition.Title).Append("</b>  /  L").Append(level).Append("</color>  ").AppendLine(definition.Numbers);
                 column.AppendLine(definition.Description);
                 index++;
@@ -145,7 +155,23 @@ namespace Overtime
                     _stats.Append("    SEMI-AUTO");
                 }
 
+                if (gun.Instance(slot) is { } instance)
+                {
+                    _stats.Append("    ").Append(instance.Rarity);
+                    foreach (var modifier in instance.Affixes)
+                    {
+                        _stats.Append(" / ").Append(modifier.Kind);
+                    }
+                }
+
                 _stats.AppendLine();
+            }
+
+            if (gun.Instance(0) != null)
+            {
+                var knife = _player.Combat.Knife.Tuning;
+                _stats.AppendFormat("RESERVE  PISTOL {0}   CARBINE {1}   SCATTER {2}   RAIL {3}\n", gun.Ammo(WeaponId.Directive), gun.Ammo(WeaponId.Compliance), gun.Ammo(WeaponId.Termination), gun.Ammo(WeaponId.Deadline));
+                _stats.AppendFormat("[F] KNIFE  {0:0} DMG / {1:0.#} m   [RMB] ADS  {2:0}° / {3:0.00} s", knife.Damage, knife.Reach, gun.ActiveDefinition.Aim.FieldOfView(gun.ActiveType), gun.ActiveDefinition.Aim.Transition);
             }
 
             _weaponStats.SetText(_stats);

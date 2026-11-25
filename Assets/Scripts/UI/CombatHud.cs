@@ -37,6 +37,8 @@ namespace Overtime
         [SerializeField] private SecurityEnemy[] _enemies;
         [SerializeField] private TMP_Text _remainingLabel;
         [SerializeField] private Sprite _damageArc;
+        [SerializeField] private TMP_Text _lootHint;
+        [SerializeField] private TMP_Text _ammoNotice;
 
         private DamageIndicators _indicators;
         private Tween _remainingPulse;
@@ -44,6 +46,9 @@ namespace Overtime
 
         private Tween _healthPulse;
         private Tween _ammoPulse;
+        private Sequence _ammoNoticeFade;
+        private Tween _lootHintFade;
+        private string _lastLootHint;
         private Tween _energyPulse;
         private Tween _hitPulse;
         private Tween _stationTween;
@@ -107,6 +112,7 @@ namespace Overtime
         {
             _director.ProjectileHit += OnImpact;
             _player.Combat.Weapon.SwitchStarted += OnSwitch;
+            _player.Combat.Weapon.AmmoCollected += OnAmmoCollected;
             _player.Combat.Health.Damaged += OnDamage;
             _director.ModeChanged += OnModeChanged;
             _director.DirectionalDamage += OnDirectionalDamage;
@@ -116,6 +122,7 @@ namespace Overtime
         {
             _director.ProjectileHit -= OnImpact;
             _player.Combat.Weapon.SwitchStarted -= OnSwitch;
+            _player.Combat.Weapon.AmmoCollected -= OnAmmoCollected;
             _player.Combat.Health.Damaged -= OnDamage;
             _director.ModeChanged -= OnModeChanged;
             _director.DirectionalDamage -= OnDirectionalDamage;
@@ -129,6 +136,8 @@ namespace Overtime
             _restart.onClick.RemoveListener(_director.RequestRestart);
             _healthPulse.Kill();
             _ammoPulse.Kill();
+            _ammoNoticeFade?.Kill();
+            _lootHintFade?.Kill();
             _energyPulse.Kill();
             _hitPulse.Kill();
             _stationTween?.Kill();
@@ -143,6 +152,7 @@ namespace Overtime
             var combat = _player.Combat;
             RefreshHealth(combat.Health);
             RefreshAmmo(combat.Weapon);
+            RefreshLootHint();
             RefreshEnergy();
             RefreshDeath(combat);
             if (_remainingLabel != null)
@@ -157,6 +167,44 @@ namespace Overtime
             else
             {
                 _indicators?.Clear();
+            }
+        }
+
+        private void OnAmmoCollected(int amount)
+        {
+            if (_ammoNotice == null)
+            {
+                return;
+            }
+
+            _ammoNotice.SetText("+{0:0} AMMO", amount);
+            _ammoNotice.alpha = 1f;
+            _ammoNoticeFade?.Kill();
+            _ammoNoticeFade = DOTween.Sequence().SetUpdate(true).AppendInterval(0.8f);
+            _ammoNoticeFade.Append(DOTween.To(() => _ammoNotice.alpha, value => _ammoNotice.alpha = value, 0f, _player.ReducedMotion ? 0f : 0.24f));
+        }
+
+        private void RefreshLootHint()
+        {
+            if (_lootHint == null)
+            {
+                return;
+            }
+
+            var hint = _director.RewardSelection ? string.Empty : _director.LootHint;
+            if (hint == _lastLootHint)
+            {
+                return;
+            }
+
+            _lastLootHint = hint;
+            _lootHintFade?.Kill();
+            _lootHint.SetText(hint);
+            _lootHint.alpha = string.IsNullOrEmpty(hint) ? 0f : 1f;
+            if (!string.IsNullOrEmpty(hint) && !_player.ReducedMotion)
+            {
+                _lootHint.alpha = 0f;
+                _lootHintFade = DOTween.To(() => _lootHint.alpha, value => _lootHint.alpha = value, 1f, 0.12f).SetUpdate(true);
             }
         }
 

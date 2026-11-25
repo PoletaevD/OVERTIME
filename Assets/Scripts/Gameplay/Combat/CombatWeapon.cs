@@ -20,23 +20,29 @@ namespace Overtime
         private WeaponDefinition _secondary;
         private RunUpgradeState _upgrades;
         private PlayerUpgradeEffects _effects;
+        private bool _instanceLoadout;
+        private WeaponInstance _first;
+        private WeaponInstance _second;
+        private AmmoStock _collectedAmmo;
+        private readonly System.Collections.Generic.HashSet<int> _ammoPickups = new();
 
         internal event Action ShotFired;
         internal event Action AutoFed;
         internal event Action SwitchStarted;
+        internal event Action<int> AmmoCollected;
 
         internal int ActiveSlot => _state.ActiveSlot;
         internal WeaponDefinition ActiveDefinition => Definition(ActiveSlot);
         internal WeaponType ActiveType => ActiveDefinition?.Type ?? WeaponType.Carbine;
         internal string ActiveName => Name(ActiveSlot);
-        internal bool HasSecondary => _secondary != null;
+        internal bool HasSecondary => Definition(1) != null;
         internal bool IsSwitching => _state.SwitchRemaining > 0d;
         internal float SwitchProgress => IsSwitching ? Mathf.Clamp01(1f - (float)(_state.SwitchRemaining / _switchSeconds)) : 0f;
         internal int MagazineCapacity => Capacity(ActiveSlot);
         internal int EffectiveDamage => Mathf.FloorToInt(DamageFor(ActiveSlot) + 0.5f);
         internal float ReloadSeconds => ReloadFor(ActiveSlot);
         internal int Magazine => _state.Magazine;
-        internal int Reserve => _state.Reserve;
+        internal int Reserve => ReserveFor(ActiveSlot);
         internal bool IsReloading => _state.ReloadRemaining > 0d;
         internal float ReloadProgress => IsReloading ? 1f - (float)(_state.ReloadRemaining / _state.Active.ReloadDuration) : 0f;
         internal bool IsCharging => _state.Active.ChargeElapsed > 0d;
@@ -44,13 +50,110 @@ namespace Overtime
         internal int ProjectileCapacity => _projectileCapacity;
         internal bool HasQueuedBoost => _effects?.Charged == true;
         internal bool LastShotBoosted { get; private set; }
+        internal float AimBlend => _state.AimBlend;
+        internal float AimSeconds => _state.AimSeconds;
+        internal bool Aiming => _state.Aiming;
+        internal float AimSpread => Mathf.Lerp(1f, ActiveDefinition?.Aim.Spread ?? 1f, AimBlend);
+        internal float AimMovement => Mathf.Lerp(1f, ActiveDefinition?.Aim.Movement ?? 1f, AimBlend);
+        internal float AimSensitivity => Mathf.Lerp(1f, ActiveDefinition?.Aim.Sensitivity ?? 1f, AimBlend);
 
-        internal WeaponDefinition Definition(int slot) => slot == 0 ? _primary : _secondary;
-        internal string Name(int slot) => Definition(slot)?.DisplayName ?? "ARC-01  /  Compliance";
-        internal WeaponState State(int slot) => slot == 0 ? _state.Primary : _state.Secondary;
+        internal void AdvanceAim(float step, bool held, bool blocked)
+        {
+            var tuning = ActiveDefinition?.Aim;
+            _state.Aiming = held && !blocked && !IsReloading && !IsSwitching && tuning != null;
+            _state.AimBlend = Mathf.MoveTowards(_state.AimBlend, _state.Aiming ? 1f : 0f, step / (tuning?.Transition ?? 0.18f));
+            _state.AimSeconds = _state.Aiming ? Mathf.Min(1f, _state.AimSeconds + step) : 0f;
+        }
+
+        internal void CancelHandling()
+        {
+            ref var state = ref ActiveState();
+            state.ReloadRemaining = 0d;
+            state.ChargeElapsed = 0d;
+            state.BurstLeft = 0;
+        }
+
+        internal WeaponDefinition AuthoredPrimary => _primary;
+        internal WeaponInstance Instance(int slot) => slot == 0 ? _first : _second;
+        internal WeaponDefinition Definition(int slot) => _instanceLoadout ? Instance(slot)?.Definition : slot == 0 ? _primary : _secondary;
+        internal string Name(int slot) => Definition(slot)?.DisplayName ?? (_instanceLoadout ? "Empty" : "ARC-01  /  Compliance");
+
+        internal WeaponState State(int slot)
+        {
+            var state = StateAt(slot);
+            state.Reserve = ReserveFor(slot);
+            return state;
+        }
+
+        internal int Ammo(WeaponId type) => _state.Stock.Get(type);
+        internal bool Collected(int id) => _ammoPickups.Contains(id);
+
+        internal bool CollectAmmo(int id, WeaponId type, int amount)
+        {
+            if (!_instanceLoadout || amount <= 0 || !_ammoPickups.Add(id))
+            {
+                return false;
+            }
+
+            _collectedAmmo.Add(type, amount);
+            _state.Stock.Add(type, amount);
+            if (ActiveDefinition.Id == type)
+            {
+                var chamber = Mathf.Min(amount, Mathf.RoundToInt(Bonus(UpgradeId.QuickChamber)));
+                TransferReserve(ref ActiveState(), chamber, ActiveSlot);
+            }
+
+            _state.AmmoWatermark = _collectedAmmo;
+            AmmoCollected?.Invoke(amount);
+            return true;
+        }
+
+        internal void StartWithDirective(WeaponDefinition directive)
+        {
+            _instanceLoadout = true;
+            _first = new WeaponInstance(1, directive, WeaponRarity.Common);
+            _second = null;
+            ResetState();
+        }
+
+        internal WeaponInstance CollectWeapon(WeaponInstance incoming)
+        {
+            var slot = HasSecondary ? ActiveSlot : 1;
+            var outgoing = Instance(slot);
+            if (outgoing != null)
+            {
+                var stored = StateAt(slot);
+                stored.ReloadRemaining = 0d;
+                stored.ChargeElapsed = 0d;
+                stored.BurstLeft = 0;
+                outgoing.Stored = stored;
+            }
+
+            if (slot == 0)
+            {
+                _first = incoming;
+                _state.PrimaryId = incoming.InstanceId;
+            }
+            else
+            {
+                _second = incoming;
+                _state.SecondaryId = incoming.InstanceId;
+            }
+
+            StateAt(slot) = incoming.Stored;
+            _state.SwitchRemaining = 0d;
+            return outgoing;
+        }
+
+        private int ReserveFor(int slot)
+        {
+            return _instanceLoadout ? Definition(slot) is { } definition ? Ammo(definition.Id) : 0 : StateAt(slot).Reserve;
+        }
         internal WeaponTuning Tuning(int slot) => Definition(slot)?.Tuning ?? _fallback;
         internal int Capacity(int slot) => Tuning(slot).Magazine + Tuning(slot).MagazinePerLevel * (_upgrades?.Level(UpgradeId.ExtendedMagazine) ?? 0);
-        internal float DamageFor(int slot) => Tuning(slot).Damage * (1f + Bonus(UpgradeId.OverclockedReceiver));
+        internal float BaseDamage(WeaponDefinition definition) => (definition?.Tuning ?? _fallback).Damage * (1f + Bonus(UpgradeId.OverclockedReceiver));
+        internal float DamageFor(int slot) => BaseDamage(Definition(slot));
+        internal float PelletsFor(int slot) => Instance(slot)?.Modifier(WeaponModifier.SlugConversion) is > 0f and var slug ? slug : Tuning(slot).Pellets;
         internal float ReloadFor(int slot) => Mathf.Max(0.05f, Tuning(slot).Reload * (1f - Bonus(UpgradeId.RapidService)));
         internal float CycleSeconds(int slot, TemporalMode mode) => (float)(Tuning(slot).Interval + Tuning(slot).Charge) / CycleMultiplier(mode);
         internal float ChargeSeconds(int slot, TemporalMode mode) => Tuning(slot).Charge / CycleMultiplier(mode);
@@ -67,7 +170,7 @@ namespace Overtime
 
         internal bool EquipSecondary(WeaponDefinition definition)
         {
-            if (definition == null || _secondary != null)
+            if (_instanceLoadout || definition == null || _secondary != null)
             {
                 return false;
             }
@@ -126,7 +229,16 @@ namespace Overtime
         internal void ResetState()
         {
             _state = default;
+            _ammoPickups.Clear();
+            _collectedAmmo = default;
             _state.Primary = StartingState(0);
+            if (_instanceLoadout)
+            {
+                _state.PrimaryId = _first.InstanceId;
+                _state.SecondaryId = _second?.InstanceId ?? 0;
+                _state.Stock.Add(_first.Definition.Id, _first.Definition.Tuning.Reserve);
+            }
+
             if (HasSecondary)
             {
                 _state.Secondary = StartingState(1);
@@ -137,7 +249,18 @@ namespace Overtime
 
         internal void Restore(in Snapshot snapshot)
         {
+            if (_instanceLoadout && (snapshot.PrimaryId != _first.InstanceId || snapshot.SecondaryId != (_second?.InstanceId ?? 0)))
+            {
+                return;
+            }
+
             _state = snapshot;
+            if (_instanceLoadout)
+            {
+                _state.Stock.Reconcile(_collectedAmmo, _state.AmmoWatermark);
+                _state.AmmoWatermark = _collectedAmmo;
+            }
+
             LastShotBoosted = false;
         }
 
@@ -171,11 +294,11 @@ namespace Overtime
                 weapon.ReloadRemaining = Math.Max(0d, weapon.ReloadRemaining - step);
                 if (weapon.ReloadRemaining <= Tolerance)
                 {
-                    TransferReserve(ref weapon, weapon.Reserve, oldSlot);
+                    TransferReserve(ref weapon, ReserveFor(oldSlot), oldSlot);
                     weapon.ReloadRemaining = 0d;
                 }
             }
-            else if (canShoot && (reload || weapon.Magazine == 0) && weapon.Magazine < Capacity(oldSlot) && weapon.Reserve > 0)
+            else if (canShoot && (reload || weapon.Magazine == 0) && weapon.Magazine < Capacity(oldSlot) && ReserveFor(oldSlot) > 0)
             {
                 weapon.ChargeElapsed = 0d;
                 weapon.ReloadDuration = ReloadFor(oldSlot);
@@ -189,9 +312,12 @@ namespace Overtime
                 WeaponType.SemiAutomatic => fire,
                 _ => fire || fireHeld
             };
-            if (!canShoot || !trigger || IsReloading || weapon.Magazine <= 0)
+            var burst = Instance(oldSlot)?.Modifier(WeaponModifier.BurstModule) ?? 0f;
+            var queued = weapon.BurstLeft > 0;
+            if (!canShoot || (!trigger && !queued) || IsReloading || weapon.Magazine <= 0)
             {
                 weapon.ChargeElapsed = 0d;
+                weapon.BurstLeft = 0;
                 return;
             }
 
@@ -208,13 +334,33 @@ namespace Overtime
 
             var cycleMultiplier = CycleMultiplier(mode);
             var carriedTime = tuning.Charge > 0f ? (weapon.ChargeElapsed - tuning.Charge) / cycleMultiplier : cooldown > 0d ? Math.Max(0d, step - cooldown) : 0d;
-            weapon.Cooldown = Math.Max(0d, tuning.Interval / cycleMultiplier - carriedTime);
+            if (burst > 0f)
+            {
+                weapon.BurstLeft = queued ? weapon.BurstLeft - 1 : 2;
+            }
+
+            var interval = weapon.BurstLeft > 0 ? burst : tuning.Interval;
+            weapon.Cooldown = Math.Max(0d, interval / cycleMultiplier - carriedTime);
             weapon.ChargeElapsed = 0d;
             weapon.Magazine--;
+            if (weapon.Magazine == 0)
+            {
+                weapon.BurstLeft = 0;
+            }
+
+            if (PrecisionReady)
+            {
+                _state.AimSeconds = 0f;
+            }
+
             LastShotBoosted = HasQueuedBoost;
             _effects?.ConfirmShot();
             var recoil = ActiveDefinition?.GameplayRecoil ?? _fallbackRecoil;
-            camera?.AddRecoil(recoil.Impulse(weapon.RecoilIndex), recoil.Duration);
+            var aimRecoil = Mathf.Lerp(1f, (ActiveDefinition?.Aim.Recoil ?? 1f) * (1f - Bonus(UpgradeId.FocusProtocol)), AimBlend);
+            var stabilizer = Instance(oldSlot)?.Modifier(WeaponModifier.GyroscopicStabilizer) ?? 0f;
+            var impulse = recoil.Impulse(weapon.RecoilIndex, 1f - stabilizer);
+            impulse.x *= 1f - stabilizer;
+            camera?.AddRecoil(impulse * aimRecoil, recoil.Duration);
             weapon.RecoilIndex++;
             weapon.RecoilIdle = Mathf.Max(0.38f, (float)tuning.Interval + tuning.Charge + 0.15f);
             ShotFired?.Invoke();
@@ -258,11 +404,14 @@ namespace Overtime
 
             ActiveState().ReloadRemaining = 0d;
             ActiveState().ChargeElapsed = 0d;
+            ActiveState().BurstLeft = 0;
             _state.SwitchTarget = target;
             _state.SwitchRemaining = _switchSeconds;
             SwitchStarted?.Invoke();
             return true;
         }
+
+        private bool PrecisionReady => _state.AimSeconds >= 0.99999f && Bonus(UpgradeId.PrecisionLock) > 0f;
 
         private bool TryFire(Ray aim, Vector3 aimUp, TemporalProjectileEmitter projectiles, TemporalMode mode, WeaponTuning tuning, bool lastRound)
         {
@@ -278,9 +427,21 @@ namespace Overtime
             var hypervelocity = mode == TemporalMode.BulletTime && Bonus(UpgradeId.Hypervelocity) > 0f;
             var terminal = _upgrades?.Definition(UpgradeId.TerminalBallistics);
             var close = _upgrades?.Definition(UpgradeId.CloseQuarters);
-            var ricochet = Bonus(UpgradeId.RicochetMatrix);
-            var flight = new ProjectileBallistics(ActiveDefinition?.Id ?? WeaponId.Compliance, Mathf.Min(4, tuning.Targets + Mathf.RoundToInt(Bonus(UpgradeId.PenetrationProtocol))), ricochet > 0f ? 1 : 0, tuning.PenetrationRetention, ricochet, terminal?.Magnitude ?? 0f, terminal?.Limit ?? 0f, close?.Magnitude ?? 0f, close?.Radius ?? 0f);
-            if (!projectiles.TryLaunchVolley(aim, aimUp, tuning.Muzzle, ProjectileSpeed(mode), tuning.Lifetime, tuning.Range, tuning.Radius, damage, _hitLayers, HasQueuedBoost, hypervelocity, flight, tuning.Pellets, tuning.Spread, twin ? twinDamage : 0f, TwinOffset))
+            var instance = Instance(ActiveSlot);
+            var chamber = instance?.Modifier(WeaponModifier.RicochetChamber) ?? 0f;
+            var matrix = Bonus(UpgradeId.RicochetMatrix);
+            var reflection = Mathf.Max(chamber, matrix);
+            var ricochets = (chamber > 0f ? 1 : 0) + (matrix > 0f ? 1 : 0);
+            var targets = Mathf.Min(4, tuning.Targets + Mathf.RoundToInt(Bonus(UpgradeId.PenetrationProtocol)) + (PrecisionReady ? 1 : 0));
+            var slug = instance?.Modifier(WeaponModifier.SlugConversion) ?? 0f;
+            var overload = lastRound ? instance?.Modifier(WeaponModifier.OverloadCell) ?? 0f : 0f;
+            var effects = new ProjectileBallistics(ActiveDefinition?.Id ?? WeaponId.Compliance, targets, ricochets, tuning.PenetrationRetention, reflection, terminal?.Magnitude ?? 0f, terminal?.Limit ?? 0f, close?.Magnitude ?? 0f, close?.Radius ?? 0f, instance?.Modifier(WeaponModifier.Splitter) ?? 0f, instance?.Modifier(WeaponModifier.ExplosiveCore) ?? 0f, instance?.Modifier(WeaponModifier.CryoPayload) ?? 0f, instance?.Modifier(WeaponModifier.PhaseAccelerator) ?? 0f, overload > 0f);
+            var pellets = slug > 0f ? 1 : tuning.Pellets;
+            var radius = slug > 0f ? tuning.Radius * 1.45f : tuning.Radius;
+            var spread = slug > 0f ? 0f : tuning.Spread * AimSpread;
+            var fan = instance?.Modifier(WeaponModifier.FanOutput) ?? 0f;
+            damage *= Mathf.Max(1f, slug) * Mathf.Max(1f, overload);
+            if (!projectiles.TryLaunchVolley(aim, aimUp, tuning.Muzzle, ProjectileSpeed(mode), tuning.Lifetime, tuning.Range, radius, damage, _hitLayers, HasQueuedBoost, hypervelocity, effects, pellets, spread, twin ? twinDamage : 0f, TwinOffset, fan))
             {
                 return false;
             }
@@ -319,22 +480,71 @@ namespace Overtime
 
         private int TransferReserve(ref WeaponState weapon, int rounds, int slot)
         {
-            var transferred = Mathf.Clamp(rounds, 0, Mathf.Max(0, Mathf.Min(Capacity(slot) - weapon.Magazine, weapon.Reserve)));
+            var transferred = Mathf.Clamp(rounds, 0, Mathf.Max(0, Mathf.Min(Capacity(slot) - weapon.Magazine, ReserveFor(slot))));
             weapon.Magazine += transferred;
-            weapon.Reserve -= transferred;
+            if (_instanceLoadout)
+            {
+                _state.Stock.Add(Definition(slot).Id, -transferred);
+            }
+            else
+            {
+                weapon.Reserve -= transferred;
+            }
+
             return transferred;
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         internal void DebugEquip(WeaponDefinition definition)
         {
+            if (_instanceLoadout)
+            {
+                if (definition != null)
+                {
+                    var id = -(int)definition.Id - 2;
+                    if (Instance(0)?.InstanceId == id || Instance(1)?.InstanceId == id)
+                    {
+                        DebugActivate(Instance(0)?.InstanceId == id ? 0 : 1);
+                        return;
+                    }
+
+                    DebugEquipInstance(new WeaponInstance(id, definition, WeaponRarity.Common));
+                }
+
+                return;
+            }
+
             _secondary = definition;
             _state.Secondary = StartingState(1);
             DebugActivate(1);
         }
 
+        internal void DebugEquipInstance(WeaponInstance instance)
+        {
+            var slot = HasSecondary ? ActiveSlot : 1;
+            CollectWeapon(instance);
+            DebugActivate(slot);
+        }
+
+        internal void DebugSetAmmo(WeaponId type, int amount)
+        {
+            _state.Stock.Add(type, Mathf.Max(0, amount) - Ammo(type));
+        }
+
         internal void DebugRefill()
         {
+            if (_instanceLoadout)
+            {
+                for (var slot = 0; slot < (HasSecondary ? 2 : 1); slot++)
+                {
+                    StateAt(slot).Magazine = Capacity(slot);
+                    var definition = Definition(slot);
+                    DebugSetAmmo(definition.Id, definition.Tuning.Reserve);
+                }
+
+                return;
+            }
+
             _state.Primary.Magazine = Capacity(0);
             _state.Primary.Reserve = Tuning(0).Reserve;
             if (HasSecondary)
@@ -361,6 +571,13 @@ namespace Overtime
             internal int SwitchTarget;
             internal double SwitchRemaining;
             internal int TwinCount;
+            internal int PrimaryId;
+            internal int SecondaryId;
+            internal float AimBlend;
+            internal float AimSeconds;
+            internal bool Aiming;
+            internal AmmoStock Stock;
+            internal AmmoStock AmmoWatermark;
 
             internal WeaponState Active => ActiveSlot == 0 ? Primary : Secondary;
             internal int Magazine => Active.Magazine;
@@ -380,8 +597,10 @@ namespace Overtime
         internal readonly bool FromPlayer;
         internal readonly bool Ricochet;
         internal readonly bool Piercing;
+        internal readonly bool Melee;
+        internal readonly bool Explosion;
 
-        internal ProjectileImpact(Vector3 point, Vector3 normal, DamageResult damage, bool weakPoint, bool shielded, bool fromPlayer, bool ricochet = false, bool piercing = false)
+        internal ProjectileImpact(Vector3 point, Vector3 normal, DamageResult damage, bool weakPoint, bool shielded, bool fromPlayer, bool ricochet = false, bool piercing = false, bool melee = false, bool explosion = false)
         {
             Point = point;
             Normal = normal;
@@ -391,6 +610,8 @@ namespace Overtime
             FromPlayer = fromPlayer;
             Ricochet = ricochet;
             Piercing = piercing;
+            Melee = melee;
+            Explosion = explosion;
         }
     }
 }

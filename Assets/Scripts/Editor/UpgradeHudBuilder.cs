@@ -81,6 +81,21 @@ namespace Overtime.Editor
             return card;
         }
 
+        internal void BuildLootHud(PlaygroundHud movement)
+        {
+            var root = movement.transform;
+            if (root.Find("Loot Interaction") != null)
+            {
+                return;
+            }
+
+            var hint = CenterLabel("Loot Interaction", root, new Vector2(0f, -164f), new Vector2(930f, 155f), string.Empty, 23f, s_paper);
+            hint.raycastTarget = false;
+            var ammo = CenterLabel("Ammo Pickup Notice", root, new Vector2(0f, -240f), new Vector2(340f, 37f), string.Empty, 24f, s_cyan);
+            ammo.raycastTarget = false;
+            PlaygroundSceneBuilder.Wire(root.GetComponent<CombatHud>(), "_lootHint", hint, "_ammoNotice", ammo);
+        }
+
         internal void ExtendRunInspection(PlaygroundHud movement)
         {
             var hud = movement.GetComponent<RunBuildHud>();
@@ -111,21 +126,26 @@ namespace Overtime.Editor
                 timer.rectTransform.anchoredPosition += Vector2.up * 32f;
             }
 
-            timers.arraySize = 7;
-            timers.GetArrayElementAtIndex(6).objectReferenceValue = Label("Exchange Timer", strip, new Vector2(0f, 147f), new Vector2(108f, 19f), string.Empty, 14f, s_cyan);
+            if (timers.arraySize < 7)
+            {
+                timers.arraySize = 7;
+                timers.GetArrayElementAtIndex(6).objectReferenceValue = Label("Exchange Timer", strip, new Vector2(0f, 147f), new Vector2(108f, 19f), string.Empty, 14f, s_cyan);
+            }
             var weapon = (TMP_Text)data.FindProperty("_weaponStats").objectReferenceValue;
             weapon.name = "Effective Weapon Stats";
             weapon.fontSize = 18f;
-            weapon.rectTransform.anchoredPosition = new Vector2(28f, 611f);
-            weapon.rectTransform.sizeDelta = new Vector2(1184f, 51f);
+            weapon.rectTransform.anchoredPosition = new Vector2(28f, 575f);
+            weapon.rectTransform.sizeDelta = new Vector2(1184f, 87f);
             var chrono = (TMP_Text)data.FindProperty("_chronoStats").objectReferenceValue;
             chrono.fontSize = 18f;
-            chrono.rectTransform.anchoredPosition = new Vector2(28f, 581f);
-            ((RectTransform)weapon.transform.parent.Find("Build Divider")).anchoredPosition = new Vector2(28f, 568f);
+            chrono.rectTransform.anchoredPosition = new Vector2(28f, 550f);
+            ((RectTransform)weapon.transform.parent.Find("Build Divider")).anchoredPosition = new Vector2(28f, 540f);
             var columns = data.FindProperty("_columns");
             for (var index = 0; index < columns.arraySize; index++)
             {
-                ((TMP_Text)columns.GetArrayElementAtIndex(index).objectReferenceValue).fontSize = 15f;
+                var column = (TMP_Text)columns.GetArrayElementAtIndex(index).objectReferenceValue;
+                column.fontSize = 15f;
+                column.rectTransform.sizeDelta = new Vector2(585f, 516f);
             }
 
             data.ApplyModifiedPropertiesWithoutUndo();

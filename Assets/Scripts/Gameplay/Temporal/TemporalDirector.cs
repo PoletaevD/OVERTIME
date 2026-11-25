@@ -51,6 +51,7 @@ namespace Overtime
         private bool _pendingJump;
         private bool _pendingFire;
         private bool _pendingReload;
+        private bool _pendingMelee;
         private WeaponSlotInput _pendingWeapon;
         private bool _pendingRecharge;
         private bool _playerChangedBetweenSteps;
@@ -78,12 +79,24 @@ namespace Overtime
         internal TemporalProjectileEmitter PlayerProjectiles => _playerProjectiles;
         internal bool ReducedMotion => _player.ReducedMotion;
         internal bool RewardSelection => _rewardSelection;
+        internal string LootHint => _sector == null ? string.Empty : _sector.LootHint;
         internal IReadOnlyList<TemporalActor> WorldActors => _worldActors;
         internal int DynamicColliderCount => _collision?.Count ?? 0;
         internal SecurityEnemy[] CurrentEnemies => _sector != null ? _sector.Current.Enemies : Array.Empty<SecurityEnemy>();
 
         internal ChronoEnergy Energy => _energy;
-        internal float EnergyCost => _energy.Cost(Mode);
+        internal float EnergyCost => ModeCost(Mode);
+
+        private float ModeCost(TemporalMode mode)
+        {
+            var cost = _energy?.Cost(mode) ?? 0f;
+            if (mode == TemporalMode.BulletTime && _player.Combat?.Weapon.Aiming == true)
+            {
+                cost *= 1f - (_progression?.Build.Bonus(UpgradeId.SteadyProcessing) ?? 0f);
+            }
+
+            return cost;
+        }
         internal CapsuleCollider PlayerCapsule => _player.Capsule;
         internal bool HasLivingPlayer => _player.Combat is { Alive: true, GameOver: false };
         internal bool CanRecharge => _rechargeStation != null && (_rechargeStation.position - _player.transform.position).sqrMagnitude <= _rechargeRadius * _rechargeRadius;
@@ -178,6 +191,7 @@ namespace Overtime
             {
                 ChangeMode(TemporalMode.Normal, TemporalExitReason.FocusLost);
                 ClearPendingInput();
+                _player.Combat?.Weapon.AdvanceAim((float)realElapsed, false, true);
                 ResolveRecovery(realElapsed);
                 return false;
             }
@@ -200,6 +214,7 @@ namespace Overtime
                 _pendingJump |= input.JumpPressed;
                 _pendingFire |= CanAffectWorld && input.FirePressed;
                 _pendingReload |= input.ReloadPressed;
+                _pendingMelee |= CanAffectWorld && input.MeleePressed;
                 if (input.WeaponSelection != WeaponSlotInput.None && Mode != TemporalMode.Override)
                 {
                     _pendingWeapon = input.WeaponSelection;
@@ -219,7 +234,7 @@ namespace Overtime
             {
                 var room = _sector.Current;
                 var state = room.State;
-                _sector.Advance(realElapsed);
+                _sector.Advance(realElapsed, input.InteractPressed);
                 if (room.State != state)
                 {
                     _exhaustedButtons |= input.Selection.Held;
@@ -233,6 +248,11 @@ namespace Overtime
 
         private TemporalMode SelectMode(TemporalSelection selection)
         {
+            if (_sector?.InPassage == true)
+            {
+                return TemporalMode.Normal;
+            }
+
             var excluded = _exhaustedButtons;
             while (true)
             {
@@ -405,7 +425,7 @@ namespace Overtime
                     _ => double.PositiveInfinity
                 };
                 var unitsPerSecond = mode == TemporalMode.BulletTime ? realPerSimulatedSecond : mode == TemporalMode.Override ? WorldTimeline.Rate : PlayerTimeline.Rate;
-                var costPerSecond = (_energy?.Cost(mode) ?? 0f) * unitsPerSecond;
+                var costPerSecond = ModeCost(mode) * unitsPerSecond;
                 var affordable = _energy?.Affordable(costPerSecond) ?? double.PositiveInfinity;
                 var slice = Math.Max(0d, Math.Min(elapsed, Math.Min(availableHistory, affordable)));
 
@@ -550,13 +570,16 @@ namespace Overtime
                         if (_player.Combat?.Alive != false)
                         {
                             _progression?.PlayerEffects.Simulate(Step, Mode != TemporalMode.Override);
-                            _player.Simulate(input.Move, look, _pendingJump, input.JumpHeld && !_blockJumpHold, Step);
+                            PreparePlayerCombat(input.AimHeld);
+                            var weapon = _player.Combat?.Weapon;
+                            _player.Simulate(input.Move * (weapon?.AimMovement ?? 1f), look * (weapon?.AimSensitivity ?? 1f), _pendingJump, input.JumpHeld && !_blockJumpHold, Step);
                             SimulatePlayerCombat(input.FireHeld);
                         }
 
                         _pendingJump = false;
                         _pendingFire = false;
                         _pendingReload = false;
+                        _pendingMelee = false;
                         _pendingWeapon = WeaponSlotInput.None;
                         _pendingRecharge = false;
                         _playerFrames[PlayerTimeline.RecordNext()] = _player.Capture();
@@ -594,6 +617,23 @@ namespace Overtime
             }
         }
 
+        private void PreparePlayerCombat(bool aimHeld)
+        {
+            if (_player.Combat is not { } combat)
+            {
+                return;
+            }
+
+            var weapon = combat.Weapon;
+            if (combat.Knife.Begin(_pendingMelee, CanAffectWorld))
+            {
+                weapon.CancelHandling();
+            }
+
+            var blocked = combat.Knife.Active || !CanAffectWorld || _pendingReload || _pendingWeapon != WeaponSlotInput.None || _player.Motor.Transitioning;
+            weapon.AdvanceAim(Step, aimHeld, blocked);
+        }
+
         private void SimulatePlayerCombat(bool fireHeld)
         {
             if (_player.Combat != null)
@@ -601,6 +641,14 @@ namespace Overtime
                 if (_pendingRecharge && CanAffectWorld && CanRecharge)
                 {
                     _energy.Recharge();
+                }
+
+                var knife = _player.Combat.Knife;
+                var swinging = knife.Active;
+                knife.Advance(Step, CanAffectWorld, _player.AimRay, this, _progression?.PlayerEffects);
+                if (swinging)
+                {
+                    return;
                 }
 
                 var generation = _playerProjectiles.Generation;
@@ -617,7 +665,7 @@ namespace Overtime
             }
         }
 
-        internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, float amount, out bool weakPoint)
+        internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, float amount, out bool weakPoint, bool melee = false)
         {
             weakPoint = false;
             if (!CanDamageWorld)
@@ -627,10 +675,27 @@ namespace Overtime
 
             var damage = target.Hit(hit, amount, _player.ReducedMotion, out weakPoint);
             _worldChangedBetweenSteps |= damage.Amount > 0;
+            if (melee && damage.Amount > 0 && !IsPlayerProtected)
+            {
+                _progression?.PlayerEffects.ConfirmMeleeContact();
+                _playerChangedBetweenSteps = true;
+            }
+
             if (damage.Killed)
             {
                 var reward = _sector?.Generated == true && target is SecurityEnemy enemy ? _sector.KillEnergy(enemy.Kind) : (float?)null;
-                _energy?.Reward(target.RewardId, reward);
+                var bonus = melee ? _progression?.Build.Bonus(UpgradeId.BloodBattery) ?? 0f : 0f;
+                var first = _energy?.Reward(target.RewardId, reward, bonus) == true;
+                if (melee && first && _progression != null)
+                {
+                    var heal = Mathf.RoundToInt(_progression.Build.Bonus(UpgradeId.SurgicalStrike));
+                    if (heal > 0)
+                    {
+                        _player.Combat.Health.Restore(_player.Combat.Health.Current + heal);
+                    }
+
+                    _sector?.TryEmergencyAmmo(hit.transform.position);
+                }
             }
 
             return damage;
@@ -755,7 +820,7 @@ namespace Overtime
 
         internal void DetachEncounter()
         {
-            ClearEncounterHistory();
+            ClearEncounterHistory(true);
             foreach (var actor in _worldActors)
             {
                 if (actor != _sector.EnemyProjectiles)
@@ -811,13 +876,13 @@ namespace Overtime
             RecordBaseline();
         }
 
-        private void ClearEncounterHistory()
+        private void ClearEncounterHistory(bool releaseRecordedOwners = false)
         {
             ChangeMode(TemporalMode.Normal, TemporalExitReason.Service);
             ClearPendingInput();
             _projectileCredit = 0d;
-            _playerProjectiles?.ClearProjectiles();
-            _sector?.EnemyProjectiles.ClearProjectiles();
+            _playerProjectiles?.ClearProjectiles(releaseRecordedOwners);
+            _sector?.EnemyProjectiles.ClearProjectiles(releaseRecordedOwners);
 
             PlayerTimeline.Clear();
             WorldTimeline.Clear();
@@ -836,6 +901,11 @@ namespace Overtime
         {
             ClearPendingInput();
             _rewardSelection = active;
+            if (active)
+            {
+                _player.Combat?.Weapon.AdvanceAim(1f, false, true);
+            }
+
             _player.SetRewardSelection(active);
         }
 
@@ -894,6 +964,7 @@ namespace Overtime
             _pendingJump = false;
             _pendingFire = false;
             _pendingReload = false;
+            _pendingMelee = false;
             _pendingWeapon = WeaponSlotInput.None;
             _pendingRecharge = false;
         }
@@ -967,6 +1038,9 @@ namespace Overtime
         internal bool FirePressed { get; }
         internal bool FireHeld { get; }
         internal bool ReloadPressed { get; }
+        internal bool InteractPressed { get; }
+        internal bool MeleePressed { get; }
+        internal bool AimHeld { get; }
         internal bool RechargePressed { get; }
         internal WeaponSlotInput WeaponSelection { get; }
         internal TemporalSelection Selection { get; }
@@ -975,7 +1049,7 @@ namespace Overtime
 
         private readonly bool _unfocused;
 
-        internal TemporalInput(Vector2 move, Vector2 look, bool jumpPressed, bool jumpHeld, bool firePressed, TemporalSelection selection, bool debugReset = false, bool focused = true, bool fireHeld = false, bool reloadPressed = false, bool rechargePressed = false, WeaponSlotInput weaponSelection = WeaponSlotInput.None)
+        internal TemporalInput(Vector2 move, Vector2 look, bool jumpPressed, bool jumpHeld, bool firePressed, TemporalSelection selection, bool debugReset = false, bool focused = true, bool fireHeld = false, bool reloadPressed = false, bool rechargePressed = false, WeaponSlotInput weaponSelection = WeaponSlotInput.None, bool interactPressed = false, bool meleePressed = false, bool aimHeld = false)
         {
             Move = move;
             Look = look;
@@ -984,6 +1058,9 @@ namespace Overtime
             FirePressed = firePressed;
             FireHeld = fireHeld;
             ReloadPressed = reloadPressed;
+            InteractPressed = interactPressed;
+            MeleePressed = meleePressed;
+            AimHeld = aimHeld;
             RechargePressed = rechargePressed;
             WeaponSelection = weaponSelection;
             Selection = selection;

@@ -49,6 +49,18 @@ MonoBehaviour:
     - {x: 0.34, y: 0.6}
     - {x: -0.93, y: 0.2}
     - {x: -0.43, y: -0.7}
+  _aim:
+    _position: {x: -0.31, y: 0.205, z: -0.04}
+    _rotation: {x: 0, y: 0, z: 0}
+    _fieldOfView: 63
+    _transition: 0.19
+    _sensitivity: 0.72
+    _movement: 0.81
+    _spread: 0.51
+    _recoil: 0.84
+    _frontSight: {x: 0, y: 0.096, z: 0.373}
+    _rearSight: {x: 0, y: 0.094, z: -0.102}
+    _eyeRelief: 0.23
   _viewmodelRecoil:
     _positionStiffness: 520
     _positionDamping: 30

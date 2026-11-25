@@ -23,9 +23,25 @@ namespace Overtime.Tests
         [UnitySetUp]
         public IEnumerator LoadRoute()
         {
+            SceneManager.sceneLoaded += BindLegacyFlow;
             yield return SceneManager.LoadSceneAsync("Security Route Stage 05A.1", LoadSceneMode.Single);
             yield return null;
             Bind();
+        }
+
+        [TearDown]
+        public void RestorePlayableFlow()
+        {
+            SceneManager.sceneLoaded -= BindLegacyFlow;
+        }
+
+        private void BindLegacyFlow(Scene scene, LoadSceneMode mode)
+        {
+            var route = Object.FindAnyObjectByType<SectorRoute>();
+            if (route != null)
+            {
+                route.DebugUseLegacyFlow();
+            }
         }
 
         [UnityTest]
@@ -542,6 +558,7 @@ namespace Overtime.Tests
                 Assert.That(_route.Current, Is.SameAs(room));
                 Assert.That(_route.ConfirmUpgrade(0), Is.True);
                 Assert.That(_route.ConfirmUpgrade(0), Is.False);
+                batteryLevel = _route.Progression.Build.Level(battery.Id);
 
                 if (index is 0 or 2)
                 {

@@ -13,6 +13,7 @@ namespace Overtime
         private Tween _slide;
         private Vector3 _closed;
         private bool _initialized;
+        private float _clearanceRemaining;
 
         internal void SetOpen(bool open, bool reducedMotion)
         {
@@ -24,6 +25,7 @@ namespace Overtime
 
             _barrier.enabled = !open || (_waitForClearance && !reducedMotion);
             _slide?.Kill();
+            _clearanceRemaining = open && _waitForClearance && !reducedMotion ? 0.32f : 0f;
             var position = open ? _closed + _travel : _closed;
             if (reducedMotion)
             {
@@ -32,9 +34,19 @@ namespace Overtime
             }
 
             _slide = _panel.DOLocalMove(position, 0.32f).SetUpdate(true).SetEase(Ease.OutCubic);
-            if (open && _waitForClearance)
+        }
+
+        private void Update()
+        {
+            if (_clearanceRemaining <= 0f)
             {
-                _slide.OnComplete(() => _barrier.enabled = false);
+                return;
+            }
+
+            _clearanceRemaining -= Time.unscaledDeltaTime;
+            if (_clearanceRemaining <= 0f)
+            {
+                _barrier.enabled = false;
             }
         }
 

@@ -17,6 +17,10 @@ namespace Overtime
         private AudioClip _swap;
         private AudioClip _ricochet;
         private AudioClip _pierce;
+        private AudioClip _pickup;
+        private AudioClip _knife;
+        private AudioClip _knifeHit;
+        private AudioClip _explosion;
         private AudioSource _handling;
         private Vector3 _lastImpactPoint;
         private float _lastImpactTime = -1f;
@@ -54,6 +58,10 @@ namespace Overtime
             _swap = BuildClip("Loadout Exchange", 0.19f, 210f, 480f, 0.61f, 3.1f);
             _ricochet = BuildClip("Bolt Ricochet", 0.14f, 1570f, 850f, 0.11f, 2.8f);
             _pierce = BuildClip("Piercing Impact", 0.12f, 319f, 121f, 0.6f, 3.6f);
+            _pickup = BuildClip("Ammo Pickup", 0.15f, 710f, 1670f, 0.08f, 2f);
+            _knife = BuildClip("Knife Sweep", 0.16f, 310f, 95f, 0.9f, 2.8f);
+            _knifeHit = BuildClip("Knife Strike", 0.12f, 225f, 85f, 0.48f, 3.5f);
+            _explosion = BuildClip("Payload Detonation", 0.20f, 150f, 58f, 0.71f, 3.8f);
         }
 
         private void OnEnable()
@@ -61,6 +69,8 @@ namespace Overtime
             _player.Combat.Weapon.ShotFired += OnShot;
             _player.Combat.Weapon.AutoFed += OnFeed;
             _player.Combat.Weapon.SwitchStarted += OnSwitch;
+            _player.Combat.Weapon.AmmoCollected += OnPickup;
+            _player.Combat.Knife.Started += OnKnife;
             _director.ProjectileHit += OnImpact;
             _director.AuditorCharging += OnCharge;
         }
@@ -70,6 +80,8 @@ namespace Overtime
             _player.Combat.Weapon.ShotFired -= OnShot;
             _player.Combat.Weapon.AutoFed -= OnFeed;
             _player.Combat.Weapon.SwitchStarted -= OnSwitch;
+            _player.Combat.Weapon.AmmoCollected -= OnPickup;
+            _player.Combat.Knife.Started -= OnKnife;
             _handling.Stop();
             _director.ProjectileHit -= OnImpact;
             _director.AuditorCharging -= OnCharge;
@@ -85,7 +97,22 @@ namespace Overtime
             Destroy(_swap);
             Destroy(_ricochet);
             Destroy(_pierce);
+            Destroy(_pickup);
+            Destroy(_knife);
+            Destroy(_knifeHit);
+            Destroy(_explosion);
             Destroy(_voicePool);
+        }
+
+        private void OnPickup(int amount)
+        {
+            _weapon.PlayOneShot(_pickup, 0.31f);
+        }
+
+        private void OnKnife()
+        {
+            _handling.Stop();
+            _weapon.PlayOneShot(_knife, 0.43f);
         }
 
         private void OnShot()
@@ -136,6 +163,12 @@ namespace Overtime
 
         private void OnImpact(ProjectileImpact impact)
         {
+            if (impact.Explosion)
+            {
+                PlayAt(_explosion, impact.Point, 0.39f);
+                return;
+            }
+
             var now = Time.unscaledTime;
             if (impact.FromPlayer && !impact.Ricochet && !impact.Piercing && now - _lastImpactTime < 0.055f && impact.Shielded == _lastImpactShielded && (impact.Point - _lastImpactPoint).sqrMagnitude < 0.8f)
             {
@@ -149,7 +182,7 @@ namespace Overtime
                 _lastImpactShielded = impact.Shielded;
             }
 
-            var clip = impact.Shielded ? _shield : impact.Ricochet ? _ricochet : impact.Piercing ? _pierce : _impact;
+            var clip = impact.Shielded ? _shield : impact.Ricochet ? _ricochet : impact.Piercing ? _pierce : impact.Melee ? _knifeHit : _impact;
             PlayAt(clip, impact.Point, impact.Shielded ? 0.50f : 0.27f);
         }
 

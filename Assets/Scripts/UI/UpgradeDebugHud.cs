@@ -21,6 +21,15 @@ namespace Overtime
         private Vector2 _scroll;
         private Vector2 _weaponScroll;
         private bool _tuneRecoil;
+        private int _lootType;
+        private int _lootRarity;
+        private int _lootModifiers;
+        private string _lootSeed;
+        private string _rounds = "12";
+        private bool _showLoot;
+        private static readonly string[] s_weaponTypes = System.Enum.GetNames(typeof(WeaponId));
+        private static readonly string[] s_rarities = System.Enum.GetNames(typeof(WeaponRarity));
+        private static readonly string[] s_modifiers = System.Enum.GetNames(typeof(WeaponModifier));
 
         internal void Initialize(SectorRoute route, TemporalDirector director, PlaygroundPlayer player)
         {
@@ -28,6 +37,7 @@ namespace Overtime
             _director = director;
             _player = player;
             _seed = route.Progression.Seed.ToString();
+            _lootSeed = _seed;
         }
 
         private void Update()
@@ -153,8 +163,94 @@ namespace Overtime
             GUILayout.Label("F9 / F10 / F11  Equip   HOME  Slot   END  Restock");
             GUILayout.Label("PGUP/DOWN  Browse   ENTER  Grant   O  Offer   F5  Restart");
             DrawRecoil(gun);
+            if (_route.Seamless)
+            {
+                DrawLoot(gun);
+            }
+
             GUILayout.EndScrollView();
             GUILayout.EndArea();
+        }
+
+        private void DrawLoot(CombatWeapon gun)
+        {
+            _showLoot = GUILayout.Toggle(_showLoot, "Stage 05A.2 loot, aim and knife");
+            if (!_showLoot)
+            {
+                return;
+            }
+
+            var frame = gun.Capture();
+            var knife = _player.Combat.Knife.State;
+            var aim = _player.AimRay;
+            GUILayout.Label($"Player frame {frame.PrimaryId} / {frame.SecondaryId}    BURST {frame.Active.BurstLeft}    ADS {frame.AimBlend:F2} / {frame.AimSeconds:F2}s");
+            GUILayout.Label($"KNIFE {knife.Elapsed:F3}s   active {knife.Active}   resolved {knife.Resolved}");
+            GUILayout.Label($"AIM {aim.origin:F2} → {aim.direction:F3}");
+            var pool = _director.PlayerProjectiles;
+            for (var slot = 0; slot < pool.PoolCapacity; slot++)
+            {
+                if (pool.TryReadFlight(slot, out var shot, out var speed, out var split))
+                {
+                    GUILayout.Label($"WORLD BOLT {slot}   {speed:F1} m/s   split {split}   {shot.direction:F3}");
+                    Debug.DrawRay(shot.origin, shot.direction, Color.magenta);
+                    break;
+                }
+            }
+
+            Debug.DrawRay(aim.origin, aim.direction * 10f, Color.cyan);
+            var definition = gun.ActiveDefinition;
+            var fov = definition.Aim.FieldOfView(definition.Type);
+            var adjusted = Slider("ADS field of view", fov, 38f, 72f);
+            if (!Mathf.Approximately(adjusted, fov))
+            {
+                definition.Aim.DebugFov = adjusted;
+            }
+
+            _lootType = GUILayout.SelectionGrid(_lootType, s_weaponTypes, 4);
+            _lootRarity = GUILayout.SelectionGrid(_lootRarity, s_rarities, 4);
+            GUILayout.Label("Select modifiers, or leave all clear for a random roll");
+            for (var index = 0; index < s_modifiers.Length; index++)
+            {
+                var bit = 1 << index;
+                var enabled = GUILayout.Toggle((_lootModifiers & bit) != 0, s_modifiers[index]);
+                _lootModifiers = enabled ? _lootModifiers | bit : _lootModifiers & ~bit;
+            }
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Loot seed");
+            _lootSeed = GUILayout.TextField(_lootSeed);
+            if (int.TryParse(_lootSeed, out var seed))
+            {
+                if (GUILayout.Button("Spawn"))
+                {
+                    _route.DebugLootWeapon((WeaponId)_lootType, (WeaponRarity)_lootRarity, _lootModifiers, seed, false);
+                }
+
+                if (GUILayout.Button("Equip"))
+                {
+                    _route.DebugLootWeapon((WeaponId)_lootType, (WeaponRarity)_lootRarity, _lootModifiers, seed, true);
+                }
+            }
+
+            GUILayout.EndHorizontal();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Rounds");
+            _rounds = GUILayout.TextField(_rounds);
+            if (int.TryParse(_rounds, out var rounds))
+            {
+                if (GUILayout.Button("Spawn ammo"))
+                {
+                    _route.DebugLootAmmo((WeaponId)_lootType, Mathf.Clamp(rounds, 1, 999));
+                }
+
+                if (GUILayout.Button("Set reserve"))
+                {
+                    gun.DebugSetAmmo((WeaponId)_lootType, Mathf.Clamp(rounds, 0, 999));
+                    _director.SealHistory();
+                }
+            }
+
+            GUILayout.EndHorizontal();
         }
 
         private void DrawRecoil(CombatWeapon gun)

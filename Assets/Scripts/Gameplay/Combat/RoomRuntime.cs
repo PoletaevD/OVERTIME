@@ -26,6 +26,7 @@ namespace Overtime
         [SerializeField] private Transform _exit;
         [SerializeField] private Vector2 _socketOpening = new(4.8f, 3.6f);
         [SerializeField] private EnemySpawn[] _markers;
+        [SerializeField] private Transform[] _ammoSockets = Array.Empty<Transform>();
         [SerializeField] private TemporalActor[] _worldActors = Array.Empty<TemporalActor>();
 
         internal EncounterController Encounter => _encounter;
@@ -33,6 +34,47 @@ namespace Overtime
         internal Transform Exit => _exit;
         internal Vector2 SocketOpening => _socketOpening;
         internal EnemySpawn[] Markers => _markers;
+        internal Transform[] AmmoSockets => _ammoSockets;
+        internal float EntryHeight => transform.InverseTransformPoint(_entry.position).y;
+
+        internal Pose ConnectEntrance(Pose socket)
+        {
+            var localRotation = Quaternion.Inverse(transform.rotation) * _entry.rotation;
+            var localPoint = transform.InverseTransformPoint(_entry.position);
+            var exposedOpening = new Vector3(localPoint.x, 0f, 0f);
+            var rotation = socket.rotation * Quaternion.Inverse(localRotation);
+            return new Pose(socket.position - rotation * exposedOpening, rotation);
+        }
+
+        internal Bounds ArenaBounds(Pose placement)
+        {
+            var zone = _encounter.CombatZone;
+            var center = transform.InverseTransformPoint(zone.transform.TransformPoint(zone.center));
+            var extents = zone.size * 0.5f;
+            var entry = transform.InverseTransformPoint(_entry.position);
+            var exit = transform.InverseTransformPoint(_exit.position);
+            var minimum = new Vector3(center.x - extents.x - 0.62f, -0.78f, entry.z - 2.2f);
+            var maximum = new Vector3(center.x + extents.x + 0.62f, center.y + extents.y + 0.72f, exit.z + 0.28f);
+            var bounds = new Bounds(placement.position + placement.rotation * minimum, Vector3.zero);
+            for (var corner = 1; corner < 8; corner++)
+            {
+                var point = new Vector3((corner & 1) != 0 ? maximum.x : minimum.x, (corner & 2) != 0 ? maximum.y : minimum.y, (corner & 4) != 0 ? maximum.z : minimum.z);
+                bounds.Encapsulate(placement.position + placement.rotation * point);
+            }
+
+            return bounds;
+        }
+
+        internal bool HasEntered(Vector3 position)
+        {
+            var point = transform.InverseTransformPoint(position);
+            return point.z >= 3.75f && _encounter.CombatZone.bounds.Contains(position);
+        }
+
+        internal void SetArrivalSeal(bool closed)
+        {
+            transform.Find("Architecture/Arrival Door").gameObject.SetActive(closed);
+        }
 
         internal TemporalActor[] Prepare(RouteNode node, TemporalDirector director, TemporalProjectileEmitter pool)
         {
@@ -117,7 +159,22 @@ namespace Overtime
 
             Gizmos.color = Color.cyan;
             Gizmos.DrawWireSphere(_entry.position, 0.42f);
+            Gizmos.DrawRay(_entry.position, _entry.forward * 1.8f);
             Gizmos.DrawWireSphere(_exit.position, 0.42f);
+            Gizmos.DrawRay(_exit.position, _exit.forward * 1.8f);
+            var zone = _encounter.CombatZone;
+            var matrix = Gizmos.matrix;
+            Gizmos.matrix = zone.transform.localToWorldMatrix;
+            Gizmos.DrawWireCube(zone.center, zone.size);
+            Gizmos.matrix = matrix;
+            Gizmos.color = Color.yellow;
+            foreach (var socket in _ammoSockets)
+            {
+                Gizmos.DrawWireSphere(socket.position, 0.27f);
+            }
+
+            Gizmos.DrawWireSphere(_exit.position - _exit.forward * 1.7f + _exit.right * 1.3f, 0.46f);
+            Gizmos.DrawWireSphere(_exit.position - _exit.forward * 1.7f - _exit.right * 1.3f, 0.46f);
             foreach (var marker in _markers)
             {
                 if (marker.Point == null || marker.Enemy == null)
