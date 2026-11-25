@@ -23,6 +23,7 @@ namespace Overtime
         private Tween _banner;
         private Tween _finish;
         private int _roomIndex = -1;
+        private EncounterController _lastRoom;
         private EncounterState _state;
         private int _living = -1;
         private bool _finished;
@@ -36,9 +37,10 @@ namespace Overtime
         private void LateUpdate()
         {
             var room = _route.Current;
-            var roomChanged = _roomIndex != _route.RoomIndex;
+            var roomChanged = _lastRoom != room;
             if (roomChanged)
             {
+                _lastRoom = room;
                 _roomIndex = _route.RoomIndex;
                 _roomNumber.SetText(_route.Generated ? $"ROOM {_roomIndex + 1:00} / {_route.RoomCount:00}" : $"ROOM {_roomIndex + 1:00}");
                 _roomTitle.SetText(room.RoomName.ToUpperInvariant());
@@ -70,7 +72,7 @@ namespace Overtime
                 }
                 else if (_state == EncounterState.Active)
                 {
-                    Announce(_roomTitle.text);
+                    Announce(room.Boss != null ? "THE SUPERVISOR" : _roomTitle.text);
                 }
             }
 
@@ -116,7 +118,8 @@ namespace Overtime
             _finished = true;
             var seconds = (int)_route.Elapsed;
             _stats.SetText($"TIME  {seconds / 60:00}:{seconds % 60:00}\nHOSTILES DOWN  {_route.EnemiesDefeated:00}\nTEMPORAL USES  {_route.PowersUsed:00}\nVITALS  {_player.Combat.Health.Current:0}");
-            _finish = DOTween.To(() => _success.alpha, value => _success.alpha = value, 1f, _player.ReducedMotion ? 0f : 0.38f).SetUpdate(true).SetEase(Ease.OutCubic);
+            var delay = _route.Current.Boss != null && !_player.ReducedMotion ? 0.95f : 0f;
+            _finish = DOTween.To(() => _success.alpha, value => _success.alpha = value, 1f, _player.ReducedMotion ? 0f : 0.38f).SetDelay(delay).SetUpdate(true).SetEase(Ease.OutCubic);
         }
     }
 }

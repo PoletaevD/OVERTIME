@@ -499,7 +499,7 @@ namespace Overtime.Tests
             Tick(45);
             Assert.That(gun.ActiveSlot, Is.EqualTo(1));
 
-            for (var index = 0; index < RoutePlan.RoomCount; index++)
+            for (var index = 0; index < _route.RoomCount; index++)
             {
                 var room = _route.Current;
                 Assert.That(_route.CurrentNode, Is.SameAs(expected));
@@ -540,7 +540,7 @@ namespace Overtime.Tests
                 Assert.That(pool.ActiveCount, Is.Zero);
                 Assert.That(_director.WorldTimeline.Count, Is.EqualTo(1));
                 Assert.That(_director.PlayerTimeline.Count, Is.EqualTo(1));
-                if (index == RoutePlan.RoomCount - 1)
+                if (index == _route.RoomCount - 1)
                 {
                     Assert.That(_route.Finished, Is.True);
                     Assert.That(room.RoomName, Is.EqualTo("Containment Chamber"));

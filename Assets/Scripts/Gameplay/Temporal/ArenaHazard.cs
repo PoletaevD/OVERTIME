@@ -63,7 +63,7 @@ namespace Overtime
 
         internal override void Simulate(float step)
         {
-            if (!_state.Armed || _encounter.State != EncounterState.Active)
+            if (!_state.Armed || _encounter.State != EncounterState.Active || _encounter.Boss is { Phase: SupervisorPhase.SecurityAssessment })
             {
                 return;
             }

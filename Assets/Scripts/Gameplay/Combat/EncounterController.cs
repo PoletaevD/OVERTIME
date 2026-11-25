@@ -19,6 +19,7 @@ namespace Overtime
         [SerializeField] private BoxCollider _combatZone;
         [SerializeField] private BoxCollider _exitZone;
         [SerializeField] private EncounterGate _gate;
+        [SerializeField] private SupervisorBoss _boss;
         [SerializeField] private int _reserveReward = 30;
 
         private EncounterReinforcements _reinforcements;
@@ -28,7 +29,7 @@ namespace Overtime
         {
             get
             {
-                var count = 0;
+                var count = _boss != null && _boss.Health.Alive && State == EncounterState.Active ? 1 : 0;
                 foreach (var enemy in _enemies)
                 {
                     count += enemy.EncounterReady && enemy.Health.Alive ? 1 : 0;
@@ -58,6 +59,7 @@ namespace Overtime
         internal BoxCollider CombatZone => _combatZone;
         internal BoxCollider ExitZone => _exitZone;
         internal EncounterGate Gate => _gate;
+        internal SupervisorBoss Boss => _boss;
 
         internal void AssignEnemies(SecurityEnemy[] enemies)
         {
@@ -78,10 +80,10 @@ namespace Overtime
         {
             get
             {
-                var count = 0;
+                var count = _boss != null && _boss.Health.Alive ? 1 : 0;
                 foreach (var enemy in _enemies)
                 {
-                    if (enemy.Health.Alive)
+                    if (enemy.Health.Alive && (_boss == null || enemy.EncounterReady))
                     {
                         count++;
                     }
@@ -128,9 +130,10 @@ namespace Overtime
                     }
 
                     State = EncounterState.Active;
+                    _boss?.Begin();
                     director.SealHistory();
                     break;
-                case EncounterState.Active when director.HasLivingPlayer && LivingEnemies == 0 && PendingReinforcements == 0:
+                case EncounterState.Active when director.HasLivingPlayer && CanClear():
                     State = EncounterState.RewardSelection;
                     break;
                 case EncounterState.Cleared when _exitZone.bounds.Contains(position):
@@ -138,6 +141,24 @@ namespace Overtime
                     State = EncounterState.Completed;
                     break;
             }
+        }
+
+        private bool CanClear()
+        {
+            return _boss != null ? !_boss.Health.Alive : LivingEnemies == 0 && PendingReinforcements == 0;
+        }
+
+        internal int FinishBossFight(bool reduced)
+        {
+            var defeated = 1;
+            foreach (var enemy in _enemies)
+            {
+                defeated += enemy.Health.Alive ? 0 : 1;
+            }
+
+            _reinforcements.Disengage();
+            _boss.CommitDestruction(reduced);
+            return defeated;
         }
     }
 }

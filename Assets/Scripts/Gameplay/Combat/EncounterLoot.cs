@@ -23,12 +23,14 @@ namespace Overtime
         {
             internal WeaponInstance Instance;
             internal GameObject Model;
+            internal int? RewardGroup;
         }
 
         private static readonly int s_color = Shader.PropertyToID("_BaseColor");
 
         private readonly List<AmmoDrop> _ammo = new(32);
         private readonly List<GunDrop> _guns = new(2);
+        private readonly HashSet<int> _spawnedWeaponRewards = new();
         private RoomRuntime _room;
         private CombatWeapon _weapon;
         private Material _emitter;
@@ -60,7 +62,7 @@ namespace Overtime
                 var roll = random.NextDouble();
                 var type = random.NextDouble() < 0.82d ? active : (WeaponId)random.Next(4);
                 var heavy = enemy.Kind is SecurityEnemyKind.Auditor or SecurityEnemyKind.Enforcer;
-                if (roll < (heavy ? 0.6f : 0.35f) + scavenger)
+                if (roll < (heavy ? 0.6f : 0.35f) + scavenger || (room.Encounter.Boss != null && (index == 0 || index == 4)))
                 {
                     var id = ((ICombatDamageable)enemy).RewardId;
                     _ammo.Add(new AmmoDrop
@@ -113,10 +115,15 @@ namespace Overtime
 
         internal void DropWeapons(int roomId, WeaponInstance[] rewards, bool reduced)
         {
+            if (!_spawnedWeaponRewards.Add(roomId))
+            {
+                return;
+            }
+
             for (var index = 0; index < rewards.Length; index++)
             {
                 var position = RewardPosition(index == 0 ? -1.3f : 1.3f, 1.7f);
-                AddGun(rewards[index], position, reduced);
+                AddGun(rewards[index], position, reduced, roomId);
                 var type = rewards[index].Definition.Id;
                 AddAmmo(-roomId * 100 - 40 - index, type, PackSize(type), RewardPosition(index == 0 ? -1.8f : 1.8f, 2.8f), "Ammunition");
             }
@@ -202,20 +209,31 @@ namespace Overtime
                 _hint = hover == null ? string.Empty : Describe(hover.Instance);
             }
 
-            if (hover != null && interact)
+            if (hover != null && interact && _weapon.TryCollectWeapon(hover.Instance, out var previous))
             {
-                var previous = _weapon.CollectWeapon(hover.Instance);
                 var position = hover.Model.transform.position;
                 hover.Model.SetActive(false);
                 Destroy(hover.Model);
-                if (previous == null)
+                _guns.Remove(hover);
+
+                if (hover.RewardGroup is int group)
                 {
-                    _guns.Remove(hover);
+                    for (var index = _guns.Count - 1; index >= 0; index--)
+                    {
+                        var rejected = _guns[index];
+                        if (rejected.RewardGroup != group)
+                        {
+                            continue;
+                        }
+
+                        _guns.RemoveAt(index);
+                        RetireGun(rejected.Model, player.ReducedMotion);
+                    }
                 }
-                else
+
+                if (previous != null)
                 {
-                    hover.Instance = previous;
-                    hover.Model = BuildGun(previous, position, player.ReducedMotion);
+                    AddGun(previous, position, player.ReducedMotion);
                 }
 
                 _hover = null;
@@ -224,12 +242,26 @@ namespace Overtime
             }
         }
 
-        private void AddGun(WeaponInstance instance, Vector3 position, bool reduced)
+        private void RetireGun(GameObject model, bool reduced)
+        {
+            model.transform.DOKill();
+            if (reduced)
+            {
+                model.SetActive(false);
+                Destroy(model);
+                return;
+            }
+
+            model.transform.DOScale(0f, 0.18f).SetEase(Ease.InBack).SetUpdate(true).SetLink(model).OnComplete(() => Destroy(model));
+        }
+
+        private void AddGun(WeaponInstance instance, Vector3 position, bool reduced, int? rewardGroup = null)
         {
             _guns.Add(new GunDrop
             {
                 Instance = instance,
-                Model = BuildGun(instance, position, reduced)
+                Model = BuildGun(instance, position, reduced),
+                RewardGroup = rewardGroup
             });
         }
 

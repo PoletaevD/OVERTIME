@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1c264121c4670764ebd04db9dbc9fce6, type: 3}
+  m_Name: Supervisor Chamber
+  m_EditorClassIdentifier: Overtime.Runtime::Overtime.RoomDefinition
+  _id: supervisor
+  _title: Supervisor Chamber
+  _description: Central security command. Service galleries flank the Supervisor's
+    weapons platform.
+  _prefab: {fileID: 1767692123216912316, guid: be5738d28f4854448802ad88fb882277, type: 3}
+  _thumbnail: {fileID: 0}
+  _category: 5
+  _geometry: 14
+  _minDepth: 6
+  _maxDepth: 6
+  _difficulty: 6
+  _variants:
+  - _title: Central Security
+    _difficulty: 6
+    _markers: 0000000001000000020000000300000004000000050000000600000007000000
+    _initialActive: 0
+    _reinforcementThreshold: 0
+    _reinforcementBatch: 4
+    _hazardMask: 1
+  _rewards: 

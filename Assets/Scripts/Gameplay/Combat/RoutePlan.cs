@@ -23,13 +23,15 @@ namespace Overtime
 
     internal sealed class RoutePlan
     {
-        internal const int RoomCount = 5;
+        internal const int StandardRoomCount = 5;
         private readonly RouteNode[][] _levels;
 
         internal RoutePlan(RouteNode[][] levels)
         {
             _levels = levels;
         }
+
+        internal int Count => _levels.Length;
 
         internal IReadOnlyList<RouteNode> At(int roomIndex)
         {
@@ -41,18 +43,20 @@ namespace Overtime
     {
         private readonly Random _random;
         private readonly RoomDefinition[] _library;
+        private readonly RoomDefinition _supervisor;
 
-        internal RouteGenerator(int seed, RoomDefinition[] library)
+        internal RouteGenerator(int seed, RoomDefinition[] library, RoomDefinition supervisor = null)
         {
             _random = new Random(unchecked(seed ^ 0x4D455249));
             _library = library;
+            _supervisor = supervisor;
         }
 
         internal RoutePlan Generate()
         {
             var nodes = new RouteNode[7];
             nodes[0] = Endpoint(1, RoomCategory.Entry, 1);
-            nodes[6] = Endpoint(7, RoomCategory.Containment, 5);
+            nodes[6] = Endpoint(7, RoomCategory.Containment, RoutePlan.StandardRoomCount);
             var candidates = new[]
             {
                 Candidates(2, 2, 3, false),
@@ -92,14 +96,18 @@ namespace Overtime
             ShuffleBranch(nodes, 1);
             ShuffleBranch(nodes, 4);
 
-            return new RoutePlan(new[]
+            var levels = new RouteNode[_supervisor != null ? RoutePlan.StandardRoomCount + 1 : RoutePlan.StandardRoomCount][];
+            levels[0] = new[] { nodes[0] };
+            levels[1] = Branch(nodes[1], nodes[2]);
+            levels[2] = new[] { nodes[3] };
+            levels[3] = Branch(nodes[4], nodes[5]);
+            levels[4] = new[] { nodes[6] };
+            if (_supervisor != null)
             {
-                new[] { nodes[0] },
-                Branch(nodes[1], nodes[2]),
-                new[] { nodes[3] },
-                Branch(nodes[4], nodes[5]),
-                new[] { nodes[6] }
-            });
+                levels[RoutePlan.StandardRoomCount] = new[] { new RouteNode(8, levels.Length, _supervisor, 0, RoomReward.None) };
+            }
+
+            return new RoutePlan(levels);
         }
 
         private void ShuffleBranch(RouteNode[] nodes, int index)
@@ -140,7 +148,7 @@ namespace Overtime
 
             foreach (var room in _library)
             {
-                if (room == null || room.Category is RoomCategory.Entry or RoomCategory.Containment || !room.AllowsDepth(depth))
+                if (room == null || room.Category is RoomCategory.Entry or RoomCategory.Containment or RoomCategory.Supervisor || !room.AllowsDepth(depth))
                 {
                     continue;
                 }

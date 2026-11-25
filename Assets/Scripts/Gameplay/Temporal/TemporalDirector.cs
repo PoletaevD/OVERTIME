@@ -76,6 +76,7 @@ namespace Overtime
         internal event Action<Vector3, int> DirectionalDamage;
         internal event Action<ProjectileImpact> ProjectileHit;
         internal event Action<Vector3> AuditorCharging;
+        internal event Action<SupervisorCue, Vector3> SupervisorSound;
         internal TemporalProjectileEmitter PlayerProjectiles => _playerProjectiles;
         internal bool ReducedMotion => _player.ReducedMotion;
         internal bool RewardSelection => _rewardSelection;
@@ -83,6 +84,7 @@ namespace Overtime
         internal IReadOnlyList<TemporalActor> WorldActors => _worldActors;
         internal int DynamicColliderCount => _collision?.Count ?? 0;
         internal SecurityEnemy[] CurrentEnemies => _sector != null ? _sector.Current.Enemies : Array.Empty<SecurityEnemy>();
+        internal SupervisorBoss CurrentBoss => _sector?.Current.Boss;
 
         internal ChronoEnergy Energy => _energy;
         internal float EnergyCost => ModeCost(Mode);
@@ -683,7 +685,12 @@ namespace Overtime
 
             if (damage.Killed)
             {
-                var reward = _sector?.Generated == true && target is SecurityEnemy enemy ? _sector.KillEnergy(enemy.Kind) : (float?)null;
+                var reward = target switch
+                {
+                    SupervisorBoss boss => boss.KillEnergy,
+                    SecurityEnemy enemy when _sector?.Generated == true => _sector.KillEnergy(enemy.Kind),
+                    _ => (float?)null
+                };
                 var bonus = melee ? _progression?.Build.Bonus(UpgradeId.BloodBattery) ?? 0f : 0f;
                 var first = _energy?.Reward(target.RewardId, reward, bonus) == true;
                 if (melee && first && _progression != null)
@@ -706,12 +713,17 @@ namespace Overtime
             AuditorCharging?.Invoke(origin);
         }
 
+        internal void PlaySupervisorCue(SupervisorCue cue, Vector3 position)
+        {
+            SupervisorSound?.Invoke(cue, position);
+        }
+
         internal void PublishImpact(in ProjectileImpact impact)
         {
             ProjectileHit?.Invoke(impact);
         }
 
-        internal bool CanDamagePlayer => CanAffectWorld && HasLivingPlayer && (_sector == null || _sector.Current.State != EncounterState.Active || _sector.Current.LivingEnemies > 0);
+        internal bool CanDamagePlayer => CanAffectWorld && HasLivingPlayer && (_sector == null || _sector.Current.State != EncounterState.Active || _sector.Current.Boss != null || _sector.Current.LivingEnemies > 0);
 
         internal bool DamagePlayer(int amount, Vector3? source = null)
         {

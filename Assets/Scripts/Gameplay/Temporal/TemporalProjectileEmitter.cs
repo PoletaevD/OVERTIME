@@ -313,17 +313,24 @@ namespace Overtime
             });
         }
 
-        internal void Explode(Vector3 center, float radius, float damage, Transform owner, bool melee, ICombatDamageable excluded = null)
+        internal void Explode(Vector3 center, float radius, float damage, Transform owner, bool melee, ICombatDamageable excluded = null, ProjectileTargets targets = default)
         {
             _combatDirector.PublishImpact(new ProjectileImpact(center, Vector3.up, default, false, false, true, melee: melee, explosion: true));
             foreach (var actor in _combatDirector.WorldActors)
             {
-                if (actor is not SecurityEnemy enemy || !enemy.Health.Alive || !enemy.EncounterReady || ReferenceEquals(enemy, excluded))
+                var body = actor switch
+                {
+                    SecurityEnemy enemy when enemy.Health.Alive && enemy.EncounterReady => enemy.Body,
+                    SupervisorBoss boss when boss.Health.Alive && boss.State.Started => boss.BlastHitbox(center),
+                    _ => null
+                };
+                if (body == null || actor is not ICombatDamageable target || ReferenceEquals(target, excluded) || (actor is SupervisorBoss && targets.Contains(target.RewardId)))
                 {
                     continue;
                 }
 
-                var delta = enemy.Body.bounds.center - center;
+                var sample = actor is SupervisorBoss ? body.ClosestPoint(center) : body.bounds.center;
+                var delta = sample - center;
                 var distance = delta.magnitude;
                 if (distance > radius || distance < 0.0001f)
                 {
@@ -331,16 +338,16 @@ namespace Overtime
                 }
 
                 var blocked = FindHit(center, 0f, delta / distance, distance, Physics.DefaultRaycastLayers, owner, out var hit, out var full);
-                if (full || (blocked && (hit.collider.TryGetComponent<CombatShield>(out _) || !ReferenceEquals(hit.collider.GetComponentInParent<ICombatDamageable>(), enemy))))
+                if (full || (blocked && (hit.collider.TryGetComponent<CombatShield>(out _) || !ReferenceEquals(hit.collider.GetComponentInParent<ICombatDamageable>(), target))))
                 {
                     continue;
                 }
 
                 var amount = damage * Mathf.Lerp(1f, 0.35f, distance / radius);
-                var result = _combatDirector.DamageTarget(enemy, enemy.Body, amount, out var weak, melee);
+                var result = _combatDirector.DamageTarget(target, actor is SupervisorBoss && blocked ? hit.collider : body, amount, out var weak, melee);
                 if (result.Amount > 0)
                 {
-                    _combatDirector.PublishImpact(new ProjectileImpact(enemy.Body.bounds.center, -delta.normalized, result, weak, false, true, melee: melee));
+                    _combatDirector.PublishImpact(new ProjectileImpact(sample, -delta.normalized, result, weak, false, true, melee: melee));
                 }
             }
         }
@@ -490,9 +497,16 @@ namespace Overtime
                     var amount = projectile.Ballistics.DamageAtDistance(projectile.Damage, projectile.Travelled) * projectile.Retention;
                     directTarget = target;
                     damage = _combatDirector.DamageTarget(target, collider, amount, out weakPoint, projectile.Ballistics.Melee);
-                    if (damage.Amount > 0 && target is SecurityEnemy enemy && projectile.Ballistics.ChillSeconds > 0f)
+                    if (damage.Amount > 0 && projectile.Ballistics.ChillSeconds > 0f)
                     {
-                        enemy.ApplyChill(projectile.Ballistics.ChillSeconds);
+                        if (target is SecurityEnemy enemy)
+                        {
+                            enemy.ApplyChill(projectile.Ballistics.ChillSeconds);
+                        }
+                        else if (target is SupervisorBoss boss)
+                        {
+                            boss.ApplyChill(projectile.Ballistics.ChillSeconds);
+                        }
                     }
                     if (projectile.Penetrations > 0 && damage.Amount > 0)
                     {
@@ -524,7 +538,7 @@ namespace Overtime
             if (!shielded && !projectile.BlastSpent && projectile.Ballistics.ExplosionRadius > 0f)
             {
                 projectile.BlastSpent = true;
-                Explode(point + normal * 0.045f, projectile.Ballistics.ExplosionRadius, projectile.Damage * projectile.Retention * 0.65f, projectile.Owner, false, directTarget);
+                Explode(point + normal * 0.045f, projectile.Ballistics.ExplosionRadius, projectile.Damage * projectile.Retention * 0.65f, projectile.Owner, false, directTarget, projectile.Targets);
             }
 
             _combatDirector.PublishImpact(new ProjectileImpact(point, normal, damage, weakPoint, shielded, _playerPool, reflected, projectile.Ballistics.TargetLimit > 1 && damage.Amount > 0, melee: projectile.Ballistics.Melee));
@@ -607,12 +621,12 @@ namespace Overtime
                 return false;
             }
 
-            if (_playerPool && collider.TryGetComponent<CombatShield>(out _))
+            var target = collider.GetComponentInParent<ICombatDamageable>();
+            if (_playerPool && target is not SupervisorBoss && collider.TryGetComponent<CombatShield>(out _))
             {
                 return true;
             }
 
-            var target = collider.GetComponentInParent<ICombatDamageable>();
             return target == null || (_playerPool && !targets.Contains(target.RewardId) && !exclusions.Contains(target.RewardId));
         }
 

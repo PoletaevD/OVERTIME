@@ -53,7 +53,7 @@ namespace Overtime
                     continue;
                 }
 
-                BuildBranch(index, sign, options[index].Reward, iconAtlas, weapon);
+                BuildBranch(index, sign, options[index], iconAtlas, weapon);
             }
         }
 
@@ -153,7 +153,7 @@ namespace Overtime
             panel.DOLocalMoveY(Height * 1.5f, 0.28f).SetEase(Ease.OutCubic).SetUpdate(true).SetLink(gameObject);
         }
 
-        private void BuildBranch(int index, float sign, RoomReward reward, Texture atlas, CombatWeapon weapon)
+        private void BuildBranch(int index, float sign, RouteNode destination, Texture atlas, CombatWeapon weapon)
         {
             var inner = BranchCenter - Width * 0.5f;
             var outer = BranchCenter + Width * 0.5f;
@@ -171,11 +171,12 @@ namespace Overtime
             _barriers[index].center = center;
             _barriers[index].size = dimensions;
             Block("Route Door Light", new Vector3(sign * (edge - 0.16f), Height - 0.12f, Center), new Vector3(0.045f, 0.10f, Width - 0.12f), _accent, false);
-            Sign(sign, reward, atlas, weapon);
+            Sign(sign, destination, atlas, weapon);
         }
 
-        private void Sign(float sign, RoomReward reward, Texture atlas, CombatWeapon weapon)
+        private void Sign(float sign, RouteNode destination, Texture atlas, CombatWeapon weapon)
         {
+            var reward = destination.Reward;
             var root = new GameObject("Reward Sign", typeof(RectTransform), typeof(Canvas));
             var rect = (RectTransform)root.transform;
             rect.SetParent(transform, false);
@@ -190,7 +191,7 @@ namespace Overtime
             textRect.anchoredPosition = new Vector2(54f, 0f);
             textRect.sizeDelta = new Vector2(405f, 96f);
             var label = textRoot.GetComponent<TextMeshProUGUI>();
-            label.text = RouteCard.RewardText(reward, weapon).Replace("   ", "\n");
+            label.text = destination.Room.Category == RoomCategory.Supervisor ? "SUPERVISOR CHAMBER\nCENTRAL SECURITY" : RouteCard.RewardText(reward, weapon).Replace("   ", "\n");
             label.alignment = TextAlignmentOptions.Left;
             label.fontSize = 29f;
             label.color = new Color(0.75f, 0.98f, 1f);

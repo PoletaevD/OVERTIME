@@ -24,6 +24,7 @@ namespace Overtime
         [SerializeField] private EncounterController _encounter;
         [SerializeField] private Transform _entry;
         [SerializeField] private Transform _exit;
+        [SerializeField] private BoxCollider _arrivalZone;
         [SerializeField] private Vector2 _socketOpening = new(4.8f, 3.6f);
         [SerializeField] private EnemySpawn[] _markers;
         [SerializeField] private Transform[] _ammoSockets = Array.Empty<Transform>();
@@ -68,7 +69,8 @@ namespace Overtime
         internal bool HasEntered(Vector3 position)
         {
             var point = transform.InverseTransformPoint(position);
-            return point.z >= 3.75f && _encounter.CombatZone.bounds.Contains(position);
+            var arrival = _arrivalZone != null ? _arrivalZone : _encounter.CombatZone;
+            return point.z >= 3.75f && arrival.bounds.Contains(position);
         }
 
         internal void SetArrivalSeal(bool closed)
@@ -76,7 +78,7 @@ namespace Overtime
             transform.Find("Architecture/Arrival Door").gameObject.SetActive(closed);
         }
 
-        internal TemporalActor[] Prepare(RouteNode node, TemporalDirector director, TemporalProjectileEmitter pool)
+        internal TemporalActor[] Prepare(RouteNode node, TemporalDirector director, TemporalProjectileEmitter pool, int seed)
         {
             var variant = node.Room.Variants[node.Variant];
             var markers = variant.Markers;
@@ -113,7 +115,13 @@ namespace Overtime
                 actors[2 + _worldActors.Length + index] = enemy;
             }
 
-            reinforcement.Configure(enemies, signals, variant, director);
+            var boss = _encounter.Boss;
+            if (boss != null)
+            {
+                boss.Bind(director, pool, node.Id * 10000 + 99, seed);
+            }
+
+            reinforcement.Configure(enemies, signals, variant, director, boss);
             _encounter.AssignEnemies(enemies);
             _encounter.SetReinforcements(reinforcement);
             _encounter.Prepare();

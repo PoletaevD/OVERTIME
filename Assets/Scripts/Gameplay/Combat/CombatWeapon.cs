@@ -116,10 +116,16 @@ namespace Overtime
             ResetState();
         }
 
-        internal WeaponInstance CollectWeapon(WeaponInstance incoming)
+        internal bool TryCollectWeapon(WeaponInstance incoming, out WeaponInstance outgoing)
         {
+            outgoing = null;
+            if (!_instanceLoadout || incoming?.Definition == null || _first.InstanceId == incoming.InstanceId || _second?.InstanceId == incoming.InstanceId)
+            {
+                return false;
+            }
+
             var slot = HasSecondary ? ActiveSlot : 1;
-            var outgoing = Instance(slot);
+            outgoing = Instance(slot);
             if (outgoing != null)
             {
                 var stored = StateAt(slot);
@@ -142,7 +148,7 @@ namespace Overtime
 
             StateAt(slot) = incoming.Stored;
             _state.SwitchRemaining = 0d;
-            return outgoing;
+            return true;
         }
 
         private int ReserveFor(int slot)
@@ -522,8 +528,10 @@ namespace Overtime
         internal void DebugEquipInstance(WeaponInstance instance)
         {
             var slot = HasSecondary ? ActiveSlot : 1;
-            CollectWeapon(instance);
-            DebugActivate(slot);
+            if (TryCollectWeapon(instance, out _))
+            {
+                DebugActivate(slot);
+            }
         }
 
         internal void DebugSetAmmo(WeaponId type, int amount)

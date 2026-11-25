@@ -9,6 +9,7 @@ namespace Overtime
     {
         [SerializeField] private EncounterController[] _rooms;
         [SerializeField] private RoomDefinition[] _library;
+        [SerializeField] private RoomDefinition _supervisorChamber;
         [SerializeField] private RouteTransfer _transfer;
         [SerializeField] private bool _seamless;
         [SerializeField] private Texture _rewardIcons;
@@ -22,8 +23,8 @@ namespace Overtime
 
         private readonly HashSet<int> _paidRooms = new();
         private readonly HashSet<int> _emergencyRooms = new();
-        private readonly RouteNode[] _visited = new RouteNode[RoutePlan.RoomCount];
-        private readonly Bounds[] _visitedBounds = new Bounds[RoutePlan.RoomCount];
+        private RouteNode[] _visited;
+        private Bounds[] _visitedBounds;
         private readonly Pose[] _candidatePlacements = new Pose[2];
         private TemporalDirector _director;
         private PlaygroundPlayer _player;
@@ -51,7 +52,7 @@ namespace Overtime
         internal bool SelectingSecondary { get; private set; }
         internal WeaponDefinition[] SecondaryOptions => _secondaryOptions;
         internal int RoomIndex { get; private set; }
-        internal int RoomCount => Generated ? RoutePlan.RoomCount : _rooms.Length;
+        internal int RoomCount => Generated ? Plan.Count : _rooms.Length;
         internal RunProgression Progression => _progression;
         internal EncounterController Current => Generated ? _activeRoom.Encounter : _rooms[RoomIndex];
         internal RoutePlan Plan { get; private set; }
@@ -83,10 +84,13 @@ namespace Overtime
                     Weapon.StartWithDirective(_lootDefinitions[3]);
                 }
 
-                Plan = new RouteGenerator(_progression.Seed, _library).Generate();
+                Plan = new RouteGenerator(_progression.Seed, _library, _seamless ? _supervisorChamber : null).Generate();
+                _visited = new RouteNode[Plan.Count];
+                _visitedBounds = new Bounds[Plan.Count];
                 return PrepareRoom(Plan.At(0)[0]);
             }
 
+            _visited = new RouteNode[_rooms.Length];
             foreach (var room in _rooms)
             {
                 room.Prepare();
@@ -213,6 +217,16 @@ namespace Overtime
         private void ClearRoom(EncounterController room)
         {
             _activeRoom?.DisableHazards();
+            if (room.Boss != null)
+            {
+                EnemiesDefeated += room.FinishBossFight(_player.ReducedMotion);
+                _paidRooms.Add(CurrentNode.Id);
+                room.Complete();
+                _director.SealHistory();
+                CompleteSector();
+                return;
+            }
+
             _director.SealHistory();
             var id = Generated ? CurrentNode.Id : RoomIndex + 1;
             var reward = Generated ? CurrentNode.Reward : RoomReward.None;
@@ -418,7 +432,7 @@ namespace Overtime
 
         private TemporalActor[] PrepareEncounter(RouteNode node)
         {
-            var actors = _activeRoom.Prepare(node, _director, _enemyProjectiles);
+            var actors = _activeRoom.Prepare(node, _director, _enemyProjectiles, _progression.Seed);
             if (_seamless)
             {
                 _loot = _activeRoom.gameObject.AddComponent<EncounterLoot>();
@@ -591,6 +605,41 @@ namespace Overtime
             }
 
             BeginTransfer(_next ?? RouteOptions[0], RoomIndex + 1);
+            return true;
+        }
+
+        internal bool DebugHasSupervisor => _supervisorChamber != null;
+
+        internal bool DebugTravelToSupervisor()
+        {
+            if (!DebugHasSupervisor || !CanDebugTravel() || Current.Boss != null)
+            {
+                return false;
+            }
+
+            BeginTransfer(Plan.At(Plan.Count - 1)[0], Plan.Count - 1);
+            return true;
+        }
+
+        internal bool DebugSupervisor(int health, SupervisorAttack? attack)
+        {
+            if (Current.Boss is not { } boss || Current.State != EncounterState.Active || !_director.HasLivingPlayer || Finished || Transferring)
+            {
+                return false;
+            }
+
+            _director.SealHistory();
+            if (health > 0)
+            {
+                boss.DebugSetHealth(health);
+            }
+
+            if (attack.HasValue)
+            {
+                boss.DebugForce(attack.Value);
+            }
+
+            _director.SealHistory();
             return true;
         }
 

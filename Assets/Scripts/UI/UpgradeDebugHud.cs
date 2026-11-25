@@ -18,6 +18,9 @@ namespace Overtime
         private string _seed;
         private bool _showActors;
         private bool _showMarkers;
+        private bool _showBossZones;
+        private string _bossHealth = "1800";
+        private int _bossAttack;
         private Vector2 _scroll;
         private Vector2 _weaponScroll;
         private bool _tuneRecoil;
@@ -56,6 +59,11 @@ namespace Overtime
             if (!_visible || _director.RewardSelection)
             {
                 return;
+            }
+
+            if (_showBossZones)
+            {
+                _route.Current.Boss?.DebugDraw();
             }
 
             UpdateWeapons(keyboard);
@@ -313,6 +321,58 @@ namespace Overtime
             return result;
         }
 
+        private void DrawSupervisor(EncounterController encounter)
+        {
+            if (encounter.Boss is not { } boss)
+            {
+                if (GUILayout.Button("Load Supervisor Chamber"))
+                {
+                    _route.DebugTravelToSupervisor();
+                }
+
+                return;
+            }
+
+            var state = boss.State;
+            var snapshot = boss.DebugSnapshot(_director.WorldTimeline);
+            GUILayout.Label($"SUPERVISOR  {state.Health}/{boss.Health.Maximum}   {state.Phase}   WAVES {state.ReinforcementWaves}");
+            GUILayout.Label($"{state.Attack.Attack}  /  {state.Attack.Stage}  {state.Attack.Remaining:0.00}s   PANEL {state.PanelOpening:0.00}");
+            GUILayout.Label($"SNAPSHOT  {_director.WorldTimeline.Cursor}  HP {snapshot.Health}  {snapshot.Phase}  {snapshot.Attack.Attack}  {snapshot.Attack.Remaining:0.00}s");
+            _showBossZones = GUILayout.Toggle(_showBossZones, "Draw boss cores and attack bounds");
+            var wasEnabled = GUI.enabled;
+            GUI.enabled = wasEnabled && encounter.State == EncounterState.Active && !_route.Finished;
+            GUILayout.BeginHorizontal();
+            _bossHealth = GUILayout.TextField(_bossHealth, 6, GUILayout.Width(72f));
+            if (GUILayout.Button("Set HP") && int.TryParse(_bossHealth, out var health))
+            {
+                _route.DebugSupervisor(health, null);
+            }
+
+            if (GUILayout.Button("Phase 1"))
+            {
+                _route.DebugSupervisor(boss.Health.Maximum, null);
+            }
+
+            if (GUILayout.Button("Phase 2"))
+            {
+                _route.DebugSupervisor(Mathf.FloorToInt(boss.Health.Maximum * 0.55f), null);
+            }
+
+            if (GUILayout.Button("Phase 3"))
+            {
+                _route.DebugSupervisor(Mathf.FloorToInt(boss.Health.Maximum * 0.24f), null);
+            }
+
+            GUILayout.EndHorizontal();
+            _bossAttack = GUILayout.Toolbar(_bossAttack, new[] { "Burst", "Sweep", "Violation", "Reinforce" });
+            if (GUILayout.Button("Force selected attack"))
+            {
+                _route.DebugSupervisor(0, (SupervisorAttack)_bossAttack);
+            }
+
+            GUI.enabled = wasEnabled;
+        }
+
         private void DrawRoute()
         {
             var width = Mathf.Min(540f, Screen.width - 28f);
@@ -329,7 +389,7 @@ namespace Overtime
             GUILayout.Label("ESC releases cursor");
             GUILayout.EndHorizontal();
 
-            for (var index = 0; index < RoutePlan.RoomCount; index++)
+            for (var index = 0; index < _route.Plan.Count; index++)
             {
                 var options = _route.Plan.At(index);
                 var left = options[0];
@@ -396,6 +456,11 @@ namespace Overtime
             var enemyPool = _route.EnemyProjectiles;
             GUILayout.Label($"Actors {_director.WorldActorCount}   Colliders {_director.DynamicColliderCount}   Hostile bolts {enemyPool.ActiveCount}/{enemyPool.PoolCapacity}");
 
+            if (_route.DebugHasSupervisor)
+            {
+                DrawSupervisor(encounter);
+            }
+
             _showActors = GUILayout.Toggle(_showActors, "World actors and Reward IDs");
             if (_showActors)
             {
@@ -406,6 +471,11 @@ namespace Overtime
                     {
                         var id = ((ICombatDamageable)enemy).RewardId;
                         GUILayout.Label($"{enemy.Kind}   {id}{(ids.Add(id) ? string.Empty : "  DUPLICATE")}");
+                    }
+                    else if (actor is SupervisorBoss boss)
+                    {
+                        var id = ((ICombatDamageable)boss).RewardId;
+                        GUILayout.Label($"Supervisor   {id}{(ids.Add(id) ? string.Empty : "  DUPLICATE")}");
                     }
                     else if (actor is ArenaHazard hazard)
                     {

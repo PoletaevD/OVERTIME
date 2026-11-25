@@ -9,7 +9,8 @@ namespace Overtime
         Operations,
         Logistics,
         Assessment,
-        Containment
+        Containment,
+        Supervisor
     }
 
     [Flags]

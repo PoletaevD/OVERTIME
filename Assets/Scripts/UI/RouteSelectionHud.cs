@@ -205,7 +205,7 @@ namespace Overtime
                 label.gameObject.SetActive(false);
             }
 
-            for (var depth = 0; depth < RoutePlan.RoomCount; depth++)
+            for (var depth = 0; depth < _route.Plan.Count; depth++)
             {
                 var nodes = _route.Plan.At(depth);
                 foreach (var node in nodes)

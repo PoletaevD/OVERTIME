@@ -14,7 +14,7 @@ namespace Overtime.Tests
         public void LoadLibrary()
         {
             const string folder = "Assets/Prefabs/Security Route/Rooms";
-            _library = AssetDatabase.FindAssets("t:RoomDefinition", new[] { folder }).Select(guid => AssetDatabase.LoadAssetAtPath<RoomDefinition>(AssetDatabase.GUIDToAssetPath(guid))).OrderBy(room => room.Id).ToArray();
+            _library = AssetDatabase.FindAssets("t:RoomDefinition", new[] { folder }).Select(guid => AssetDatabase.LoadAssetAtPath<RoomDefinition>(AssetDatabase.GUIDToAssetPath(guid))).Where(room => room.Category != RoomCategory.Supervisor).OrderBy(room => room.Id).ToArray();
             Assert.That(_library, Has.Length.EqualTo(16));
         }
 
@@ -118,7 +118,7 @@ namespace Overtime.Tests
             Assert.That(safe.Room.Threat(safe.Variant), Is.LessThan(risky.Room.Threat(risky.Variant)));
 
             var ids = new HashSet<string>();
-            for (var index = 0; index < RoutePlan.RoomCount; index++)
+            for (var index = 0; index < first.Count; index++)
             {
                 foreach (var node in first.At(index))
                 {
@@ -147,8 +147,8 @@ namespace Overtime.Tests
                 Assert.That(plan.At(1).Count, Is.EqualTo(2));
                 Assert.That(plan.At(3).Count, Is.EqualTo(2));
                 priorityPositions.Add(plan.At(3)[0].Reward == RoomReward.PriorityProtocol ? 0 : 1);
-                layouts.Add(string.Join("/", Enumerable.Range(0, RoutePlan.RoomCount).SelectMany(index => plan.At(index)).Select(node => node.Room.Id)));
-                foreach (var node in Enumerable.Range(0, RoutePlan.RoomCount).SelectMany(index => plan.At(index)))
+                layouts.Add(string.Join("/", Enumerable.Range(0, plan.Count).SelectMany(index => plan.At(index)).Select(node => node.Room.Id)));
+                foreach (var node in Enumerable.Range(0, plan.Count).SelectMany(index => plan.At(index)))
                 {
                     rooms.Add(node.Room.Id);
                 }
@@ -166,7 +166,7 @@ namespace Overtime.Tests
             var reduced = _library.Where(room => ids.Contains(room.Id)).ToArray();
             var plan = new RouteGenerator(520, reduced).Generate();
             var assigned = new HashSet<string>();
-            for (var index = 0; index < RoutePlan.RoomCount; index++)
+            for (var index = 0; index < plan.Count; index++)
             {
                 Assert.That(plan.At(index).Count, Is.EqualTo(1));
                 Assert.That(plan.At(index)[0].Room.AllowsDepth(index + 1), Is.True);
@@ -214,7 +214,7 @@ namespace Overtime.Tests
 
         private string[] Signature(RoutePlan plan)
         {
-            return Enumerable.Range(0, RoutePlan.RoomCount).SelectMany(index => plan.At(index)).Select(node => $"{node.Id}/{node.Room.Id}/{node.Variant}/{node.Reward}").ToArray();
+            return Enumerable.Range(0, plan.Count).SelectMany(index => plan.At(index)).Select(node => $"{node.Id}/{node.Room.Id}/{node.Variant}/{node.Reward}").ToArray();
         }
     }
 }

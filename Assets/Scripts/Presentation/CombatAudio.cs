@@ -21,6 +21,10 @@ namespace Overtime
         private AudioClip _knife;
         private AudioClip _knifeHit;
         private AudioClip _explosion;
+        private AudioClip _supervisorCharge;
+        private AudioClip _supervisorDischarge;
+        private AudioClip _supervisorPhase;
+        private AudioClip _supervisorDestruction;
         private AudioSource _handling;
         private Vector3 _lastImpactPoint;
         private float _lastImpactTime = -1f;
@@ -62,6 +66,10 @@ namespace Overtime
             _knife = BuildClip("Knife Sweep", 0.16f, 310f, 95f, 0.9f, 2.8f);
             _knifeHit = BuildClip("Knife Strike", 0.12f, 225f, 85f, 0.48f, 3.5f);
             _explosion = BuildClip("Payload Detonation", 0.20f, 150f, 58f, 0.71f, 3.8f);
+            _supervisorCharge = BuildClip("Supervisor / Coil Charge", 0.78f, 83f, 523f, 0.05f, 0.8f);
+            _supervisorDischarge = BuildClip("Supervisor / Discharge", 0.18f, 147f, 44f, 0.86f, 2.5f);
+            _supervisorPhase = BuildClip("Supervisor / Security Alert", 0.64f, 344f, 218f, 0.12f, 1.3f);
+            _supervisorDestruction = BuildClip("Supervisor / Chassis Collapse", 1.24f, 194f, 27f, 0.91f, 2.2f);
         }
 
         private void OnEnable()
@@ -73,6 +81,7 @@ namespace Overtime
             _player.Combat.Knife.Started += OnKnife;
             _director.ProjectileHit += OnImpact;
             _director.AuditorCharging += OnCharge;
+            _director.SupervisorSound += OnSupervisor;
         }
 
         private void OnDisable()
@@ -85,6 +94,7 @@ namespace Overtime
             _handling.Stop();
             _director.ProjectileHit -= OnImpact;
             _director.AuditorCharging -= OnCharge;
+            _director.SupervisorSound -= OnSupervisor;
         }
 
         private void OnDestroy()
@@ -101,6 +111,10 @@ namespace Overtime
             Destroy(_knife);
             Destroy(_knifeHit);
             Destroy(_explosion);
+            Destroy(_supervisorCharge);
+            Destroy(_supervisorDischarge);
+            Destroy(_supervisorPhase);
+            Destroy(_supervisorDestruction);
             Destroy(_voicePool);
         }
 
@@ -189,6 +203,18 @@ namespace Overtime
         private void OnCharge(Vector3 position)
         {
             PlayAt(_charge, position, 0.42f);
+        }
+
+        private void OnSupervisor(SupervisorCue cue, Vector3 position)
+        {
+            var clip = cue switch
+            {
+                SupervisorCue.Charge => _supervisorCharge,
+                SupervisorCue.Discharge => _supervisorDischarge,
+                SupervisorCue.Phase => _supervisorPhase,
+                _ => _supervisorDestruction
+            };
+            PlayAt(clip, position, cue == SupervisorCue.Discharge ? 0.48f : 0.72f);
         }
 
         private void PlayAt(AudioClip clip, Vector3 position, float volume)

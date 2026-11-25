@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -134,6 +135,64 @@ namespace Overtime.Tests
             Assert.That(gun.Magazine, Is.EqualTo(rounds));
             Assert.That(gun.Ammo(WeaponId.Directive), Is.EqualTo(reserve));
             Assert.That(_director.PlayerTimeline.Count, Is.EqualTo(1));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RoomWeaponRewardRetiresTheOtherChoiceAndKeepsAmmo(bool replace)
+        {
+            if (replace)
+            {
+                Assert.That(_route.DebugLootWeapon(WeaponId.Termination, WeaponRarity.Rare, 1 << (int)WeaponModifier.SlugConversion, 44, true), Is.True);
+                StepFrames(1, new TemporalInput(default, default, false, false, true, default));
+            }
+
+            var gun = _route.Weapon;
+            var original = gun.Instance(gun.ActiveSlot);
+            var magazine = gun.Magazine;
+            ClearFight();
+            Assert.That(_route.ConfirmUpgrade(0), Is.True);
+            var room = _route.ActiveRoom;
+            var node = _route.CurrentNode;
+            var rewards = new WeaponLootRoll().Roll(_route.Progression.Seed, node, new[] { gun.AuthoredPrimary, _route.SecondaryOptions[0], _route.SecondaryOptions[1], _route.SecondaryOptions[2] });
+            var chosen = ChildNamed(rewards[0].Definition.DisplayName, true);
+            var rejected = ChildNamed(rewards[1].Definition.DisplayName, true);
+            var crates = room.transform.Cast<Transform>().Where(child => child.name.StartsWith("Ammunition /", System.StringComparison.Ordinal) && child.gameObject.activeSelf).ToArray();
+            Assert.That(crates, Is.Not.Empty);
+
+            _player.PlaceAt(new Vector3(chosen.position.x + 0.78f, 0.89f, chosen.position.z - 0.6f), room.Exit.rotation);
+            Physics.SyncTransforms();
+            LookAt(chosen.position);
+            Interact();
+            var slot = replace ? gun.ActiveSlot : 1;
+            var acquired = gun.Instance(slot);
+            Assert.That(acquired.InstanceId, Is.EqualTo(rewards[0].InstanceId));
+            Assert.That(rejected.gameObject.activeSelf, Is.False);
+            Assert.That(_route.LootHint, Is.Empty);
+            Assert.That(crates.All(crate => crate.gameObject.activeSelf), Is.True);
+            Assert.That(_director.PlayerTimeline.Count, Is.EqualTo(1));
+
+            StepFrames(20);
+            StepFrames(16, new TemporalInput(default, default, false, false, false, Selection(TemporalMode.Reset)));
+            _player.PlaceAt(new Vector3(rejected.position.x - 0.78f, 0.89f, rejected.position.z - 0.6f), room.Exit.rotation);
+            Physics.SyncTransforms();
+            LookAt(rejected.position);
+            Interact();
+            room.GetComponent<EncounterLoot>().DropWeapons(node.Id, rewards, true);
+            Assert.That(gun.Instance(slot), Is.SameAs(acquired));
+            Assert.That(rejected.gameObject.activeSelf, Is.False);
+
+            if (replace)
+            {
+                var oldModel = ChildNamed(original.Definition.DisplayName, true);
+                _player.PlaceAt(new Vector3(oldModel.position.x + 0.78f, 0.89f, oldModel.position.z - 0.6f), room.Exit.rotation);
+                Physics.SyncTransforms();
+                LookAt(oldModel.position);
+                Interact();
+                Assert.That(gun.Instance(slot), Is.SameAs(original));
+                Assert.That(gun.Magazine, Is.EqualTo(magazine));
+                Assert.That(gun.Instance(slot).Modifier(WeaponModifier.SlugConversion), Is.Positive);
+            }
         }
 
         [Test]
@@ -534,7 +593,7 @@ namespace Overtime.Tests
         {
             var playerPool = _director.PlayerProjectiles;
             var instance = _route.Weapon.Instance(0);
-            for (var roomIndex = 0; roomIndex < RoutePlan.RoomCount - 1; roomIndex++)
+            for (var roomIndex = 0; roomIndex < _route.RoomCount - 1; roomIndex++)
             {
                 var outgoing = _route.ActiveRoom;
                 var oldBounds = outgoing.Encounter.CombatZone.bounds;

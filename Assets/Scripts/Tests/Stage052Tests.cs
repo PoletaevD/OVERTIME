@@ -87,7 +87,7 @@ namespace Overtime.Tests
         public void DoorSocketAlignsEveryArenaWithTheSameAperture()
         {
             var prefabs = AssetDatabase.FindAssets("t:RoomDefinition", new[] { "Assets/Prefabs/Security Route/Rooms" });
-            Assert.That(prefabs, Has.Length.EqualTo(16));
+            Assert.That(prefabs, Has.Length.EqualTo(17));
             var socket = new Pose(new Vector3(11f, 0f, 53f), Quaternion.Euler(0f, 90f, 0f));
             foreach (var guid in prefabs)
             {

@@ -102,6 +102,8 @@ namespace Overtime
                 {
                     enemy.ApplyInstability(Build.Bonus(UpgradeId.ResidualMemory), residual.Seconds);
                 }
+
+                _director.CurrentBoss?.ApplyInstability(Build.Bonus(UpgradeId.ResidualMemory), residual.Seconds);
             }
             else if (mode == TemporalMode.Recall && Build.Definition(UpgradeId.BadTake) is { } badTake)
             {
@@ -126,6 +128,17 @@ namespace Overtime
                 if ((target - origin).sqrMagnitude <= radius * radius && !Physics.Linecast(origin, target, _blastObstacles, QueryTriggerInteraction.Ignore))
                 {
                     _director.DamageTarget(enemy, enemy.Body, damage, out _);
+                }
+            }
+
+            if (_director.CurrentBoss is { } boss && boss.Health.Alive)
+            {
+                var hitbox = boss.BlastHitbox(origin);
+                var delta = hitbox.ClosestPoint(origin) - origin;
+                var distance = delta.magnitude;
+                if (distance <= radius && (distance < 0.01f || !Physics.Raycast(origin, delta / distance, distance - 0.01f, _blastObstacles, QueryTriggerInteraction.Ignore)))
+                {
+                    _director.DamageTarget(boss, hitbox, damage, out _);
                 }
             }
         }

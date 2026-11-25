@@ -12,10 +12,12 @@ namespace Overtime
         private int _batchSize;
         private Snapshot _state;
         private TemporalDirector _director;
+        private SupervisorBoss _boss;
+        private bool _disengaged;
 
-        internal int Pending => _enemies.Length - _state.Released;
+        internal int Pending => _disengaged ? 0 : _enemies.Length - _state.Released;
 
-        internal void Configure(SecurityEnemy[] enemies, GameObject[] signals, EncounterVariant variant, TemporalDirector director)
+        internal void Configure(SecurityEnemy[] enemies, GameObject[] signals, EncounterVariant variant, TemporalDirector director, SupervisorBoss boss = null)
         {
             _director = director;
             _enemies = enemies;
@@ -23,12 +25,13 @@ namespace Overtime
             _initial = variant.InitialActive;
             _threshold = variant.ReinforcementThreshold;
             _batchSize = variant.ReinforcementBatch;
+            _boss = boss;
         }
 
         internal void Begin()
         {
-            var initial = Mathf.Min(_initial, _enemies.Length);
-            RestoreState(new Snapshot(true, initial, 0, 0.35f));
+            var initial = _boss != null ? 0 : Mathf.Min(_initial, _enemies.Length);
+            RestoreState(new Snapshot(true, initial, 0, _boss == null ? 0.35f : 0f));
         }
 
         internal override void ResetState()
@@ -38,7 +41,8 @@ namespace Overtime
 
         internal override void Simulate(float step)
         {
-            if (!_state.Started || Pending == 0)
+            var available = _boss == null ? Pending : Mathf.Min(Pending, _boss.ReinforcementLimit - _state.Released);
+            if (!_state.Started || available <= 0 || (_boss != null && !_boss.Health.Alive))
             {
                 return;
             }
@@ -81,15 +85,21 @@ namespace Overtime
                 living += _enemies[index].Health.Alive ? 1 : 0;
             }
 
-            if (living <= _threshold)
+            if (_boss != null || living <= _threshold)
             {
-                _state.Warning = Mathf.Min(_batchSize, Pending);
+                _state.Warning = Mathf.Min(_batchSize, available);
                 _state.Timer = WarningTime;
                 for (var index = _state.Released; index < _state.Released + _state.Warning; index++)
                 {
                     SetSignal(index, true);
                 }
             }
+        }
+
+        internal void Disengage()
+        {
+            _disengaged = true;
+            RestoreState(default);
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
