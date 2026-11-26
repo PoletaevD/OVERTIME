@@ -85,7 +85,7 @@ namespace Overtime.Tests
                 Assert.That(clip.samples, Is.GreaterThan(0), cue.ToString());
             }
 
-            foreach (var name in new[] { "Meridian Spark Particles", "Bolt Jacket", "Muzzle Ionization" })
+            foreach (var name in new[] { "Meridian Spark Particles", "Bolt Jacket", "Player Muzzle Flash" })
             {
                 var material = Resources.Load<Material>(name);
                 Assert.That(material.shader.isSupported, Is.True, name);
@@ -93,6 +93,45 @@ namespace Overtime.Tests
             }
 
             Assert.That(Resources.Load<Texture2D>("Module Plates"), Is.Not.Null);
+        }
+
+        [UnityTest]
+        public IEnumerator MuzzleSparksFollowTheWeaponAfterTheFlashFades()
+        {
+            _player.CameraRig.ReducedMotion = false;
+            Assert.That(_route.DebugLootWeapon(WeaponId.Compliance, WeaponRarity.Common, 0, 112, true), Is.True);
+            var view = _player.GetComponentInChildren<WeaponPresentation>();
+            var effect = view.GetComponentsInChildren<Transform>().Single(part => part.name == "Player Muzzle Flash VFX");
+            var muzzle = effect.parent.Find("Muzzle Flash");
+            var flare = effect.Find("Flash Core").GetComponent<MeshRenderer>();
+            var sparks = effect.GetComponentInChildren<ParticleSystem>();
+            var particle = new ParticleSystem.Particle[1];
+
+            var shots = view.ConfirmedShots;
+            _route.Weapon.Simulate(TemporalTimeline.TickDuration, true, false, true, _player.AimRay, _player.AimUp, _director.PlayerProjectiles);
+            Assert.That(view.ConfirmedShots, Is.EqualTo(shots + 1));
+            yield return new WaitForEndOfFrame();
+            Assert.That(flare.enabled, Is.True);
+            Assert.That(Vector3.Distance(muzzle.InverseTransformPoint(flare.transform.position), Vector3.forward * 0.055f), Is.LessThan(0.001f));
+
+            sparks.Pause();
+            var sparkAtShot = muzzle.InverseTransformPoint(FirstSparkPosition());
+            var muzzleAtShot = muzzle.position;
+            yield return new WaitForSecondsRealtime(0.09f);
+            _player.PlaceAt(_player.Motor.transform.position + Vector3.right, Quaternion.Euler(0f, 32f, 0f));
+            yield return new WaitForEndOfFrame();
+
+            Assert.That(flare.enabled, Is.False);
+            Assert.That(Vector3.Distance(muzzle.position, muzzleAtShot), Is.GreaterThan(0.5f));
+            Assert.That(Vector3.Distance(muzzle.InverseTransformPoint(FirstSparkPosition()), sparkAtShot), Is.LessThan(0.001f));
+
+            Vector3 FirstSparkPosition()
+            {
+                Assert.That(sparks.GetParticles(particle), Is.EqualTo(1));
+                return sparks.main.simulationSpace == ParticleSystemSimulationSpace.Local
+                    ? sparks.transform.TransformPoint(particle[0].position)
+                    : particle[0].position;
+            }
         }
 
         [UnityTest]

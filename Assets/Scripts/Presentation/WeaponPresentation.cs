@@ -36,10 +36,9 @@ namespace Overtime
         private GameObject _primaryReceiver;
         private Transform _primaryModule;
         private Vector3 _primaryModuleRest;
-        private Vector3 _flashRest;
         private WeaponViewmodel _viewmodel;
         private Transform _activeFlash;
-        private WeaponId _displayedWeapon;
+        private WeaponId _displayedWeapon = WeaponId.Compliance;
         private float _idlePhase;
         private float _stridePhase;
         private float _strideWeight;
@@ -51,17 +50,13 @@ namespace Overtime
         private Vector3 _recoilAngles;
         private Vector3 _recoilAngularVelocity;
         private float _springCredit;
-        private float _flashTime;
         private uint _confirmedShots;
         private PlaygroundPlayer _player;
         private CombatWeapon _weapon;
         private Camera _viewCamera;
         private WeaponReadout _readout;
         private WeaponModules _modules;
-        private DischargeParticles _discharge;
-        private Light _muzzleLight;
-        private MeshRenderer _corona;
-        private MaterialPropertyBlock _coronaInk;
+        private MuzzleFlashVfx _flashVfx;
         private float _resetKick;
         private bool _wasRewinding;
         private Vector2 _sway;
@@ -78,7 +73,7 @@ namespace Overtime
             _viewCamera = GetComponentInParent<Camera>();
             if (_weapon != null && _viewCamera != null)
             {
-                _readout ??= new WeaponReadout(_recoilPivot, _activeFlash != null ? _activeFlash.gameObject.layer : _muzzleFlash.gameObject.layer);
+                _readout ??= new WeaponReadout(_recoilPivot, _muzzleFlash.gameObject.layer);
                 _readout.SetVisible(true);
                 _modules ??= new WeaponModules(_recoilPivot, _recoilPivot.GetComponentInChildren<MeshRenderer>(true).sharedMaterial);
             }
@@ -91,36 +86,10 @@ namespace Overtime
                 _primaryModuleRest = _primaryModule.localPosition;
             }
 
-            _discharge ??= new DischargeParticles(_recoilPivot, _muzzleFlash.gameObject.layer, 48);
-            if (_muzzleLight == null)
-            {
-                var lamp = new GameObject("Discharge Light");
-                lamp.transform.SetParent(_recoilPivot, false);
-                _muzzleLight = lamp.AddComponent<Light>();
-                _muzzleLight.type = LightType.Point;
-                _muzzleLight.range = 2.5f;
-                _muzzleLight.shadows = LightShadows.None;
-                _muzzleLight.enabled = false;
-            }
+            _flashVfx ??= new MuzzleFlashVfx(_recoilPivot, _muzzleFlash.gameObject.layer);
 
-            if (_corona == null)
-            {
-                var disk = GameObject.CreatePrimitive(PrimitiveType.Quad);
-                disk.name = "Muzzle Ionization";
-                var collider = disk.GetComponent<Collider>();
-                collider.enabled = false;
-                Destroy(collider);
-                _corona = disk.GetComponent<MeshRenderer>();
-                _corona.sharedMaterial = Resources.Load<Material>("Muzzle Ionization");
-                _corona.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                _corona.receiveShadows = false;
-                _coronaInk = new MaterialPropertyBlock();
-            }
-
-            _displayedWeapon = WeaponId.Compliance;
-            _activeFlash = _muzzleFlash;
-            MountCorona();
-            _flashRest = _muzzleFlash.localScale;
+            _activeFlash ??= _muzzleFlash;
+            SyncViewmodel();
             if (_weapon != null)
             {
                 _weapon.ShotFired += Fire;
@@ -137,8 +106,7 @@ namespace Overtime
 
         private void OnDisable()
         {
-            _muzzleLight.enabled = false;
-            _discharge?.Clear();
+            _flashVfx?.Clear();
             _modules?.Equip(null);
             _readout?.SetVisible(false);
             if (_weapon != null)
@@ -162,8 +130,11 @@ namespace Overtime
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
             ClearRecoil();
-            _flashTime = 0f;
-            _activeFlash.gameObject.SetActive(false);
+        }
+
+        private void OnDestroy()
+        {
+            _flashVfx?.Dispose();
         }
 
         private void LateUpdate()
@@ -178,21 +149,9 @@ namespace Overtime
             _modules?.Equip(_weapon?.Instance(_weapon.ActiveSlot));
             _modules?.SetVisible(_displayedWeapon != WeaponId.Deadline || DeadlineScope.Blend(_weapon.AimBlend) < 0.68f);
             var charge = _weapon?.ChargeProgress ?? 0f;
-            var energized = _weapon?.LastShotBoosted == true && _flashTime > 0f;
+            var energized = _weapon?.LastShotBoosted == true && _flashVfx.IsFlashing;
             SetChargeGlow(Mathf.Max(charge, _displayedWeapon == WeaponId.Deadline ? Mathf.Clamp01(-_recoilPosition.z * 8f) * 0.65f : 0f), _weapon?.HasQueuedBoost == true || energized);
             var deltaTime = Time.unscaledDeltaTime;
-            if (_flashTime > 0f)
-            {
-                _flashTime -= deltaTime;
-                _muzzleLight.enabled = _flashTime > 0.012f && !_cameraRig.ReducedMotion;
-            }
-            else if (_activeFlash.gameObject.activeSelf)
-            {
-                _muzzleLight.enabled = false;
-                _activeFlash.gameObject.SetActive(false);
-            }
-
-
             var heavy = _displayedWeapon == WeaponId.Termination || _displayedWeapon == WeaponId.Deadline;
             var blend = 1f - Mathf.Exp(-deltaTime * (heavy ? 6.8f : 9f));
             var aim = _weapon?.AimBlend ?? 0f;
@@ -255,6 +214,7 @@ namespace Overtime
                 AlignSights(aimTuning, aimedPose);
             }
 
+            _flashVfx.Present(_viewCamera);
             _readout?.Present(_weapon, _viewCamera, _cameraRig.ReducedMotion || _cameraRig.IsRewinding);
             if (_displayedWeapon == WeaponId.Deadline && _viewmodel != null)
             {
@@ -298,9 +258,8 @@ namespace Overtime
             }
 
             SetChargeGlow(0f, false);
-            _activeFlash.gameObject.SetActive(false);
+            _flashVfx.Clear();
             ClearRecoil();
-            _flashTime = 0f;
             _displayedWeapon = id;
             var index = (int)id - 1;
             _viewmodel = _alternatives != null && index >= 0 && index < _alternatives.Length ? _alternatives[index] : null;
@@ -321,24 +280,7 @@ namespace Overtime
             }
 
             _activeFlash = _viewmodel != null ? _viewmodel.Flash : _muzzleFlash;
-            MountCorona();
-            _flashRest = Vector3.one;
             _glow = -1f;
-        }
-
-        private void MountCorona()
-        {
-            foreach (Transform child in _activeFlash)
-            {
-                if (child != _corona.transform)
-                {
-                    child.gameObject.SetActive(false);
-                }
-            }
-
-            _corona.gameObject.layer = _activeFlash.gameObject.layer;
-            _corona.transform.SetParent(_activeFlash, false);
-            _corona.transform.localPosition = Vector3.forward * 0.038f;
         }
 
         private void SetChargeGlow(float brightness, bool boosted)
@@ -369,8 +311,7 @@ namespace Overtime
 
         private void SyncTemporalMotion()
         {
-            _discharge.Clear();
-            _muzzleLight.enabled = false;
+            _flashVfx.Clear();
             _resetTween?.Kill();
             if (!_wasRewinding)
             {
@@ -380,11 +321,9 @@ namespace Overtime
 
             _motionTween?.Kill();
             _gravityTween?.Kill();
-            _flashTime = 0f;
             _motionImpulse = 0f;
             _gravityImpulse = 0f;
             ClearRecoil();
-            _activeFlash.gameObject.SetActive(false);
             if (!_cameraRig.ReducedMotion)
             {
                 _resetTween = DOTween.Sequence().SetUpdate(true)
@@ -408,34 +347,7 @@ namespace Overtime
             var side = _confirmedShots % 3 - 1f;
             _recoilVelocity += Vector3.Scale(style.PositionImpulse, new Vector3(side, 1f + variation, 1f + variation));
             _recoilAngularVelocity += Vector3.Scale(style.RotationImpulse, new Vector3(1f + variation, side, -side));
-            _flashTime = _cameraRig.ReducedMotion ? 0.02f : _displayedWeapon == WeaponId.Termination ? 0.055f : 0.032f;
-            _activeFlash.localScale = _flashRest * (_cameraRig.ReducedMotion ? 0.55f : 0.85f + variation);
-            _activeFlash.gameObject.SetActive(true);
-            var scatter = _displayedWeapon == WeaponId.Termination;
-            var rail = _displayedWeapon == WeaponId.Deadline;
-            var instance = _weapon?.Instance(_weapon.ActiveSlot);
-            var slug = instance?.Modifier(WeaponModifier.SlugConversion) > 0f;
-            var explosive = instance?.Modifier(WeaponModifier.ExplosiveCore) > 0f;
-            var cold = instance?.Modifier(WeaponModifier.CryoPayload) > 0f;
-            var tint = explosive || scatter || _weapon?.LastShotBoosted == true ? new Color(1f, 0.51f, 0.16f) : rail ? new Color(0.51f, 0.64f, 1f) : new Color(0.37f, 0.91f, 1f);
-            if (cold || rail || explosive)
-            {
-                var corona = cold ? new Color(0.54f, 0.84f, 1f) : tint;
-                _discharge.Burst(_activeFlash.position, _activeFlash.forward, corona, _cameraRig.ReducedMotion ? 3 : 8, 1f, rail ? 2.7f : 1.1f, 0.017f, true);
-            }
-
-            _coronaInk.SetColor("_Tint", tint);
-            _coronaInk.SetFloat("_Profile", (int)_displayedWeapon);
-            _corona.SetPropertyBlock(_coronaInk);
-            var diameter = scatter ? 0.29f : rail ? 0.21f : _displayedWeapon == WeaponId.Directive ? 0.105f : 0.14f;
-            _corona.transform.localScale = Vector3.one * diameter;
-            var cameraRotation = _viewCamera != null ? _viewCamera.transform.rotation : _activeFlash.rotation;
-            _corona.transform.rotation = cameraRotation * Quaternion.Euler(0f, 0f, _confirmedShots * 39f);
-            _muzzleLight.transform.position = _activeFlash.position;
-            _muzzleLight.color = tint;
-            _muzzleLight.intensity = rail ? 2.4f : scatter ? 1.9f : 0.86f;
-            _muzzleLight.enabled = !_cameraRig.ReducedMotion;
-            _discharge.Burst(_activeFlash.position, _activeFlash.forward, tint, _cameraRig.ReducedMotion ? 2 : scatter ? 13 : rail ? 10 : 5, slug ? 0.18f : scatter ? 1.3f : _displayedWeapon == WeaponId.Directive ? 0.64f : 0.32f, rail ? 3.7f : 1.45f, scatter ? 0.024f : 0.014f);
+            _flashVfx.Play(_activeFlash, _confirmedShots, _cameraRig.ReducedMotion);
         }
 
         private void ClearRecoil()

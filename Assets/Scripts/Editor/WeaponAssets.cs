@@ -206,11 +206,6 @@ namespace Overtime.Editor
 
                 var flash = PlaygroundSceneBuilder.Child("Muzzle Flash", root.transform);
                 flash.localPosition = pistol ? new Vector3(0f, 0.017f, 0.338f) : new Vector3(0f, 0.01f, scatter ? 0.55f : 0.64f);
-                var shape = new PlaygroundArt(false);
-                var color = LoadMaterial(scatter ? "ARC Orange" : "ARC Cyan");
-                var core = LoadMaterial("ARC Cyan");
-                shape.Block(flash, "Discharge Core", 0f, 0f, 0.04f, scatter ? 0.16f : 0.048f, 0.032f, scatter ? 0.15f : 0.24f, core, false).Rotate(0f, 0f, 27f);
-                shape.Block(flash, "Discharge Streak", 0f, 0f, 0.025f, scatter ? 0.24f : 0.13f, 0.016f, 0.095f, color, false).Rotate(0f, 0f, -24f);
                 flash.gameObject.SetActive(false);
                 foreach (var child in root.GetComponentsInChildren<Transform>(true))
                 {

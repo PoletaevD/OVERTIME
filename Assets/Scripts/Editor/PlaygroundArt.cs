@@ -213,8 +213,6 @@ namespace Overtime.Editor
 
             var flash = PlaygroundSceneBuilder.Child("Muzzle Flash", recoil);
             flash.localPosition = new Vector3(0f, 0.023f, 0.572f);
-            Block(flash, "Flash Core", 0f, 0f, 0.03f, 0.045f, 0.048f, 0.17f, _cyan, false).Rotate(0f, 0f, 45f);
-            Block(flash, "Flash Streak", 0f, 0f, 0.01f, 0.075f, 0.018f, 0.092f, _orange, false).Rotate(0f, 0f, 27f);
             flash.gameObject.SetActive(false);
             foreach (var child in root.GetComponentsInChildren<Transform>(true))
             {

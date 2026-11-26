@@ -8,7 +8,8 @@ namespace Overtime
         private readonly ParticleSystem _particles;
         private int _phase;
 
-        internal DischargeParticles(Transform parent, int layer, int capacity)
+        internal DischargeParticles(Transform parent, int layer, int capacity, float velocityStretch = 0.07f,
+            ParticleSystemSimulationSpace simulationSpace = ParticleSystemSimulationSpace.World)
         {
             var host = new GameObject("Discharge Particles");
             host.layer = layer;
@@ -18,7 +19,7 @@ namespace Overtime
             var main = _particles.main;
             main.playOnAwake = false;
             main.maxParticles = capacity;
-            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.simulationSpace = simulationSpace;
             main.useUnscaledTime = true;
             var emission = _particles.emission;
             emission.enabled = false;
@@ -30,12 +31,15 @@ namespace Overtime
             var renderer = host.GetComponent<ParticleSystemRenderer>();
             renderer.renderMode = ParticleSystemRenderMode.Stretch;
             renderer.lengthScale = 1.5f;
-            renderer.velocityScale = 0.07f;
+            renderer.velocityScale = velocityStretch;
             renderer.shadowCastingMode = ShadowCastingMode.Off;
             renderer.sharedMaterial = Resources.Load<Material>("Meridian Spark Particles");
             _particles.Play();
         }
 
+        internal bool HasParticles => _particles.particleCount > 0;
+
+        // Point and axis are relative to the configured simulation space.
         internal void Burst(Vector3 point, Vector3 axis, Color tint, int count, float spread, float speed, float width, bool ring = false)
         {
             var rotation = Quaternion.FromToRotation(Vector3.forward, axis);
