@@ -235,7 +235,7 @@ namespace Overtime.Editor
             var energy = timeline.AddComponent<ChronoEnergy>();
             var route = timeline.AddComponent<SectorRoute>();
             var armory = new SecurityPlaygroundBuilder(_art, timeline.transform);
-            var pool = armory.BuildPool(director, library == null ? 40 : 128, _violet);
+            var pool = armory.BuildPool(director, library == null ? 40 : 128);
             if (library == null)
             {
                 var rooms = new[]

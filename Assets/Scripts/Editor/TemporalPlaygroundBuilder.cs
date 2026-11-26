@@ -224,15 +224,9 @@ namespace Overtime.Editor
                 var slots = new Transform[8];
                 for (var slot = 0; slot < slots.Length; slot++)
                 {
-                    var projectile = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                    projectile.name = $"Projectile Slot {slot + 1}";
-                    projectile.transform.SetParent(root, false);
-                    projectile.transform.localScale = new Vector3(0.16f, 0.16f, 0.34f);
-                    projectile.GetComponent<MeshRenderer>().sharedMaterial = _cyan;
-                    Object.DestroyImmediate(projectile.GetComponent<SphereCollider>());
-                    Trace(projectile, 0.035f, _trace);
-                    projectile.SetActive(false);
-                    slots[slot] = projectile.transform;
+                    var projectile = PlaygroundSceneBuilder.Child($"Projectile Slot {slot + 1}", root);
+                    projectile.gameObject.SetActive(false);
+                    slots[slot] = projectile;
                 }
 
                 var emitter = root.gameObject.AddComponent<TemporalProjectileEmitter>();

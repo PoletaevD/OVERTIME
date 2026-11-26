@@ -125,25 +125,19 @@ namespace Overtime.Editor
             light.color = color;
         }
 
-        internal TemporalProjectileEmitter BuildPool(TemporalDirector director, int capacity = 20, Material droneBolt = null)
+        internal TemporalProjectileEmitter BuildPool(TemporalDirector director, int capacity = 20)
         {
             var root = PlaygroundSceneBuilder.Child("Enemy Projectile Pool", _room);
             var slots = new Transform[capacity];
             for (var index = 0; index < slots.Length; index++)
             {
-                var bolt = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                bolt.name = $"Bolt {index + 1:00}";
-                bolt.transform.SetParent(root, false);
-                bolt.transform.localScale = new Vector3(0.26f, 0.26f, 0.66f);
-                bolt.GetComponent<Renderer>().sharedMaterial = _orange;
-                Object.DestroyImmediate(bolt.GetComponent<Collider>());
-                AddLine(bolt, 0);
-                bolt.SetActive(false);
-                slots[index] = bolt.transform;
+                var slot = PlaygroundSceneBuilder.Child($"Projectile Slot {index + 1:00}", root);
+                slot.gameObject.SetActive(false);
+                slots[index] = slot;
             }
 
             var pool = root.gameObject.AddComponent<TemporalProjectileEmitter>();
-            PlaygroundSceneBuilder.Wire(pool, "_projectiles", slots, "_combatDirector", director, "_droneBolt", droneBolt != null ? droneBolt : _cyan);
+            PlaygroundSceneBuilder.Wire(pool, "_projectiles", slots, "_combatDirector", director);
             var data = new SerializedObject(pool);
             data.FindProperty("_automatic").boolValue = false;
             data.ApplyModifiedPropertiesWithoutUndo();

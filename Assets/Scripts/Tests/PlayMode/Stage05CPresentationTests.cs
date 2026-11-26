@@ -85,12 +85,22 @@ namespace Overtime.Tests
                 Assert.That(clip.samples, Is.GreaterThan(0), cue.ToString());
             }
 
-            foreach (var name in new[] { "Meridian Spark Particles", "Bolt Jacket", "Player Muzzle Flash" })
+            foreach (var name in new[] { "Meridian Spark Particles", "Player Muzzle Flash", "Projectile Forms/Flight Tracer", "Projectile Forms/Powder Wake", "Projectile Forms/Flight Halo" })
             {
                 var material = Resources.Load<Material>(name);
                 Assert.That(material.shader.isSupported, Is.True, name);
                 Assert.That(material.shader.name, Does.StartWith("MERIDIAN/"));
             }
+
+            var flight = new ProjectileFlightVisual.Assets();
+            Assert.That(flight.Metal.shader.name, Is.EqualTo("Universal Render Pipeline/Lit"));
+            Assert.That(flight.Metal.GetTexture("_BaseMap"), Is.Not.Null);
+            Assert.That(flight.Metal.GetTexture("_MetallicGlossMap"), Is.Not.Null);
+            Assert.That(flight.Metal.GetTexture("_EmissionMap"), Is.Not.Null);
+            Assert.That(flight.Metal.IsKeywordEnabled("_EMISSION"), Is.True);
+            Assert.That(flight.HaloQuad, Is.Not.Null);
+            Assert.That(flight.Halo.IsKeywordEnabled("_PROJECTILE_HALO"), Is.True);
+            Assert.That(flight.Forms.All(mesh => mesh.vertexCount > 12), Is.True);
 
             Assert.That(Resources.Load<Texture2D>("Module Plates"), Is.Not.Null);
         }

@@ -159,7 +159,7 @@ namespace Overtime
                 var pool = new GameObject("Player Projectile Pool");
                 pool.transform.SetParent(transform, false);
                 _playerProjectiles = pool.AddComponent<TemporalProjectileEmitter>();
-                _playerProjectiles.ConfigurePlayerPool(this, player.Combat.Weapon.ProjectileCapacity, Resources.Load<Material>("ARC-01 Bolt"));
+                _playerProjectiles.ConfigurePlayerPool(this, player.Combat.Weapon.ProjectileCapacity);
                 _playerProjectiles.Initialize(WorldTimeline.Capacity);
             }
 

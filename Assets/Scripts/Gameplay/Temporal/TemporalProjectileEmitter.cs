@@ -1,14 +1,10 @@
 using System;
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace Overtime
 {
     internal sealed class TemporalProjectileEmitter : TemporalActor
     {
-        private static readonly int s_baseColor = Shader.PropertyToID("_BaseColor");
-        private const int TraceSamples = 6;
-        private const int TraceSpacing = 4;
         private const int MaxCollisionIterations = 6;
         private const float SurfaceSkin = 0.004f;
         private const float GoldenAngle = 2.39996323f;
@@ -23,16 +19,11 @@ namespace Overtime
         [SerializeField, Min(1)] private int _damage = 15;
         [SerializeField, Min(0.01f)] private float _radius = 0.13f;
         [SerializeField] private LayerMask _impactLayers = 1;
-        [SerializeField] private Material _droneBolt;
 
         private readonly RaycastHit[] _sweepHits = new RaycastHit[128];
         private readonly Collider[] _overlaps = new Collider[64];
-        private readonly Mesh[] _forms = new Mesh[7];
         private bool _playerPool;
-        private Material _fallbackMaterial;
-        private Material _jacket;
-        private MaterialPropertyBlock _boltProperties;
-        private Visual[] _visuals;
+        private ProjectileFlightVisual[] _visuals;
         private Projectile[] _live;
         private Projectile[] _history;
         private int[] _splitQueue;
@@ -44,55 +35,19 @@ namespace Overtime
         internal uint Generation => _generation;
         internal int PoolCapacity => _projectiles.Length;
 
-        internal void ConfigurePlayerPool(TemporalDirector director, int capacity, Material material)
+        internal void ConfigurePlayerPool(TemporalDirector director, int capacity)
         {
             _playerPool = true;
-            _boltProperties = new MaterialPropertyBlock();
             _automatic = false;
             _combatDirector = director;
             _radius = 0.045f;
             _projectiles = new Transform[Mathf.Max(1, capacity)];
-            if (material == null)
-            {
-                _fallbackMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-                _fallbackMaterial.color = new Color(0.08f, 1.45f, 1.8f);
-                material = _fallbackMaterial;
-            }
-
-            var trailMaterial = Resources.Load<Material>("Meridian Spark Particles");
             for (var slot = 0; slot < _projectiles.Length; slot++)
             {
-                var bolt = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                bolt.name = $"Player Bolt {slot + 1:00}";
-                bolt.transform.SetParent(transform, false);
-                bolt.transform.localScale = new Vector3(0.09f, 0.09f, 0.24f);
-                var collider = bolt.GetComponent<Collider>();
-                collider.enabled = false;
-                Destroy(collider);
-                var mesh = bolt.GetComponent<MeshRenderer>();
-                mesh.sharedMaterial = material;
-                mesh.shadowCastingMode = ShadowCastingMode.Off;
-                mesh.receiveShadows = false;
-                var trace = bolt.AddComponent<LineRenderer>();
-                trace.sharedMaterial = trailMaterial;
-                trace.useWorldSpace = true;
-                trace.positionCount = 2;
-                trace.startWidth = 0.052f;
-                trace.endWidth = 0.006f;
-                trace.numCapVertices = 2;
-                trace.shadowCastingMode = ShadowCastingMode.Off;
-                trace.receiveShadows = false;
-                trace.enabled = false;
-                bolt.SetActive(false);
-                _projectiles[slot] = bolt.transform;
-            }
-        }
-
-        private void OnDestroy()
-        {
-            if (_fallbackMaterial != null)
-            {
-                Destroy(_fallbackMaterial);
+                var host = new GameObject($"Player Projectile {slot + 1:00}");
+                host.transform.SetParent(transform, false);
+                host.SetActive(false);
+                _projectiles[slot] = host.transform;
             }
         }
 
@@ -100,40 +55,21 @@ namespace Overtime
 
         internal override void Initialize(int capacity)
         {
-            if (!_automatic)
+            var slots = _projectiles.Length;
+            if (_visuals == null)
             {
-                _jacket = Resources.Load<Material>("Bolt Jacket");
-                _boltProperties ??= new MaterialPropertyBlock();
-                var names = new[] { "Compliance", "Termination", "Deadline", "Directive", "Sentinel", "Drone", "Blast" };
-                for (var index = 0; index < names.Length; index++)
+                var flightAssets = new ProjectileFlightVisual.Assets();
+                _visuals = new ProjectileFlightVisual[slots];
+                for (var slot = 0; slot < slots; slot++)
                 {
-                    var asset = Resources.Load<GameObject>("Projectile Forms/" + names[index]);
-                    _forms[index] = asset != null ? asset.GetComponentInChildren<MeshFilter>().sharedMesh : null;
+                    _visuals[slot] = new ProjectileFlightVisual(_projectiles[slot], flightAssets, _playerPool);
                 }
             }
 
-            var streak = !_automatic && !_playerPool ? Resources.Load<Material>("Meridian Spark Particles") : null;
-            var slots = _projectiles.Length;
-            _visuals = new Visual[slots];
             _live = new Projectile[slots];
             _history = new Projectile[capacity * slots];
             _splitQueue = new int[slots];
             _emitterHistory = new EmitterFrame[capacity];
-            for (var slot = 0; slot < slots; slot++)
-            {
-                var transform = _projectiles[slot];
-                var mesh = transform.GetComponent<MeshRenderer>();
-                var trace = transform.GetComponent<LineRenderer>();
-                if (streak != null && trace != null)
-                {
-                    trace.sharedMaterial = streak;
-                    trace.startWidth = 0.075f;
-                    trace.endWidth = 0.008f;
-                }
-
-                _visuals[slot] = new Visual(trace, transform.GetComponent<MeshFilter>(), mesh, mesh != null ? mesh.sharedMaterial : null, transform.localScale);
-            }
-
             ResetState();
         }
 
@@ -176,6 +112,7 @@ namespace Overtime
                 }
 
                 var direction = projectile.Direction;
+                var blastSpent = projectile.BlastSpent;
                 if (projectile.Ballistics.Acceleration > 0f)
                 {
                     projectile.Speed = Mathf.Min(projectile.InitialSpeed * 2.35f, projectile.Speed + projectile.InitialSpeed * projectile.Ballistics.Acceleration * step);
@@ -207,7 +144,7 @@ namespace Overtime
                     _splitQueue[pendingSplits++] = slot;
                 }
 
-                Apply(slot, _playerPool && projectile.Direction != direction);
+                Apply(slot, projectile.BlastSpent != blastSpent, projectile.Direction != direction);
             }
 
             for (var index = 0; index < pendingSplits; index++)
@@ -680,9 +617,10 @@ namespace Overtime
         internal override void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
         {
             var view = _playerPool ? _combatDirector.PlayerAim : default;
+            var rewind = timeline.Direction == TemporalDirection.Reverse;
             for (var slot = 0; slot < _live.Length; slot++)
             {
-                var current = _live[slot];
+                ref readonly var current = ref _live[slot];
                 if (!current.Active)
                 {
                     continue;
@@ -692,108 +630,26 @@ namespace Overtime
                 var segment = current.SegmentDistance;
                 if (timeline.PreviewFraction > 0f)
                 {
-                    var older = Read(timeline, timeline.Cursor - 1, slot);
-                    if (SameProjectile(older, current))
+                    ref readonly var older = ref _history[timeline.Slot(timeline.Cursor - 1) * _live.Length + slot];
+                    if (older.Active && older.Generation == current.Generation &&
+                        Vector3.Dot(older.Direction, current.Direction) > 0.999f)
                     {
                         position = Vector3.Lerp(position, older.Position, timeline.PreviewFraction);
-                        segment = Vector3.Dot(older.Direction, current.Direction) > 0.999f ? Mathf.Lerp(segment, older.SegmentDistance, timeline.PreviewFraction) : 0f;
+                        segment = Mathf.Lerp(segment, older.SegmentDistance, timeline.PreviewFraction);
                     }
                 }
-                _projectiles[slot].position = position;
-                var trace = _visuals[slot].Trace;
-                if (trace != null)
-                {
-                    if (_playerPool)
-                    {
-                        var stretch = current.Ballistics.Acceleration > 0f ? Mathf.Clamp(current.Speed / current.InitialSpeed, 1f, 2.5f) : 1f;
-                        var length = current.Ballistics.Weapon switch
-                        {
-                            WeaponId.Deadline => 1.65f,
-                            WeaponId.Directive => 0.24f,
-                            WeaponId.Termination => current.Ballistics.Slug ? 0.8f : 0.19f,
-                            _ => 0.55f
-                        };
-                        var depth = Vector3.Dot(position - view.origin, view.direction);
-                        var heading = Vector3.Dot(current.Direction, view.direction);
-                        var visibleSegment = heading > 0.001f ? Mathf.Min(segment, Mathf.Max(0f, depth - 0.42f) / heading) : segment;
-                        _visuals[slot].Mesh.enabled = depth >= 0.23f;
-                        trace.enabled = showTraces && depth > 0.23f && visibleSegment > 0.001f;
-                        trace.SetPosition(0, position);
-                        trace.SetPosition(1, position - current.Direction * Mathf.Min(visibleSegment, length * stretch));
-                    }
-                    else
-                    {
-                        PresentTrace(timeline, mode, showTraces, slot, current, position, trace);
-                    }
-                }
+
+                _visuals[slot].Present(position, current.Direction, segment, current.Speed, view, showTraces, rewind, mode == TemporalMode.BulletTime);
             }
         }
 
-        private void PresentTrace(TemporalTimeline timeline, TemporalMode mode, bool showTraces, int slot, in Projectile current, Vector3 position, LineRenderer trace)
+        private void Apply(int slot, bool refreshStyle = false, bool redirect = false)
         {
-            if (!_automatic && showTraces && timeline.Direction == TemporalDirection.Forward && mode != TemporalMode.BulletTime)
+            ref readonly var projectile = ref _live[slot];
+            var root = _projectiles[slot];
+            if (root.gameObject.activeSelf != projectile.Active)
             {
-                var length = current.Drone ? 0.23f : Mathf.Lerp(0.30f, 0.68f, Mathf.InverseLerp(0.08f, 0.21f, current.Radius));
-                trace.enabled = current.SegmentDistance > 0.001f;
-                trace.positionCount = 2;
-                trace.startColor = new Color(1f, 0.43f, 0.12f, 0.89f);
-                trace.endColor = new Color(1f, 0.24f, 0.09f, 0f);
-                trace.SetPosition(0, position);
-                trace.SetPosition(1, position - current.Direction * Mathf.Min(current.SegmentDistance, length));
-                return;
-            }
-
-            if (!showTraces || (timeline.Direction != TemporalDirection.Reverse && mode != TemporalMode.BulletTime))
-            {
-                trace.enabled = false;
-                return;
-            }
-
-            var limit = (int)Math.Min(TraceSamples, 1 + (timeline.Cursor - timeline.Oldest) / TraceSpacing);
-            var samples = 1;
-            while (samples < limit && SameProjectile(Read(timeline, timeline.Cursor - samples * TraceSpacing, slot), current))
-            {
-                samples++;
-            }
-
-            trace.enabled = samples > 1;
-            if (trace.enabled)
-            {
-                var color = _automatic ? TemporalEffects.ModeColor(mode) : new Color(1f, 0.47f, 0.13f);
-                trace.startColor = new Color(color.r, color.g, color.b, 0.78f);
-                trace.endColor = new Color(color.r, color.g, color.b, 0f);
-                trace.positionCount = samples;
-                trace.SetPosition(0, position);
-                for (var sample = 1; sample < samples; sample++)
-                {
-                    trace.SetPosition(sample, Read(timeline, timeline.Cursor - sample * TraceSpacing, slot).Position);
-                }
-            }
-        }
-
-        private Projectile Read(TemporalTimeline timeline, long tick, int slot)
-        {
-            return _history[timeline.Slot(tick) * _live.Length + slot];
-        }
-
-        private bool SameProjectile(in Projectile first, in Projectile second)
-        {
-            return first.Active && first.Generation == second.Generation;
-        }
-
-        private void Apply(int slot, bool refreshStyle = false)
-        {
-            var projectile = _live[slot];
-            var visual = _projectiles[slot];
-            ref readonly var style = ref _visuals[slot];
-            if (visual.gameObject.activeSelf != projectile.Active)
-            {
-                if (!projectile.Active && style.Trace != null)
-                {
-                    style.Trace.enabled = false;
-                }
-
-                visual.gameObject.SetActive(projectile.Active);
+                root.gameObject.SetActive(projectile.Active);
             }
 
             if (!projectile.Active)
@@ -801,75 +657,49 @@ namespace Overtime
                 return;
             }
 
-            visual.position = projectile.Position;
-            if (refreshStyle && !_automatic)
+            var visual = _visuals[slot];
+            if (refreshStyle)
             {
-                if (style.Trace != null)
-                {
-                    style.Trace.enabled = false;
-                }
+                var form = FlightForm(projectile);
+                var radius = form == ProjectileFlightVisual.Form.KnifeWave ? 0.23f : _radius;
+                var hot = projectile.Charged || projectile.Hypervelocity || projectile.Ballistics.Overload || form == ProjectileFlightVisual.Form.Blast;
+                visual.SetStyle(form, projectile.Radius, radius, hot);
+            }
 
-                var form = !_playerPool ? projectile.Drone ? 5 : 4 : projectile.Ballistics.ExplosionRadius > 0f && !projectile.BlastSpent ? 6 : (int)projectile.Ballistics.Weapon;
-                if (style.Filter != null && _forms[form] != null)
-                {
-                    style.Filter.sharedMesh = _forms[form];
-                }
-
-                visual.rotation = Quaternion.LookRotation(projectile.Direction);
-                var profile = !_playerPool ? new Vector3(1.2f, 1.2f, 0.92f) : projectile.Ballistics.Weapon switch
-                {
-                    WeaponId.Directive => new Vector3(0.87f, 0.87f, 0.67f),
-                    WeaponId.Compliance => new Vector3(0.80f, 0.80f, 1.45f),
-                    WeaponId.Deadline => new Vector3(1.1f, 1.1f, 2.6f),
-                    _ => new Vector3(0.96f, 0.96f, projectile.Ballistics.Slug ? 1.6f : 0.58f)
-                };
-                visual.localScale = Vector3.Scale(style.Scale, profile) * (projectile.Radius / _radius);
-                if (_playerPool && style.Trace != null)
-                {
-                    var color = BoltColor(projectile);
-                    style.Trace.startColor = color;
-                    style.Trace.endColor = new Color(color.r, color.g, color.b, 0f);
-                }
-
-                if (style.Mesh != null)
-                {
-                    style.Mesh.sharedMaterial = _jacket != null ? _jacket : projectile.Drone && _droneBolt != null ? _droneBolt : style.Material;
-                    var energy = _playerPool ? BoltColor(projectile) : projectile.Drone ? new Color(1.95f, 0.53f, 0.09f) : new Color(2.15f, 0.29f, 0.06f);
-                    _boltProperties.Clear();
-                    _boltProperties.SetColor(s_baseColor, energy);
-                    style.Mesh.SetPropertyBlock(_boltProperties);
-                }
+            if (refreshStyle || redirect)
+            {
+                visual.SetPose(projectile.Position, projectile.Direction);
+            }
+            else
+            {
+                root.position = projectile.Position;
             }
         }
 
-        private Color BoltColor(in Projectile projectile)
+        private ProjectileFlightVisual.Form FlightForm(in Projectile projectile)
         {
-            if (projectile.Ballistics.Overload)
+            if (!_playerPool)
             {
-                return new Color(2.4f, 0.39f, 3.15f);
+                return projectile.Drone ? ProjectileFlightVisual.Form.Drone : ProjectileFlightVisual.Form.Sentinel;
             }
 
-            if (projectile.Ballistics.Melee || projectile.Ballistics.ChillSeconds > 0f)
+            var ballistics = projectile.Ballistics;
+            if (ballistics.Melee)
             {
-                return new Color(0.34f, 2.45f, 3f);
+                return ProjectileFlightVisual.Form.KnifeWave;
             }
 
-            if (projectile.Ballistics.ExplosionRadius > 0f && !projectile.BlastSpent)
+            if (ballistics.ExplosionRadius > 0f && !projectile.BlastSpent)
             {
-                return new Color(3f, 0.52f, 0.12f);
+                return ProjectileFlightVisual.Form.Blast;
             }
 
-            if (projectile.Charged)
+            return ballistics.Weapon switch
             {
-                return new Color(2.6f, 0.83f, 0.24f);
-            }
-
-            return projectile.Ballistics.Weapon switch
-            {
-                WeaponId.Directive => new Color(0.38f, 2.55f, 1.78f),
-                WeaponId.Termination => new Color(2.2f, 0.7f, 0.25f),
-                WeaponId.Deadline => new Color(0.65f, 1.6f, 3f),
-                _ => new Color(0.08f, 1.45f, 1.8f)
+                WeaponId.Termination => ballistics.Slug ? ProjectileFlightVisual.Form.Slug : ProjectileFlightVisual.Form.Pellet,
+                WeaponId.Deadline => ProjectileFlightVisual.Form.Deadline,
+                WeaponId.Directive => ProjectileFlightVisual.Form.Directive,
+                _ => ProjectileFlightVisual.Form.Compliance
             };
         }
 
@@ -890,24 +720,6 @@ namespace Overtime
             speed = projectile.Speed;
             split = projectile.Split;
             return projectile.Active;
-        }
-
-        private readonly struct Visual
-        {
-            internal readonly LineRenderer Trace;
-            internal readonly MeshFilter Filter;
-            internal readonly MeshRenderer Mesh;
-            internal readonly Material Material;
-            internal readonly Vector3 Scale;
-
-            internal Visual(LineRenderer trace, MeshFilter filter, MeshRenderer mesh, Material material, Vector3 scale)
-            {
-                Trace = trace;
-                Filter = filter;
-                Mesh = mesh;
-                Material = material;
-                Scale = scale;
-            }
         }
 
         private struct Projectile
