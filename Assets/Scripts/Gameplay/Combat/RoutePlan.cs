@@ -171,7 +171,7 @@ namespace Overtime
                 {
                     var tier = room.Variants[index].Difficulty;
                     var threat = room.Threat(index);
-                    if (tier < minTier || tier > maxTier || (!fallback && ((id == 5 && threat >= 25f) || (id == 6 && threat < 24f))))
+                    if (tier < minTier || tier > maxTier || (!fallback && ((id == 5 && threat >= 17.5f) || (id == 6 && threat < 17f))))
                     {
                         continue;
                     }

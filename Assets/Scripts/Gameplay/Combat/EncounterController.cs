@@ -134,9 +134,11 @@ namespace Overtime
                     director.SealHistory();
                     break;
                 case EncounterState.Active when director.HasLivingPlayer && CanClear():
+                    director.Sound(FieldCue.RoomClear, _gate.transform.position);
                     State = EncounterState.RewardSelection;
                     break;
                 case EncounterState.Cleared when _exitZone.bounds.Contains(position):
+                    director.Sound(FieldCue.Door, _gate.transform.position);
                     _gate.SetOpen(false, player.ReducedMotion);
                     State = EncounterState.Completed;
                     break;

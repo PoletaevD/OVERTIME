@@ -30,12 +30,16 @@ namespace Overtime
         private string _lootSeed;
         private string _rounds = "12";
         private bool _showLoot;
+        private int _previewCue;
+        private static readonly string[] s_cues = System.Enum.GetNames(typeof(FieldCue));
+        private CombatAudio _previewAudio;
         private static readonly string[] s_weaponTypes = System.Enum.GetNames(typeof(WeaponId));
         private static readonly string[] s_rarities = System.Enum.GetNames(typeof(WeaponRarity));
         private static readonly string[] s_modifiers = System.Enum.GetNames(typeof(WeaponModifier));
 
         internal void Initialize(SectorRoute route, TemporalDirector director, PlaygroundPlayer player)
         {
+            _previewAudio = player.GetComponentInChildren<CombatAudio>(true);
             _route = route;
             _director = director;
             _player = player;
@@ -170,6 +174,27 @@ namespace Overtime
             GUILayout.Label($"POOL {pool.ActiveCount}/{pool.PoolCapacity}   MAX PENETRATIONS {penetrations}   MAX RICOCHETS {ricochets}");
             GUILayout.Label("F9 / F10 / F11  Equip   HOME  Slot   END  Restock");
             GUILayout.Label("PGUP/DOWN  Browse   ENTER  Grant   O  Offer   F5  Restart");
+            if (_previewAudio != null)
+            {
+                GUILayout.BeginHorizontal();
+                if (GUILayout.Button("< SFX"))
+                {
+                    _previewCue = (_previewCue + s_cues.Length - 1) % s_cues.Length;
+                }
+
+                if (GUILayout.Button(((FieldCue)_previewCue).ToString()))
+                {
+                    _previewAudio.PlayInterface((FieldCue)_previewCue);
+                }
+
+                if (GUILayout.Button("SFX >"))
+                {
+                    _previewCue = (_previewCue + 1) % s_cues.Length;
+                }
+
+                GUILayout.EndHorizontal();
+            }
+
             DrawRecoil(gun);
             if (_route.Seamless)
             {

@@ -89,6 +89,7 @@ namespace Overtime
             {
                 _state.Warning = Mathf.Min(_batchSize, available);
                 _state.Timer = WarningTime;
+                _director.Sound(FieldCue.Reinforcement, _enemies[_state.Released].transform.position);
                 for (var index = _state.Released; index < _state.Released + _state.Warning; index++)
                 {
                     SetSignal(index, true);

@@ -40,15 +40,16 @@ namespace Overtime
         [SerializeField] private TMP_Text _lootHint;
         [SerializeField] private TMP_Text _ammoNotice;
 
+        private DamageNumbers _numbers;
         private DamageIndicators _indicators;
         private Tween _remainingPulse;
         private int _remaining = -1;
 
         private Tween _healthPulse;
-        private Tween _ammoPulse;
         private Sequence _ammoNoticeFade;
         private Tween _lootHintFade;
         private string _lastLootHint;
+        private RawImage[] _modulePlates;
         private Tween _energyPulse;
         private Tween _hitPulse;
         private Tween _stationTween;
@@ -56,8 +57,7 @@ namespace Overtime
         private int _slot = -1;
         private WeaponDefinition _activeDefinition;
         private WeaponDefinition _stowedDefinition;
-        private int _stowedMagazine = -1;
-        private int _stowedReserve = -1;
+        private int _stowedSlot = -1;
         private string _weaponAction;
         private float _hitWindow;
         private int _groupedDamage;
@@ -67,22 +67,26 @@ namespace Overtime
         private Tween _deathTween;
         private CanvasGroup _stationGroup;
         private Color _healthColor;
-        private Color _ammoColor;
         private float _energy = -1f;
         private float _maximumEnergy = -1f;
         private int _health = -1;
-        private int _magazine = -1;
-        private int _capacity = -1;
-        private int _reserve = -1;
         private bool _nearStation;
         private bool _showDeath;
         private bool _wasGameOver;
 
         private void Awake()
         {
+            var layout = new CombatHudLayout();
+            layout.Apply(transform);
+            if (_lootHint != null)
+            {
+                _modulePlates = layout.CreateModulePlates(_lootHint.rectTransform);
+            }
+
+            _ammoLabel.enabled = false;
+            _numbers = new DamageNumbers((RectTransform)transform, _player.GetComponentInChildren<Camera>(), _hitLabel);
             _stationGroup = _stationHint.GetComponent<CanvasGroup>();
             _healthPulse = BuildPulse(0.34f, PresentHealthPulse);
-            _ammoPulse = BuildPulse(0.16f, value => _ammoLabel.color = Color.Lerp(s_text, _ammoColor, value));
             _energyPulse = BuildPulse(0.42f, value => _energyFill.color = Color.Lerp(s_chrono, Color.white, value));
             _hitPulse = BuildPulse(0.22f, PresentHitPulse);
             _restart.onClick.AddListener(_director.RequestRestart);
@@ -110,6 +114,7 @@ namespace Overtime
 
         private void OnEnable()
         {
+            _director.DamageConfirmed += _numbers.Show;
             _director.ProjectileHit += OnImpact;
             _player.Combat.Weapon.SwitchStarted += OnSwitch;
             _player.Combat.Weapon.AmmoCollected += OnAmmoCollected;
@@ -120,6 +125,8 @@ namespace Overtime
 
         private void OnDisable()
         {
+            _director.DamageConfirmed -= _numbers.Show;
+            _numbers.Clear();
             _director.ProjectileHit -= OnImpact;
             _player.Combat.Weapon.SwitchStarted -= OnSwitch;
             _player.Combat.Weapon.AmmoCollected -= OnAmmoCollected;
@@ -135,7 +142,6 @@ namespace Overtime
         {
             _restart.onClick.RemoveListener(_director.RequestRestart);
             _healthPulse.Kill();
-            _ammoPulse.Kill();
             _ammoNoticeFade?.Kill();
             _lootHintFade?.Kill();
             _energyPulse.Kill();
@@ -144,11 +150,13 @@ namespace Overtime
             _weaponPulse?.Kill();
             _deathTween?.Kill();
             _remainingPulse?.Kill();
+            _numbers?.Dispose();
             _indicators?.Dispose();
         }
 
         private void LateUpdate()
         {
+            _numbers.Project(_player.ReducedMotion);
             var combat = _player.Combat;
             RefreshHealth(combat.Health);
             RefreshAmmo(combat.Weapon);
@@ -198,6 +206,20 @@ namespace Overtime
             }
 
             _lastLootHint = hint;
+            var hovered = string.IsNullOrEmpty(hint) ? null : _director.HoveredWeapon;
+            var count = Mathf.Min(_modulePlates.Length, hovered?.Affixes.Count ?? 0);
+            for (var index = 0; index < _modulePlates.Length; index++)
+            {
+                var plate = _modulePlates[index];
+                plate.enabled = index < count;
+                if (plate.enabled)
+                {
+                    var kind = (int)hovered.Affixes[index].Kind;
+                    plate.uvRect = new Rect(kind % 5 * 0.2f, kind < 5 ? 0.5f : 0f, 0.2f, 0.5f);
+                    plate.rectTransform.anchoredPosition = new Vector2((index - (count - 1) * 0.5f) * 48f, -7f);
+                }
+            }
+
             _lootHintFade?.Kill();
             _lootHint.SetText(hint);
             _lootHint.alpha = string.IsNullOrEmpty(hint) ? 0f : 1f;
@@ -242,7 +264,8 @@ namespace Overtime
                 return;
             }
 
-            _healthLabel.SetText("VITALS  {0:0} / {1:0}", health.Current, health.Maximum);
+            _healthLabel.color = health.Current * 4 <= health.Maximum ? s_damage : s_text;
+            _healthLabel.SetText("<b><i>{0:0}</i></b> <size=38%> / {1:0}  HP</size>", health.Current, health.Maximum);
             SetFill(_healthFill, (float)health.Current / health.Maximum);
             if (_health >= 0 && health.Current > _health)
             {
@@ -273,20 +296,6 @@ namespace Overtime
 
         private void RefreshAmmo(CombatWeapon weapon)
         {
-            if (_magazine != weapon.Magazine || _reserve != weapon.Reserve || _capacity != weapon.MagazineCapacity)
-            {
-                _ammoLabel.SetText("{0:00} <size=55%>/ {1:00}    RES {2:000}</size>", weapon.Magazine, weapon.MagazineCapacity, weapon.Reserve);
-                _ammoColor = weapon.Magazine == 0 ? s_damage : s_chrono;
-                if (!_director.IsPlayerProtected)
-                {
-                    _ammoPulse.Restart();
-                }
-
-                _magazine = weapon.Magazine;
-                _capacity = weapon.MagazineCapacity;
-                _reserve = weapon.Reserve;
-            }
-
             var action = weapon.IsSwitching ? "EXCHANGING" : weapon.IsReloading ? "RELOADING" : weapon.IsCharging ? "CHARGING" : weapon.Magazine == 0 ? (weapon.Reserve > 0 ? "R  /  RELOAD" : "NO AMMUNITION") : string.Empty;
             if (_actionLabel == null)
             {
@@ -333,14 +342,12 @@ namespace Overtime
             }
 
             var stowedSlot = 1 - _slot;
-            var stowed = weapon.State(stowedSlot);
             var definition = weapon.Definition(stowedSlot);
-            if (_stowedMagazine != stowed.Magazine || _stowedReserve != stowed.Reserve || _stowedDefinition != definition)
+            if (_stowedDefinition != definition || _stowedSlot != stowedSlot)
             {
-                _stowedMagazine = stowed.Magazine;
-                _stowedReserve = stowed.Reserve;
+                _stowedSlot = stowedSlot;
                 _stowedDefinition = definition;
-                _stowedLabel.SetText($"[{stowedSlot + 1}]   {weapon.Name(stowedSlot)}   {stowed.Magazine:00} / {stowed.Reserve:000}");
+                _stowedLabel.SetText($"[{stowedSlot + 1}]   {weapon.Name(stowedSlot)}");
             }
         }
 
@@ -350,7 +357,7 @@ namespace Overtime
             var value = energy.Current;
             if (!Mathf.Approximately(_energy, value) || !Mathf.Approximately(_maximumEnergy, energy.Maximum))
             {
-                _energyLabel.SetText("CHRONO  {0:0.0} / {1:0}", value, energy.Maximum);
+                _energyLabel.SetText("<b>{0:0}</b> <size=70%>CHRONO</size>", value, energy.Maximum);
                 SetFill(_energyFill, value / energy.Maximum);
                 if (_energy >= 0f && value > _energy)
                 {
@@ -431,6 +438,11 @@ namespace Overtime
                 return;
             }
 
+            if (shot.Shielded)
+            {
+                _numbers.Block(shot.Point);
+            }
+
             var fresh = Time.unscaledTime >= _hitWindow;
             if (fresh)
             {
@@ -446,8 +458,8 @@ namespace Overtime
             var blocked = _groupedDamage == 0 && _groupedShield;
             _hitMarker.color = blocked ? new Color(0.48f, 0.70f, 1f) : _groupedKill ? s_damage : _groupedWeak ? s_weak : s_text;
             _hitLabel.color = _hitMarker.color;
-            _hitMarker.SetText(blocked ? "[]" : _groupedKill ? "X" : _groupedWeak ? "<>" : "+");
-            _hitLabel.SetText(blocked ? "SHIELD BLOCK" : _groupedKill ? "TARGET DESTROYED" : _groupedWeak ? "WEAK POINT  {0:0}" : "{0:0}", _groupedDamage);
+            _hitMarker.SetText(blocked ? "[ ]" : _groupedKill ? "<b>X</b>" : _groupedWeak ? "< >" : "x");
+            _hitLabel.SetText(blocked ? "SHIELD BLOCK" : _groupedKill ? "TARGET DESTROYED" : _groupedWeak ? "WEAK POINT" : string.Empty);
             if (fresh)
             {
                 PresentHitPulse(1f);
@@ -459,6 +471,7 @@ namespace Overtime
         {
             if (!_director.CanDamageWorld)
             {
+                _numbers.Clear();
                 _hitWindow = 0f;
                 _hitPulse.Pause();
                 _hitGroup.alpha = 0f;

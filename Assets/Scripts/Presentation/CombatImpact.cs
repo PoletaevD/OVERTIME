@@ -15,9 +15,13 @@ namespace Overtime
         private Impact[] _pool;
         private MaterialPropertyBlock _properties;
         private int _next;
+        private DischargeParticles _debris;
+        private DischargeParticles _hostileDebris;
 
         private void Awake()
         {
+            _debris = new DischargeParticles(transform, gameObject.layer, 144);
+            _hostileDebris = new DischargeParticles(transform, gameObject.layer, 48);
             _properties = new MaterialPropertyBlock();
             _pool = new Impact[_sparks.Length];
             for (var index = 0; index < _pool.Length; index++)
@@ -52,6 +56,17 @@ namespace Overtime
             var impact = _pool[_next];
             _next = (_next + 1) % _pool.Length;
             var color = shot.Explosion ? new Color(2.2f, 0.55f, 0.16f) : shot.Ricochet ? new Color(1f, 0.76f, 0.32f) : shot.Piercing ? new Color(0.43f, 0.74f, 1.4f) : shot.Shielded ? new Color(0.42f, 0.63f, 1f) : !shot.FromPlayer ? new Color(1f, 0.48f, 0.19f) : shot.Damage.Killed ? new Color(1f, 0.37f, 0.16f) : shot.WeakPoint ? new Color(1f, 0.8f, 0.38f) : new Color(0.54f, 0.92f, 1f);
+            var count = shot.Explosion || shot.Damage.Killed ? 20 : shot.Shielded || shot.WeakPoint ? 10 : shot.Melee ? 7 : 4;
+            var ring = shot.Shielded || shot.Explosion;
+            var reflected = shot.Incoming != Vector3.zero ? Vector3.Reflect(shot.Incoming, shot.Normal) : shot.Normal;
+            var axis = shot.Piercing ? -shot.Normal : shot.Ricochet ? reflected : Vector3.Slerp(shot.Normal, reflected, 0.4f);
+            if (shot.Chilled)
+            {
+                _debris.Burst(shot.Point, shot.Normal, new Color(0.32f, 0.8f, 1f), 6, 0.8f, 1.45f, 0.066f, true);
+            }
+
+            var particles = shot.FromPlayer ? _debris : _hostileDebris;
+            particles.Burst(shot.Point + shot.Normal * 0.02f, axis, color, _player.ReducedMotion ? 3 : count, shot.Ricochet ? 0.24f : shot.Melee ? 2.5f : 1.2f, shot.Explosion ? 6f : 3.1f, shot.Explosion ? 0.085f : 0.042f, ring);
             _properties.SetColor(s_color, color);
             _properties.SetColor(s_emission, color * (_player.ReducedMotion ? 0.7f : 2f));
             impact.Show(shot.Point + shot.Normal * 0.025f, shot.Normal, _properties, (shot.Damage.Killed || shot.Explosion) && !_player.ReducedMotion);
@@ -59,6 +74,7 @@ namespace Overtime
 
         private void OnModeChanged(TemporalMode mode)
         {
+            _hostileDebris.SetRate(_director.WorldTimeline?.Rate ?? 1f);
             if (!_director.CanDamageWorld)
             {
                 Clear();
@@ -67,6 +83,8 @@ namespace Overtime
 
         private void Clear()
         {
+            _debris.Clear();
+            _hostileDebris.Clear();
             foreach (var impact in _pool)
             {
                 impact.Tween.Pause();

@@ -28,6 +28,8 @@ namespace Overtime
 
         internal event Action ShotFired;
         internal event Action AutoFed;
+        internal event Action EmptyTriggered;
+        internal event Action CollectedWeapon;
         internal event Action SwitchStarted;
         internal event Action<int> AmmoCollected;
 
@@ -147,6 +149,7 @@ namespace Overtime
             }
 
             StateAt(slot) = incoming.Stored;
+            CollectedWeapon?.Invoke();
             _state.SwitchRemaining = 0d;
             return true;
         }
@@ -311,6 +314,11 @@ namespace Overtime
                 weapon.ReloadRemaining = weapon.ReloadDuration;
             }
 
+            if (canShoot && fire && weapon.Magazine <= 0 && ReserveFor(oldSlot) <= 0)
+            {
+                EmptyTriggered?.Invoke();
+            }
+
             var tuning = Tuning(oldSlot);
             var trigger = ActiveType switch
             {
@@ -441,7 +449,7 @@ namespace Overtime
             var targets = Mathf.Min(4, tuning.Targets + Mathf.RoundToInt(Bonus(UpgradeId.PenetrationProtocol)) + (PrecisionReady ? 1 : 0));
             var slug = instance?.Modifier(WeaponModifier.SlugConversion) ?? 0f;
             var overload = lastRound ? instance?.Modifier(WeaponModifier.OverloadCell) ?? 0f : 0f;
-            var effects = new ProjectileBallistics(ActiveDefinition?.Id ?? WeaponId.Compliance, targets, ricochets, tuning.PenetrationRetention, reflection, terminal?.Magnitude ?? 0f, terminal?.Limit ?? 0f, close?.Magnitude ?? 0f, close?.Radius ?? 0f, instance?.Modifier(WeaponModifier.Splitter) ?? 0f, instance?.Modifier(WeaponModifier.ExplosiveCore) ?? 0f, instance?.Modifier(WeaponModifier.CryoPayload) ?? 0f, instance?.Modifier(WeaponModifier.PhaseAccelerator) ?? 0f, overload > 0f);
+            var effects = new ProjectileBallistics(ActiveDefinition?.Id ?? WeaponId.Compliance, targets, ricochets, tuning.PenetrationRetention, reflection, terminal?.Magnitude ?? 0f, terminal?.Limit ?? 0f, close?.Magnitude ?? 0f, close?.Radius ?? 0f, instance?.Modifier(WeaponModifier.Splitter) ?? 0f, instance?.Modifier(WeaponModifier.ExplosiveCore) ?? 0f, instance?.Modifier(WeaponModifier.CryoPayload) ?? 0f, instance?.Modifier(WeaponModifier.PhaseAccelerator) ?? 0f, overload > 0f, slug: slug > 0f);
             var pellets = slug > 0f ? 1 : tuning.Pellets;
             var radius = slug > 0f ? tuning.Radius * 1.45f : tuning.Radius;
             var spread = slug > 0f ? 0f : tuning.Spread * AimSpread;
@@ -607,8 +615,10 @@ namespace Overtime
         internal readonly bool Piercing;
         internal readonly bool Melee;
         internal readonly bool Explosion;
+        internal readonly Vector3 Incoming;
+        internal readonly bool Chilled;
 
-        internal ProjectileImpact(Vector3 point, Vector3 normal, DamageResult damage, bool weakPoint, bool shielded, bool fromPlayer, bool ricochet = false, bool piercing = false, bool melee = false, bool explosion = false)
+        internal ProjectileImpact(Vector3 point, Vector3 normal, DamageResult damage, bool weakPoint, bool shielded, bool fromPlayer, bool ricochet = false, bool piercing = false, bool melee = false, bool explosion = false, Vector3 incoming = default, bool chilled = false)
         {
             Point = point;
             Normal = normal;
@@ -620,6 +630,8 @@ namespace Overtime
             Piercing = piercing;
             Melee = melee;
             Explosion = explosion;
+            Incoming = incoming;
+            Chilled = chilled;
         }
     }
 }

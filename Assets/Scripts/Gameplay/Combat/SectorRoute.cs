@@ -63,6 +63,7 @@ namespace Overtime
         internal bool Seamless => _seamless;
         internal bool InPassage => _seamless && _passage != null;
         internal RoutePassage Passage => _passage;
+        internal WeaponInstance HoveredWeapon => _loot?.Hovered;
         internal string LootHint => _loot == null ? string.Empty : _loot.Hint;
         internal bool Transferring { get; private set; }
         internal IReadOnlyList<RouteNode> RouteOptions => Plan.At(RoomIndex + 1);
@@ -251,7 +252,16 @@ namespace Overtime
 
             if (_seamless)
             {
-                _loot.DropWeapons(id, _lootRoll.Roll(_progression.Seed, CurrentNode, _lootDefinitions), _player.ReducedMotion);
+                var drops = _lootRoll.Roll(_progression.Seed, CurrentNode, _lootDefinitions);
+                _loot.DropWeapons(id, drops, _player.ReducedMotion);
+                foreach (var gun in drops)
+                {
+                    if (gun.Rarity >= WeaponRarity.Rare)
+                    {
+                        _director.Sound(FieldCue.RareLoot, Current.ExitZone.transform.position);
+                        break;
+                    }
+                }
             }
 
             if (RoomIndex + 1 == RoomCount || !OpenReward(id, reward == RoomReward.PriorityProtocol))

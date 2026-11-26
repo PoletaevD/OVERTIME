@@ -22,6 +22,11 @@ namespace Overtime
         [SerializeField] private LineRenderer _beam;
         [SerializeField, Min(0f)] private float _beamMuzzleOffset = 0.72f;
 
+        private Breakaway[] _panels;
+        private bool _separated;
+        private Transform[] _legs;
+        private Vector3[] _legRest;
+        private LineRenderer _aperture;
         private Tween _hitFlash;
         private MaterialPropertyBlock _shellProperties;
         private MaterialPropertyBlock _lensProperties;
@@ -36,10 +41,52 @@ namespace Overtime
 
         private void Awake()
         {
+            var panels = new System.Collections.Generic.List<Breakaway>();
+            var legs = new System.Collections.Generic.List<Transform>();
+            foreach (var part in _model.GetComponentsInChildren<Transform>())
+            {
+                if (part.name is "Sensor Brow" or "Weapon Shroud" or "Stabilizer" or "Thrust Strip" or "Cooling Cheek" or "Emitter Cheek Inlay" or "Load Bearing Shoulder" or "Containment Harness")
+                {
+                    if (part.GetComponentInChildren<Collider>(true) == null)
+                    {
+                        panels.Add(new Breakaway(part, _model));
+                    }
+                }
+
+                if (part.name is "Shin Guard" or "Traction Boot" or "Actuator" or "Armored Greave")
+                {
+                    legs.Add(part);
+                }
+            }
+
+            _panels = panels.ToArray();
+            _legs = legs.ToArray();
+            _legRest = new Vector3[_legs.Length];
+            for (var index = 0; index < _legs.Length; index++)
+            {
+                _legRest[index] = _legs[index].localPosition;
+            }
+
             _shellProperties = new MaterialPropertyBlock();
             _lensProperties = new MaterialPropertyBlock();
             _shellColor = _shell.sharedMaterial.GetColor(s_baseColor);
             _lensEmission = _lens.sharedMaterial.GetColor(s_emission);
+            var iris = new GameObject("Charge Aperture");
+            iris.transform.SetParent(_model, false);
+            _aperture = iris.AddComponent<LineRenderer>();
+            _aperture.useWorldSpace = false;
+            _aperture.loop = true;
+            _aperture.enabled = false;
+            _aperture.sharedMaterial = _lens.sharedMaterial;
+            _aperture.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            _aperture.receiveShadows = false;
+            _aperture.widthMultiplier = 0.13f;
+            _aperture.positionCount = _kind == SecurityEnemyKind.Guard ? 4 : _kind == SecurityEnemyKind.Drone ? 3 : _kind == SecurityEnemyKind.Enforcer ? 6 : 18;
+            for (var index = 0; index < _aperture.positionCount; index++)
+            {
+                var angle = Mathf.PI * 2f * index / _aperture.positionCount;
+                _aperture.SetPosition(index, new Vector3(Mathf.Cos(angle), Mathf.Sin(angle), 0f));
+            }
             _recoilRest = _recoilPivot.localPosition;
             _ruptureScale = _rupture.localScale;
             _wreckRest = _wreck.localPosition;
@@ -78,7 +125,7 @@ namespace Overtime
             ApplyHitFlash(0f);
         }
 
-        internal void Present(float time, Vector3 aim, Vector3 origin, float recoil, float deathTime, SecurityEnemyState state, bool aiming, bool firing, float charge, bool locked, float beamDistance, bool unstable)
+        internal void Present(Vector3 travel, float time, Vector3 aim, Vector3 origin, float recoil, float deathTime, SecurityEnemyState state, bool aiming, bool firing, float charge, bool locked, float beamDistance, bool unstable)
         {
             var dead = state == SecurityEnemyState.Dead;
             var collapsing = dead && deathTime < 0.42f;
@@ -92,6 +139,24 @@ namespace Overtime
             Toggle(_wreck, dead && !collapsing && deathTime < 1.3f);
             Toggle(_rupture, dead && deathTime < 0.30f);
 
+            var stride = Mathf.Clamp01(travel.magnitude) * Mathf.Sin(time * (_kind == SecurityEnemyKind.Enforcer ? 4.6f : 7.2f));
+            for (var index = 0; index < _legs.Length; index++)
+            {
+                var step = stride * Mathf.Sign(_legRest[index].x);
+                _legs[index].localPosition = _legRest[index] + new Vector3(0f, Mathf.Max(0f, step) * 0.085f, step * 0.16f);
+            }
+
+            if (dead || _separated)
+            {
+                var progress = dead ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(deathTime / 0.42f)) : 0f;
+                foreach (var panel in _panels)
+                {
+                    panel.Set(progress);
+                }
+
+                _separated = dead;
+            }
+
             if (dead)
             {
                 PresentCollapse(deathTime);
@@ -100,7 +165,7 @@ namespace Overtime
             {
                 var hover = _kind == SecurityEnemyKind.Drone ? Mathf.Sin(time * 5f) * 0.075f : _kind == SecurityEnemyKind.Guard ? Mathf.Sin(time * 6f) * 0.022f : 0f;
                 _model.localPosition = Vector3.up * hover;
-                _model.localRotation = Quaternion.identity;
+                _model.localRotation = _kind == SecurityEnemyKind.Drone ? Quaternion.Euler(Mathf.Clamp(travel.z * 3f, -12f, 12f), 0f, Mathf.Clamp(-travel.x * 4f, -16f, 16f)) : Quaternion.identity;
                 _aimPivot.rotation = AimRotation(aim);
                 _recoilPivot.localPosition = _recoilRest - Vector3.forward * (recoil * 0.085f);
             }
@@ -110,10 +175,42 @@ namespace Overtime
             var emission = aiming || firing ? beamColor * (1.1f + charge * 3.5f + (firing ? 5f : 0f)) : telegraph ? Color.Lerp(_lensEmission, s_scan * 2.5f, 0.65f) : _lensEmission * (1f + recoil * 1.4f);
             _lensProperties.SetColor(s_emission, dead ? Color.black : emission);
             _lens.SetPropertyBlock(_lensProperties);
+            _aperture.enabled = telegraph && !dead;
+            if (_aperture.enabled)
+            {
+                _aperture.transform.SetPositionAndRotation(origin + aim * 0.09f, AimRotation(aim) * Quaternion.AngleAxis(45f * charge, Vector3.forward));
+                var radius = _kind == SecurityEnemyKind.Enforcer ? 0.33f : _kind == SecurityEnemyKind.Auditor ? 0.24f : 0.18f;
+                _aperture.transform.localScale = Vector3.one * Mathf.Lerp(radius, radius * 0.51f, charge);
+                _aperture.widthMultiplier = Mathf.Lerp(0.015f, 0.029f, charge);
+                _aperture.SetPropertyBlock(_lensProperties);
+            }
 
             if (_beam != null)
             {
                 PresentBeam(aim, origin, aiming, firing, charge, locked, beamDistance, beamColor);
+            }
+        }
+
+        private readonly struct Breakaway
+        {
+            private readonly Transform _part;
+            private readonly Vector3 _rest;
+            private readonly Quaternion _orientation;
+            private readonly Vector3 _throw;
+
+            internal Breakaway(Transform part, Transform model)
+            {
+                _part = part;
+                _rest = part.localPosition;
+                _orientation = part.localRotation;
+                var radial = (part.position - model.position).normalized;
+                _throw = part.parent.InverseTransformVector(radial * 0.36f + model.up * 0.12f);
+            }
+
+            internal void Set(float amount)
+            {
+                _part.localPosition = _rest + _throw * amount;
+                _part.localRotation = _orientation * Quaternion.Euler(42f * amount, 16f * amount, Mathf.Sign(_throw.x) * 57f * amount);
             }
         }
 
@@ -127,7 +224,13 @@ namespace Overtime
         {
             var fall = Mathf.Clamp01(time / 0.42f);
             _model.localPosition = Vector3.down * (fall * fall * (_kind == SecurityEnemyKind.Drone ? 0.68f : 0.19f));
-            _model.localRotation = Quaternion.Euler(fall * fall * 26f, 0f, fall * fall * 58f);
+            _model.localRotation = _kind switch
+            {
+                SecurityEnemyKind.Drone => Quaternion.Euler(27f * fall, 146f * fall * fall, 74f * fall),
+                SecurityEnemyKind.Auditor => Quaternion.Euler(6f * fall, -35f * fall, 13f * fall),
+                SecurityEnemyKind.Enforcer => Quaternion.Euler(-44f * fall * fall, 0f, 12f * fall),
+                _ => Quaternion.Euler(fall * fall * 26f, 0f, fall * fall * 58f)
+            };
             var burst = Mathf.Clamp01(time / 0.30f);
             _rupture.localRotation = Quaternion.Euler(burst * 85f, 45f + burst * 80f, 40f);
             _rupture.localScale = _ruptureScale * ((1f - burst) * (0.35f + burst * 3.8f));

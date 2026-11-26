@@ -1,0 +1,40 @@
+namespace Overtime
+{
+    internal enum FieldCue
+    {
+        GuardAlert,
+        DroneAlert,
+        AuditorAlert,
+        EnforcerAlert,
+        GuardFire,
+        DroneFire,
+        AuditorFire,
+        EnforcerFire,
+        GuardMove,
+        DroneMove,
+        AuditorMove,
+        EnforcerMove,
+        GuardDown,
+        DroneDown,
+        AuditorDown,
+        EnforcerDown,
+        TrapWarn,
+        LaserLive,
+        GridLive,
+        Reinforcement,
+        RoomClear,
+        Door,
+        Footstep,
+        Wound,
+        Critical,
+        Depleted,
+        RareLoot,
+        Protocol,
+        Hover,
+        Empty,
+        GuardHit,
+        DroneHit,
+        AuditorHit,
+        EnforcerHit
+    }
+}

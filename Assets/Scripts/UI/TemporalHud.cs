@@ -21,6 +21,7 @@ namespace Overtime
         [SerializeField] private RectTransform _worldTrack;
 
         private Tween _appearance;
+        private readonly RawImage[] _glyphs = new RawImage[4];
         private RectTransform _worldRecorded;
         private RectTransform _worldDepth;
         private RectTransform _worldCursor;
@@ -28,9 +29,47 @@ namespace Overtime
         private Image _worldDepthImage;
         private Image _accent;
         private bool _historyStart;
+        private bool _fieldDisplay;
 
         private void Awake()
         {
+            _fieldDisplay = GetComponentInParent<CombatHud>() != null && GetComponentInParent<SectorHud>() != null;
+            if (_fieldDisplay)
+            {
+                _status.fontStyle |= FontStyles.Bold | FontStyles.Italic;
+                _time.fontStyle |= FontStyles.Bold;
+            }
+
+            var atlas = Resources.Load<Texture2D>("Temporal Glyphs");
+            var binding = _worldTrack.parent.Find("Temporal Bindings");
+            if (binding != null && atlas != null)
+            {
+                binding.gameObject.SetActive(false);
+                var labels = new[] { "Q   RESET", "E   OVERRIDE", "C   RECALL", "SHIFT   SLOW" };
+                for (var index = 0; index < _glyphs.Length; index++)
+                {
+                    var glyph = new GameObject(labels[index], typeof(RectTransform)).AddComponent<RawImage>();
+                    glyph.rectTransform.SetParent(_worldTrack.parent, false);
+                    glyph.rectTransform.anchorMin = glyph.rectTransform.anchorMax = Vector2.zero;
+                    glyph.rectTransform.anchoredPosition = new Vector2(index * 96f + 49f, -1f);
+                    glyph.rectTransform.sizeDelta = new Vector2(42f, 42f);
+                    glyph.texture = atlas;
+                    glyph.uvRect = new Rect(index % 2 * 0.5f, index < 2 ? 0.5f : 0f, 0.5f, 0.5f);
+                    glyph.raycastTarget = false;
+                    _glyphs[index] = glyph;
+                    var key = new GameObject("Binding", typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
+                    key.rectTransform.SetParent(glyph.transform, false);
+                    key.rectTransform.anchoredPosition = new Vector2(0f, -32f);
+                    key.rectTransform.sizeDelta = new Vector2(94f, 22f);
+                    key.font = _status.font;
+                    key.fontSize = 12.5f;
+                    key.fontStyle = FontStyles.Bold;
+                    key.alignment = TextAlignmentOptions.Center;
+                    key.raycastTarget = false;
+                    key.SetText(labels[index]);
+                }
+            }
+
             _playerDepthImage = _depth.GetComponent<Image>();
             _accent = _activeLabel.GetComponent<Image>();
             _worldRecorded = (RectTransform)_worldTrack.Find("Recorded History");
@@ -71,7 +110,14 @@ namespace Overtime
             UpdateTrack(world, _worldTrack, _worldRecorded, _worldDepth, _worldCursor);
             UpdateReadout(player, _playerReadout, true);
             UpdateReadout(world, _worldReadout, false);
-            _time.SetText("P-W  {0:2} s", (float)(player.Position - world.Position));
+            if (_fieldDisplay)
+            {
+                _time.SetText("{0:1} s", (float)(world.Duration - world.Depth));
+            }
+            else
+            {
+                _time.SetText("P-W  {0:2} s", (float)(player.Position - world.Position));
+            }
         }
 
         private void UpdateTrack(TemporalTimeline timeline, RectTransform track, RectTransform recorded, RectTransform depth, RectTransform cursor)
@@ -87,6 +133,13 @@ namespace Overtime
         private void UpdateReadout(TemporalTimeline timeline, TMP_Text readout, bool player)
         {
             var history = (float)timeline.Duration;
+            if (_fieldDisplay)
+            {
+                var available = Mathf.Max(0f, history - (float)timeline.Depth);
+                readout.SetText(player ? "PERSONAL HISTORY   {0:1} s" : "WORLD HISTORY   {0:1} s", available);
+                return;
+            }
+
             if (timeline.Direction == TemporalDirection.Reverse)
             {
                 readout.SetText(player ? "PLAYER  BACK {0:2}x   -{1:2} / {2:2} s" : "WORLD   BACK {0:2}x   -{1:2} / {2:2} s", timeline.Rate, (float)timeline.Depth, history);
@@ -125,8 +178,16 @@ namespace Overtime
                 TemporalMode.Override => "OVERRIDE",
                 TemporalMode.Recall => "RECALL",
                 TemporalMode.BulletTime => "BULLET TIME",
-                _ => "NORMAL"
+                _ => _fieldDisplay ? "CHRONO BUFFER" : "NORMAL"
             });
+            for (var index = 0; index < _glyphs.Length; index++)
+            {
+                if (_glyphs[index] != null)
+                {
+                    _glyphs[index].color = (int)mode == index + 1 ? color : new Color(0.86f, 0.90f, 0.93f);
+                }
+            }
+
             _status.color = color;
             _playerDepthImage.color = color;
             _worldDepthImage.color = color;

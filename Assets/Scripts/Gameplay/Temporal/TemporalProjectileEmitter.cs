@@ -27,8 +27,10 @@ namespace Overtime
 
         private readonly RaycastHit[] _sweepHits = new RaycastHit[128];
         private readonly Collider[] _overlaps = new Collider[64];
+        private readonly Mesh[] _forms = new Mesh[7];
         private bool _playerPool;
         private Material _fallbackMaterial;
+        private Material _jacket;
         private MaterialPropertyBlock _boltProperties;
         private Visual[] _visuals;
         private Projectile[] _live;
@@ -57,6 +59,7 @@ namespace Overtime
                 material = _fallbackMaterial;
             }
 
+            var trailMaterial = Resources.Load<Material>("Meridian Spark Particles");
             for (var slot = 0; slot < _projectiles.Length; slot++)
             {
                 var bolt = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -71,7 +74,7 @@ namespace Overtime
                 mesh.shadowCastingMode = ShadowCastingMode.Off;
                 mesh.receiveShadows = false;
                 var trace = bolt.AddComponent<LineRenderer>();
-                trace.sharedMaterial = material;
+                trace.sharedMaterial = trailMaterial;
                 trace.useWorldSpace = true;
                 trace.positionCount = 2;
                 trace.startWidth = 0.052f;
@@ -97,6 +100,19 @@ namespace Overtime
 
         internal override void Initialize(int capacity)
         {
+            if (!_automatic)
+            {
+                _jacket = Resources.Load<Material>("Bolt Jacket");
+                _boltProperties ??= new MaterialPropertyBlock();
+                var names = new[] { "Compliance", "Termination", "Deadline", "Directive", "Sentinel", "Drone", "Blast" };
+                for (var index = 0; index < names.Length; index++)
+                {
+                    var asset = Resources.Load<GameObject>("Projectile Forms/" + names[index]);
+                    _forms[index] = asset != null ? asset.GetComponentInChildren<MeshFilter>().sharedMesh : null;
+                }
+            }
+
+            var streak = !_automatic && !_playerPool ? Resources.Load<Material>("Meridian Spark Particles") : null;
             var slots = _projectiles.Length;
             _visuals = new Visual[slots];
             _live = new Projectile[slots];
@@ -107,7 +123,15 @@ namespace Overtime
             {
                 var transform = _projectiles[slot];
                 var mesh = transform.GetComponent<MeshRenderer>();
-                _visuals[slot] = new Visual(transform.GetComponent<LineRenderer>(), mesh, mesh != null ? mesh.sharedMaterial : null, transform.localScale);
+                var trace = transform.GetComponent<LineRenderer>();
+                if (streak != null && trace != null)
+                {
+                    trace.sharedMaterial = streak;
+                    trace.startWidth = 0.075f;
+                    trace.endWidth = 0.008f;
+                }
+
+                _visuals[slot] = new Visual(trace, transform.GetComponent<MeshFilter>(), mesh, mesh != null ? mesh.sharedMaterial : null, transform.localScale);
             }
 
             ResetState();
@@ -344,7 +368,7 @@ namespace Overtime
                 }
 
                 var amount = damage * Mathf.Lerp(1f, 0.35f, distance / radius);
-                var result = _combatDirector.DamageTarget(target, actor is SupervisorBoss && blocked ? hit.collider : body, amount, out var weak, melee);
+                var result = _combatDirector.DamageTarget(target, actor is SupervisorBoss && blocked ? hit.collider : body, amount, out var weak, melee, sample, new Color(1f, 0.52f, 0.19f));
                 if (result.Amount > 0)
                 {
                     _combatDirector.PublishImpact(new ProjectileImpact(sample, -delta.normalized, result, weak, false, true, melee: melee));
@@ -403,6 +427,7 @@ namespace Overtime
 
         private void LaunchAt(int slot, Projectile projectile)
         {
+            projectile.SegmentDistance = 0f;
             projectile.Generation = ++_generation;
             _live[slot] = projectile;
             _activeCount++;
@@ -448,6 +473,7 @@ namespace Overtime
             projectile.Position += projectile.Direction * distance;
             projectile.Range -= distance;
             projectile.Travelled += distance;
+            projectile.SegmentDistance += distance;
         }
 
         private bool FindImpact(in Projectile projectile, float distance, int layers, out Collider collider, out Vector3 point, out Vector3 normal, out float travelled)
@@ -479,6 +505,7 @@ namespace Overtime
                 return false;
             }
 
+            var incoming = projectile.Direction;
             var damage = default(DamageResult);
             var weakPoint = false;
             var shielded = false;
@@ -496,7 +523,7 @@ namespace Overtime
                 {
                     var amount = projectile.Ballistics.DamageAtDistance(projectile.Damage, projectile.Travelled) * projectile.Retention;
                     directTarget = target;
-                    damage = _combatDirector.DamageTarget(target, collider, amount, out weakPoint, projectile.Ballistics.Melee);
+                    damage = _combatDirector.DamageTarget(target, collider, amount, out weakPoint, projectile.Ballistics.Melee, point);
                     if (damage.Amount > 0 && projectile.Ballistics.ChillSeconds > 0f)
                     {
                         if (target is SecurityEnemy enemy)
@@ -522,6 +549,7 @@ namespace Overtime
                     projectile.Position = point + normal * (projectile.Radius + SurfaceSkin);
                     projectile.Ricochets--;
                     projectile.Retention *= projectile.Ballistics.RicochetRetention;
+                    projectile.SegmentDistance = 0f;
                     reflected = true;
                 }
             }
@@ -541,7 +569,7 @@ namespace Overtime
                 Explode(point + normal * 0.045f, projectile.Ballistics.ExplosionRadius, projectile.Damage * projectile.Retention * 0.65f, projectile.Owner, false, directTarget, projectile.Targets);
             }
 
-            _combatDirector.PublishImpact(new ProjectileImpact(point, normal, damage, weakPoint, shielded, _playerPool, reflected, projectile.Ballistics.TargetLimit > 1 && damage.Amount > 0, melee: projectile.Ballistics.Melee));
+            _combatDirector.PublishImpact(new ProjectileImpact(point, normal, damage, weakPoint, shielded, _playerPool, reflected, projectile.Ballistics.TargetLimit > 1 && damage.Amount > 0, melee: projectile.Ballistics.Melee, incoming: incoming, chilled: damage.Amount > 0 && projectile.Ballistics.ChillSeconds > 0f));
             return pierced || reflected;
         }
 
@@ -651,6 +679,7 @@ namespace Overtime
 
         internal override void Present(TemporalTimeline timeline, TemporalMode mode, bool showTraces)
         {
+            var view = _playerPool ? _combatDirector.PlayerAim : default;
             for (var slot = 0; slot < _live.Length; slot++)
             {
                 var current = _live[slot];
@@ -660,12 +689,14 @@ namespace Overtime
                 }
 
                 var position = current.Position;
+                var segment = current.SegmentDistance;
                 if (timeline.PreviewFraction > 0f)
                 {
                     var older = Read(timeline, timeline.Cursor - 1, slot);
                     if (SameProjectile(older, current))
                     {
                         position = Vector3.Lerp(position, older.Position, timeline.PreviewFraction);
+                        segment = Vector3.Dot(older.Direction, current.Direction) > 0.999f ? Mathf.Lerp(segment, older.SegmentDistance, timeline.PreviewFraction) : 0f;
                     }
                 }
                 _projectiles[slot].position = position;
@@ -674,9 +705,21 @@ namespace Overtime
                 {
                     if (_playerPool)
                     {
-                        trace.enabled = current.Travelled > 0f;
+                        var stretch = current.Ballistics.Acceleration > 0f ? Mathf.Clamp(current.Speed / current.InitialSpeed, 1f, 2.5f) : 1f;
+                        var length = current.Ballistics.Weapon switch
+                        {
+                            WeaponId.Deadline => 1.65f,
+                            WeaponId.Directive => 0.24f,
+                            WeaponId.Termination => current.Ballistics.Slug ? 0.8f : 0.19f,
+                            _ => 0.55f
+                        };
+                        var depth = Vector3.Dot(position - view.origin, view.direction);
+                        var heading = Vector3.Dot(current.Direction, view.direction);
+                        var visibleSegment = heading > 0.001f ? Mathf.Min(segment, Mathf.Max(0f, depth - 0.42f) / heading) : segment;
+                        _visuals[slot].Mesh.enabled = depth >= 0.23f;
+                        trace.enabled = showTraces && depth > 0.23f && visibleSegment > 0.001f;
                         trace.SetPosition(0, position);
-                        trace.SetPosition(1, position - current.Direction * Mathf.Min(current.Travelled, current.Ballistics.Weapon == WeaponId.Deadline ? 1.8f : current.Hypervelocity ? 0.85f : 0.34f));
+                        trace.SetPosition(1, position - current.Direction * Mathf.Min(visibleSegment, length * stretch));
                     }
                     else
                     {
@@ -688,6 +731,18 @@ namespace Overtime
 
         private void PresentTrace(TemporalTimeline timeline, TemporalMode mode, bool showTraces, int slot, in Projectile current, Vector3 position, LineRenderer trace)
         {
+            if (!_automatic && showTraces && timeline.Direction == TemporalDirection.Forward && mode != TemporalMode.BulletTime)
+            {
+                var length = current.Drone ? 0.23f : Mathf.Lerp(0.30f, 0.68f, Mathf.InverseLerp(0.08f, 0.21f, current.Radius));
+                trace.enabled = current.SegmentDistance > 0.001f;
+                trace.positionCount = 2;
+                trace.startColor = new Color(1f, 0.43f, 0.12f, 0.89f);
+                trace.endColor = new Color(1f, 0.24f, 0.09f, 0f);
+                trace.SetPosition(0, position);
+                trace.SetPosition(1, position - current.Direction * Mathf.Min(current.SegmentDistance, length));
+                return;
+            }
+
             if (!showTraces || (timeline.Direction != TemporalDirection.Reverse && mode != TemporalMode.BulletTime))
             {
                 trace.enabled = false;
@@ -704,7 +759,7 @@ namespace Overtime
             trace.enabled = samples > 1;
             if (trace.enabled)
             {
-                var color = TemporalEffects.ModeColor(mode);
+                var color = _automatic ? TemporalEffects.ModeColor(mode) : new Color(1f, 0.47f, 0.13f);
                 trace.startColor = new Color(color.r, color.g, color.b, 0.78f);
                 trace.endColor = new Color(color.r, color.g, color.b, 0f);
                 trace.positionCount = samples;
@@ -749,8 +804,26 @@ namespace Overtime
             visual.position = projectile.Position;
             if (refreshStyle && !_automatic)
             {
+                if (style.Trace != null)
+                {
+                    style.Trace.enabled = false;
+                }
+
+                var form = !_playerPool ? projectile.Drone ? 5 : 4 : projectile.Ballistics.ExplosionRadius > 0f && !projectile.BlastSpent ? 6 : (int)projectile.Ballistics.Weapon;
+                if (style.Filter != null && _forms[form] != null)
+                {
+                    style.Filter.sharedMesh = _forms[form];
+                }
+
                 visual.rotation = Quaternion.LookRotation(projectile.Direction);
-                visual.localScale = style.Scale * (projectile.Radius / _radius);
+                var profile = !_playerPool ? new Vector3(1.2f, 1.2f, 0.92f) : projectile.Ballistics.Weapon switch
+                {
+                    WeaponId.Directive => new Vector3(0.87f, 0.87f, 0.67f),
+                    WeaponId.Compliance => new Vector3(0.80f, 0.80f, 1.45f),
+                    WeaponId.Deadline => new Vector3(1.1f, 1.1f, 2.6f),
+                    _ => new Vector3(0.96f, 0.96f, projectile.Ballistics.Slug ? 1.6f : 0.58f)
+                };
+                visual.localScale = Vector3.Scale(style.Scale, profile) * (projectile.Radius / _radius);
                 if (_playerPool && style.Trace != null)
                 {
                     var color = BoltColor(projectile);
@@ -760,14 +833,11 @@ namespace Overtime
 
                 if (style.Mesh != null)
                 {
-                    style.Mesh.sharedMaterial = projectile.Drone && _droneBolt != null ? _droneBolt : style.Material;
-                    if (_playerPool)
-                    {
-                        _boltProperties.Clear();
-                        _boltProperties.SetColor(s_baseColor, BoltColor(projectile));
-
-                        style.Mesh.SetPropertyBlock(_boltProperties);
-                    }
+                    style.Mesh.sharedMaterial = _jacket != null ? _jacket : projectile.Drone && _droneBolt != null ? _droneBolt : style.Material;
+                    var energy = _playerPool ? BoltColor(projectile) : projectile.Drone ? new Color(1.95f, 0.53f, 0.09f) : new Color(2.15f, 0.29f, 0.06f);
+                    _boltProperties.Clear();
+                    _boltProperties.SetColor(s_baseColor, energy);
+                    style.Mesh.SetPropertyBlock(_boltProperties);
                 }
             }
         }
@@ -825,13 +895,15 @@ namespace Overtime
         private readonly struct Visual
         {
             internal readonly LineRenderer Trace;
+            internal readonly MeshFilter Filter;
             internal readonly MeshRenderer Mesh;
             internal readonly Material Material;
             internal readonly Vector3 Scale;
 
-            internal Visual(LineRenderer trace, MeshRenderer mesh, Material material, Vector3 scale)
+            internal Visual(LineRenderer trace, MeshFilter filter, MeshRenderer mesh, Material material, Vector3 scale)
             {
                 Trace = trace;
+                Filter = filter;
                 Mesh = mesh;
                 Material = material;
                 Scale = scale;
@@ -847,6 +919,7 @@ namespace Overtime
             internal float Remaining;
             internal float Range;
             internal float Travelled;
+            internal float SegmentDistance;
             internal int Layers;
             internal Transform Owner;
             internal float Radius;

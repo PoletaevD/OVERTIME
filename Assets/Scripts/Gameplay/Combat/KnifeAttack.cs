@@ -127,7 +127,7 @@ namespace Overtime
                 }
 
                 var hit = obstacle != null ? obstacle : collider;
-                var result = director.DamageTarget(target, hit, damage, out var weak, true);
+                var result = director.DamageTarget(target, hit, damage, out var weak, true, point);
                 if (result.Amount <= 0)
                 {
                     continue;

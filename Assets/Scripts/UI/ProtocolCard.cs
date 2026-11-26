@@ -25,6 +25,7 @@ namespace Overtime
         private Vector2 _rest;
         private Sequence _entry;
         private Tween _hoverTween;
+        private CombatAudio _audio;
         private bool _hovered;
         private bool _selected;
         private bool _reducedMotion;
@@ -33,8 +34,24 @@ namespace Overtime
 
         private void Awake()
         {
+            _audio = GetComponentInParent<CombatAudio>();
             _rect = (RectTransform)transform;
             _rest = _rect.anchoredPosition;
+            var plate = transform.Find("Plate");
+            if (plate != null)
+            {
+                var print = new GameObject("Permit Print", typeof(RectTransform)).AddComponent<RawImage>();
+                print.rectTransform.SetParent(plate, false);
+                print.rectTransform.anchorMin = Vector2.zero;
+                print.rectTransform.anchorMax = Vector2.one;
+                print.rectTransform.offsetMin = print.rectTransform.offsetMax = Vector2.zero;
+                print.texture = Resources.Load<Texture2D>("Protocol Print");
+                print.color = new Color(0.88f, 0.91f, 0.88f, 0.46f);
+                print.raycastTarget = false;
+            }
+
+            _title.fontStyle |= FontStyles.Bold | FontStyles.Italic;
+            _category.characterSpacing = 7f;
         }
 
         private void OnDestroy()
@@ -91,6 +108,7 @@ namespace Overtime
 
         internal void MarkSelected()
         {
+            _audio?.PlayInterface(FieldCue.Protocol);
             _entry?.Kill();
             _rect.anchoredPosition = _rest;
             _group.alpha = 1f;
@@ -120,6 +138,7 @@ namespace Overtime
 
         public void OnPointerEnter(PointerEventData eventData)
         {
+            _audio?.PlayInterface(FieldCue.Hover);
             _hovered = true;
             Hover(true);
         }

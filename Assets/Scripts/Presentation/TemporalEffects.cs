@@ -19,6 +19,12 @@ namespace Overtime
         private Image _tint;
         private Tween _gradeTween;
         private Tween _pulseTween;
+        private readonly Image[] _edgeTicks = new Image[8];
+        private TemporalMode _edgeMode;
+        private TemporalMode _previousMode;
+        private float _edgeDuration;
+        private float _edgeTime;
+        private bool _closing;
 
         private void Awake()
         {
@@ -31,6 +37,15 @@ namespace Overtime
 
             profile.TryGet(out _grade);
             _tint = _pulse.GetComponent<Image>();
+            for (var index = 0; index < _edgeTicks.Length; index++)
+            {
+                var tick = new GameObject("Temporal Edge Tick", typeof(RectTransform)).AddComponent<Image>();
+                tick.rectTransform.SetParent(_pulse.transform.parent, false);
+                tick.rectTransform.SetSiblingIndex(_pulse.transform.GetSiblingIndex() + 1);
+                tick.raycastTarget = false;
+                tick.enabled = false;
+                _edgeTicks[index] = tick;
+            }
         }
 
         private void OnEnable()
@@ -41,6 +56,7 @@ namespace Overtime
         private void OnDisable()
         {
             _director.ModeChanged -= OnModeChanged;
+            EndEdge();
             _gradeTween?.Kill();
             _pulseTween?.Kill();
             if (_volume != null)
@@ -61,6 +77,19 @@ namespace Overtime
 
         private void LateUpdate()
         {
+            if (_edgeTime > 0f)
+            {
+                _edgeTime -= Time.unscaledDeltaTime;
+                if (_edgeTime <= 0f || _cameraRig.ReducedMotion)
+                {
+                    EndEdge();
+                }
+                else
+                {
+                    DrawEdge();
+                }
+            }
+
             if (_cameraRig.ReducedMotion && _pulse.alpha > 0f)
             {
                 _pulseTween?.Kill();
@@ -93,10 +122,58 @@ namespace Overtime
             Destroy(_ownedProfile);
         }
 
+        private void EndEdge()
+        {
+            _edgeTime = 0f;
+            foreach (var tick in _edgeTicks)
+            {
+                if (tick != null)
+                {
+                    tick.enabled = false;
+                }
+            }
+        }
+
+        private void DrawEdge()
+        {
+            var progress = 1f - _edgeTime / _edgeDuration;
+            var phase = _closing ? 1f - progress : progress;
+            var color = ModeColor(_edgeMode);
+            color.a = (1f - progress) * (_closing ? 0.53f : 0.77f);
+            for (var index = 0; index < _edgeTicks.Length; index++)
+            {
+                var side = index < 4 ? 1f : -1f;
+                var row = index % 4;
+                var horizontal = _edgeMode == TemporalMode.Override;
+                var slide = _edgeMode == TemporalMode.Reset ? 1f - phase : phase;
+                var at = _edgeMode == TemporalMode.Recall ? 0.22f + row * 0.084f : 0.37f + row * 0.085f;
+                var anchor = horizontal ? new Vector2(at, index < 4 ? 0f : 1f) : new Vector2(index < 4 ? 0f : 1f, at);
+                var tick = _edgeTicks[index];
+                var offset = side * (12f + (30f + row * 8f) * slide);
+                tick.rectTransform.anchorMin = tick.rectTransform.anchorMax = anchor;
+                tick.rectTransform.anchoredPosition = horizontal ? Vector2.up * offset : Vector2.right * offset;
+                var angle = _edgeMode == TemporalMode.BulletTime ? side * 33f : _edgeMode == TemporalMode.Recall ? side * -44f : 0f;
+                tick.rectTransform.localRotation = Quaternion.Euler(0f, 0f, angle);
+                tick.rectTransform.sizeDelta = horizontal ? new Vector2(3f, 30f) : new Vector2(15f + phase * 18f, row == 0 ? 4f : 2f);
+                tick.color = color;
+                tick.enabled = true;
+            }
+        }
+
         private void OnModeChanged(TemporalMode mode)
         {
             _gradeTween?.Kill();
             _pulseTween?.Kill();
+            _closing = mode == TemporalMode.Normal;
+            _edgeMode = _closing ? _previousMode : mode;
+            _previousMode = mode;
+            _edgeDuration = _closing ? 0.17f : 0.32f;
+            _edgeTime = _cameraRig.ReducedMotion ? 0f : _edgeDuration;
+            if (_cameraRig.ReducedMotion)
+            {
+                EndEdge();
+            }
+
             if (mode != TemporalMode.Normal && _grade != null)
             {
                 _grade.colorFilter.Override(mode switch

@@ -261,7 +261,7 @@ namespace Overtime
 
         internal void DebugForce(SupervisorAttack attack)
         {
-            _attacks.Start(ref _state.Attack, attack, _state.Phase);
+            _attacks.BeginAttack(ref _state.Attack, attack, _state.Phase);
         }
 
         internal void DebugDraw()

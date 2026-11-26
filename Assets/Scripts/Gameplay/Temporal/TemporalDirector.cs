@@ -75,11 +75,20 @@ namespace Overtime
         internal event Action<TemporalMode, Vector3> AbilityCompleted;
         internal event Action<Vector3, int> DirectionalDamage;
         internal event Action<ProjectileImpact> ProjectileHit;
+        internal event Action<ICombatDamageable, Vector3, DamageResult, bool, Color> DamageConfirmed;
         internal event Action<Vector3> AuditorCharging;
+        internal event Action<FieldCue, Vector3> FieldSound;
+
+        internal void Sound(FieldCue cue, Vector3 position)
+        {
+            FieldSound?.Invoke(cue, position);
+        }
+
         internal event Action<SupervisorCue, Vector3> SupervisorSound;
         internal TemporalProjectileEmitter PlayerProjectiles => _playerProjectiles;
         internal bool ReducedMotion => _player.ReducedMotion;
         internal bool RewardSelection => _rewardSelection;
+        internal WeaponInstance HoveredWeapon => _sector?.HoveredWeapon;
         internal string LootHint => _sector == null ? string.Empty : _sector.LootHint;
         internal IReadOnlyList<TemporalActor> WorldActors => _worldActors;
         internal int DynamicColliderCount => _collision?.Count ?? 0;
@@ -99,6 +108,7 @@ namespace Overtime
 
             return cost;
         }
+        internal Ray PlayerAim => _player.AimRay;
         internal CapsuleCollider PlayerCapsule => _player.Capsule;
         internal bool HasLivingPlayer => _player.Combat is { Alive: true, GameOver: false };
         internal bool CanRecharge => _rechargeStation != null && (_rechargeStation.position - _player.transform.position).sqrMagnitude <= _rechargeRadius * _rechargeRadius;
@@ -667,7 +677,7 @@ namespace Overtime
             }
         }
 
-        internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, float amount, out bool weakPoint, bool melee = false)
+        internal DamageResult DamageTarget(ICombatDamageable target, Collider hit, float amount, out bool weakPoint, bool melee = false, Vector3? point = null, Color? tint = null)
         {
             weakPoint = false;
             if (!CanDamageWorld)
@@ -677,6 +687,11 @@ namespace Overtime
 
             var damage = target.Hit(hit, amount, _player.ReducedMotion, out weakPoint);
             _worldChangedBetweenSteps |= damage.Amount > 0;
+            if (damage.Amount > 0)
+            {
+                DamageConfirmed?.Invoke(target, point ?? hit.bounds.center, damage, weakPoint, tint ?? Color.white);
+            }
+
             if (melee && damage.Amount > 0 && !IsPlayerProtected)
             {
                 _progression?.PlayerEffects.ConfirmMeleeContact();

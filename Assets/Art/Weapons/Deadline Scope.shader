@@ -90,6 +90,11 @@ Shader "Overtime/Deadline Scope"
                 optics = Over(optics, half3(0.18, 0.32, 0.35), arc * chargeArc * 0.55);
                 optics = Over(optics, half3(0.37, 0.95, 0.89), arc * chargeArc * chargeFill * step(0.01, _Charge));
 
+                float bearing = abs(sin(azimuth * 8.0));
+                float crown = Span(r, 0.707, 0.737, aa) * Line(bearing, 0.031, aa * 5);
+                optics = Over(optics, half3(0.97, 0.58, 0.21), crown * 0.92);
+                float gate = Line(axis.x + axis.y - 0.042, 0.0026, aa) * Span(axis.x, 0.009, 0.035, aa);
+                optics = Over(optics, half3(0.31, 0.94, 0.93), gate * (0.32 + 0.66 * _Charge));
                 float thin = 0.0014;
                 float horizontal = Span(axis.x, 0.021, 0.72, aa);
                 float vertical = Span(axis.y, 0.021, 0.72, aa);

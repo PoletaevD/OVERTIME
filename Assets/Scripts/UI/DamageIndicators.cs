@@ -21,7 +21,7 @@ namespace Overtime
             {
                 var image = new GameObject($"Damage Arc {index + 1}", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
                 image.transform.SetParent(container, false);
-                image.rectTransform.sizeDelta = new Vector2(250f, 250f);
+                image.rectTransform.sizeDelta = new Vector2(284f, 284f);
                 image.sprite = sprite;
                 image.raycastTarget = false;
                 _arcs[index] = new Indicator(image);
@@ -96,7 +96,7 @@ namespace Overtime
 
         private sealed class Indicator
         {
-            private const float FadeIn = 0.085f;
+            private const float FadeIn = 0.046f;
             private readonly Image _image;
             private readonly Sequence _fade;
             private float _initial;
@@ -153,6 +153,7 @@ namespace Overtime
             {
                 Strength = value;
                 _image.color = new Color(1f, 0.16f + value * 0.09f, 0.105f, value);
+                _image.rectTransform.localScale = Vector3.one * Mathf.Lerp(1.075f, 1f, value);
                 _image.enabled = value > 0f;
             }
         }

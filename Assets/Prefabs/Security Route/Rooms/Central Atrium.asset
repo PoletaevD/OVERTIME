@@ -25,23 +25,23 @@ MonoBehaviour:
   _variants:
   - _title: Gallery Watch
     _difficulty: 2
-    _markers: 000000000100000002000000030000000400000005000000060000000700000008000000090000000a0000000b0000000c0000000d000000
-    _initialActive: 14
-    _reinforcementThreshold: 11
-    _reinforcementBatch: 2
+    _markers: 000000000200000003000000040000000600000008000000090000000b0000000d000000
+    _initialActive: 9
+    _reinforcementThreshold: 7
+    _reinforcementBatch: 1
     _hazardMask: -1
   - _title: Crossfire
     _difficulty: 3
-    _markers: 0e0000000f000000100000001100000012000000130000001400000015000000160000001700000018000000190000001a0000001b0000001c0000001d000000
-    _initialActive: 9
-    _reinforcementThreshold: 6
-    _reinforcementBatch: 3
+    _markers: 0e0000000f0000001100000012000000140000001500000017000000180000001a0000001b0000001d000000
+    _initialActive: 6
+    _reinforcementThreshold: 4
+    _reinforcementBatch: 2
     _hazardMask: -1
   - _title: Atrium Lockdown
     _difficulty: 5
-    _markers: 1e0000001f000000200000002100000022000000230000002400000025000000260000002700000028000000290000002a0000002b0000002c0000002d0000002e0000002f00000030000000
-    _initialActive: 10
-    _reinforcementThreshold: 7
-    _reinforcementBatch: 3
+    _markers: 1e0000001f0000002100000022000000240000002500000027000000280000002a0000002b0000002d0000002e00000030000000
+    _initialActive: 7
+    _reinforcementThreshold: 5
+    _reinforcementBatch: 2
     _hazardMask: -1
   _rewards: 020000000300000004000000

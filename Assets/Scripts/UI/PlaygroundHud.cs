@@ -40,7 +40,10 @@ namespace Overtime
         private Camera _aimView;
         private Transform _reticle;
         private Vector2 _panelOrigin;
+        private RectTransform _vitals;
+        private Vector2 _vitalsRest;
         private Vector2 _sway;
+        private float _damageKick;
         private float _landing;
         private float _gravityPulse;
         private float _shot;
@@ -52,6 +55,7 @@ namespace Overtime
         private Tween _gravityTween;
         private Tween _shotTween;
         private CombatWeapon _weapon;
+        private CombatHealth _health;
         private Tween _jumpTween;
         private Tween _hintsTween;
         private bool _showHints = true;
@@ -64,7 +68,22 @@ namespace Overtime
             _cameraRig.ReducedMotion = _reducedMotion;
             var player = GetComponentInParent<PlaygroundPlayer>();
             _weapon = player?.Combat?.Weapon;
+            _health = player?.Combat?.Health;
             _aimView = player?.GetComponentInChildren<Camera>();
+            _vitals = transform.Find("Combat Vitals") as RectTransform;
+            if (_vitals != null)
+            {
+                _vitalsRest = new Vector2(40f, 29f);
+                _movementPanel.gameObject.SetActive(false);
+                _showHints = false;
+                _hints.alpha = 0f;
+                foreach (var arm in _reticleArms)
+                {
+                    var outline = arm.gameObject.AddComponent<Outline>();
+                    outline.effectDistance = new Vector2(1f, -1f);
+                    outline.effectColor = new Color(0.03f, 0.06f, 0.08f, 0.95f);
+                }
+            }
             if (_weapon != null && _deadlineScope == null)
             {
                 _deadlineScope = DeadlineScope.Create(transform);
@@ -80,6 +99,7 @@ namespace Overtime
             if (_weapon != null)
             {
                 _weapon.ShotFired += OnShot;
+                _health.Damaged += OnHit;
             }
         }
 
@@ -93,6 +113,7 @@ namespace Overtime
             if (_weapon != null)
             {
                 _weapon.ShotFired -= OnShot;
+                _health.Damaged -= OnHit;
             }
 
             _shotTween?.Pause();
@@ -104,6 +125,11 @@ namespace Overtime
         private void OnDestroy()
         {
             _shotTween?.Kill();
+        }
+
+        private void OnHit(DamageResult damage)
+        {
+            _damageKick = Mathf.Clamp(damage.Amount * 0.14f, 1f, 6f);
         }
 
         private void OnShot()
@@ -121,6 +147,12 @@ namespace Overtime
             _sway = Vector2.Lerp(_sway, -Vector2.ClampMagnitude(_cameraRig.LookDelta, 5f) * _swayIntensity, blend);
             var bob = Mathf.Sin(_cameraRig.BobPhase * 2f) * _bobIntensity * _cameraRig.MovementWeight;
             _movementPanel.anchoredPosition = _panelOrigin + motion * (_sway + Vector2.up * (bob - _landing));
+            if (_vitals != null)
+            {
+                _damageKick *= Mathf.Exp(-Time.unscaledDeltaTime * 13f);
+                _vitals.anchoredPosition = _vitalsRest + motion * (0.64f * _sway + Vector2.up * (bob - _landing + _jump + _shot - _gravityPulse * 3f - _damageKick));
+            }
+
             PresentReticle(motion, blend);
 
             var color = _motor.Magnetic ? new Color(0.27f, 0.88f, 0.90f) : new Color(1f, 0.42f, 0.17f);
@@ -147,8 +179,19 @@ namespace Overtime
                 _reticle.gameObject.SetActive(!aiming);
             }
 
-            var gap = type == WeaponType.Scatter ? SpreadGap() : 8f;
-            _gap = Mathf.Lerp(_gap, gap + motion * (_motor.SpeedRatio * _crosshairMovement + _jump + _shot), blend);
+            var gap = type == WeaponType.Scatter ? SpreadGap() : type == WeaponType.SemiAutomatic ? 5f : 8f;
+            var armLength = type == WeaponType.SemiAutomatic ? 5f : type == WeaponType.Scatter ? 12f : 9f;
+            for (var index = 0; index < _reticleArms.Length; index++)
+            {
+                var thickness = 2.5f + _shot * motion * 0.3f;
+                _reticleArms[index].sizeDelta = index < 2 ? new Vector2(armLength, thickness) : new Vector2(thickness, armLength);
+            }
+            if (_weapon == null)
+            {
+                gap += motion * (_motor.SpeedRatio * _crosshairMovement + _jump + _shot);
+            }
+
+            _gap = Mathf.Lerp(_gap, gap, blend);
             _reticleArms[0].anchoredPosition = Vector2.left * _gap;
             _reticleArms[1].anchoredPosition = Vector2.right * _gap;
             _reticleArms[2].anchoredPosition = Vector2.up * _gap;
@@ -221,6 +264,11 @@ namespace Overtime
             if (_input.DebugPressed)
             {
                 _debugPanel.SetActive(!_debugPanel.activeSelf);
+                if (_vitals != null)
+                {
+                    _movementPanel.gameObject.SetActive(_debugPanel.activeSelf);
+                    _panelOrigin = new Vector2(44f, 215f);
+                }
             }
 
             if (_input.HintsPressed)

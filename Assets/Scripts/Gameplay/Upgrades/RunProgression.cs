@@ -127,7 +127,7 @@ namespace Overtime
                 var target = enemy.Body.ClosestPoint(origin);
                 if ((target - origin).sqrMagnitude <= radius * radius && !Physics.Linecast(origin, target, _blastObstacles, QueryTriggerInteraction.Ignore))
                 {
-                    _director.DamageTarget(enemy, enemy.Body, damage, out _);
+                    _director.DamageTarget(enemy, enemy.Body, damage, out _, point: target, tint: new Color(0.78f, 0.56f, 1f));
                 }
             }
 
@@ -138,7 +138,7 @@ namespace Overtime
                 var distance = delta.magnitude;
                 if (distance <= radius && (distance < 0.01f || !Physics.Raycast(origin, delta / distance, distance - 0.01f, _blastObstacles, QueryTriggerInteraction.Ignore)))
                 {
-                    _director.DamageTarget(boss, hitbox, damage, out _);
+                    _director.DamageTarget(boss, hitbox, damage, out _, point: origin + delta, tint: new Color(0.78f, 0.56f, 1f));
                 }
             }
         }

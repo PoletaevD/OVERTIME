@@ -16,6 +16,26 @@ namespace Overtime
         private int _previousHealth = -1;
         private SupervisorPhase _previousPhase = (SupervisorPhase)(-1);
 
+        private void Awake()
+        {
+            var title = _panel.transform.Find("Name").GetComponent<TMP_Text>();
+            title.fontStyle |= FontStyles.Italic;
+            title.characterSpacing = 4f;
+            title.fontSize = 24f;
+            _phase.alignment = TextAlignmentOptions.Left;
+            _phase.characterSpacing = 3f;
+            _vitals.fontStyle |= FontStyles.Bold;
+            foreach (Transform marker in _fill.transform.parent)
+            {
+                if (marker.name == "Phase Threshold")
+                {
+                    var divider = (RectTransform)marker;
+                    divider.sizeDelta = new Vector2(4.5f, 15f);
+                    divider.localRotation = Quaternion.Euler(0f, 0f, -22f);
+                }
+            }
+        }
+
         private void LateUpdate()
         {
             var room = _route.Current;

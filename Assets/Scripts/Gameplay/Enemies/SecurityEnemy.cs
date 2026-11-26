@@ -66,6 +66,7 @@ namespace Overtime
         private bool _encounterReady = true;
         private bool _stagedEncounter;
         private AiState _state;
+        private float _footTravel;
         private Vector3 _home;
         private Quaternion _homeRotation;
 
@@ -209,12 +210,18 @@ namespace Overtime
 
             if (result.Killed)
             {
+                _director?.Sound(FieldCue.GuardDown + (int)_kind, transform.position);
                 _state.State = SecurityEnemyState.Dead;
                 _state.DeathTime = 0f;
                 _state.DirectionLocked = false;
                 _state.SeesPlayer = false;
                 _state.Recoil = 0f;
                 SetHitboxes(false);
+            }
+
+            if (!result.Killed && result.Amount >= _health.Maximum * 0.28f)
+            {
+                _director?.Sound(FieldCue.GuardHit + (int)_kind, transform.position);
             }
 
             _presentation.ReactToHit(reducedMotion);
@@ -250,6 +257,7 @@ namespace Overtime
             var target = capsule.transform.TransformPoint(capsule.center);
             var toPlayer = target - AttackOrigin;
             var sawPlayer = _state.SeesPlayer;
+            var previousPosition = transform.position;
             _state.SightRemaining -= step;
             if (_state.SightRemaining <= 0f)
             {
@@ -258,13 +266,35 @@ namespace Overtime
                 _state.SeesPlayer = _director.HasLivingPlayer && toPlayer.sqrMagnitude <= range * range && !Physics.Linecast(AttackOrigin, target, _geometry, QueryTriggerInteraction.Ignore);
             }
 
+            if (!sawPlayer && _state.SeesPlayer)
+            {
+                _director.Sound(FieldCue.GuardAlert + (int)_kind, AttackOrigin);
+            }
+
             if (_kind == SecurityEnemyKind.Auditor)
             {
+                var previousAim = _state.Aim;
                 SimulateAuditor(toPlayer, step);
+                if (_state.Aim != previousAim && _state.Aim != Vector3.zero && previousAim != Vector3.zero)
+                {
+                    _footTravel += Vector3.Angle(previousAim, _state.Aim);
+                    if (_footTravel >= 26f)
+                    {
+                        _footTravel = 0f;
+                        _director.Sound(FieldCue.AuditorMove, AttackOrigin);
+                    }
+                }
+
                 return;
             }
 
             SimulateMobile(target, toPlayer, sawPlayer, step);
+            _footTravel += Vector3.Distance(previousPosition, transform.position);
+            if (_footTravel >= (_kind == SecurityEnemyKind.Drone ? 2.3f : 1.2f))
+            {
+                _footTravel = 0f;
+                _director.Sound(FieldCue.GuardMove + (int)_kind, transform.position);
+            }
         }
 
         private void SimulateMobile(Vector3 target, Vector3 toPlayer, bool sawPlayer, float step)
@@ -362,6 +392,7 @@ namespace Overtime
 
             if (_projectiles.TryLaunch(origin, _state.Aim, _projectileSpeed, _projectileLifetime, _projectileRadius, _damage, _kind == SecurityEnemyKind.Drone, transform))
             {
+                _director.Sound(FieldCue.GuardFire + (int)_kind, AttackOrigin);
                 _state.Attacks++;
                 _state.Recoil = 1f;
                 _state.ShotsRemaining--;
@@ -454,6 +485,7 @@ namespace Overtime
                 _state.PhaseRemaining = _beamSeconds;
                 _state.Cooldown = _cooldownSeconds;
                 _state.Recoil = 1f;
+                _director.Sound(FieldCue.GuardFire + (int)_kind, AttackOrigin);
                 _state.Attacks++;
                 if (hitsPlayer)
                 {
@@ -629,9 +661,11 @@ namespace Overtime
 
             var aiming = _kind == SecurityEnemyKind.Auditor && _state.State == SecurityEnemyState.Aiming;
             var firing = _kind == SecurityEnemyKind.Auditor && _state.State == SecurityEnemyState.Attacking;
-            var charge = aiming ? 1f - _state.PhaseRemaining / _aimSeconds : 0f;
+            var charge = aiming ? 1f - _state.PhaseRemaining / _aimSeconds : _state.State == SecurityEnemyState.Alert ? 1f - Mathf.Clamp01(_state.PhaseRemaining / Mathf.Max(0.01f, _reactionSeconds)) : _state.State == SecurityEnemyState.Aiming ? 1f : 0f;
             var time = (timeline.Cursor + timeline.ForwardFraction - timeline.PreviewFraction) * (float)TemporalTimeline.TickDuration;
-            _presentation.Present(time, _state.Aim, AttackOrigin, _state.Recoil, _state.DeathTime, _state.State, aiming, firing, charge, _state.DirectionLocked, _state.BeamDistance, _state.InstabilityRemaining > 0f);
+            var previous = timeline.Cursor > timeline.Oldest ? Read(timeline, timeline.Cursor - 1).Position : transform.position;
+            var travel = transform.InverseTransformDirection(transform.position - previous) / (float)TemporalTimeline.TickDuration;
+            _presentation.Present(travel, time, _state.Aim, AttackOrigin, _state.Recoil, _state.DeathTime, _state.State, aiming, firing, charge, _state.DirectionLocked, _state.BeamDistance, _state.InstabilityRemaining > 0f);
         }
 
         private protected override Snapshot CaptureState()
@@ -641,6 +675,7 @@ namespace Overtime
 
         private protected override void RestoreState(in Snapshot snapshot)
         {
+            _footTravel = 0f;
             _state = snapshot.Ai;
             transform.SetPositionAndRotation(snapshot.Position, snapshot.Rotation);
             _health.Restore(snapshot.HitPoints);

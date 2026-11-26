@@ -91,19 +91,64 @@ namespace Overtime.Editor
                     available[kind]--;
                 }
 
-                var markers = new int[total];
-                for (var slot = 0; slot < total; slot++)
+                var count = Mathf.RoundToInt(total * 2f / 3f);
+                var selected = SelectSpawnSlots(assigned, count);
+                var markers = new int[count];
+                for (var slot = 0; slot < count; slot++)
                 {
                     markers[slot] = roster.Count;
-                    roster.Add(assigned[slot]);
+                    roster.Add(assigned[selected[slot]]);
                 }
 
                 var tier = id == "checkpoint" ? 1 : id == "containment" ? 5 : total <= 14 ? 2 + index / 2 : total <= 17 ? 3 + index / 2 : 4 + index / 2;
                 var mask = id is "live-wire" or "lockdown" or "containment" ? index switch { 0 => 5, 1 => 6, _ => 7 } : -1;
-                result[index] = new VariantSpec(definition.Title, tier, markers, initial, Mathf.Max(2, initial - 3), id == "containment" ? 4 : index == 0 ? 2 : 3, mask);
+                var threshold = Mathf.RoundToInt(Mathf.Max(2, initial - 3) * 2f / 3f);
+                var batch = id == "containment" ? 3 : index == 0 ? 1 : 2;
+                result[index] = new VariantSpec(definition.Title, tier, markers, Mathf.RoundToInt(initial * 2f / 3f), threshold, batch, mask);
             }
 
             return result;
+        }
+
+        private int[] SelectSpawnSlots(List<SpawnSpec> roster, int count)
+        {
+            var selected = new int[count];
+            var kinds = new int[4];
+            for (var slot = 0; slot < count; slot++)
+            {
+                var index = slot * (roster.Count - 1) / (count - 1);
+                selected[slot] = index;
+                kinds[(int)roster[index].Kind]++;
+            }
+
+            for (var index = 0; index < roster.Count; index++)
+            {
+                var kind = (int)roster[index].Kind;
+                if (kinds[kind] > 0)
+                {
+                    continue;
+                }
+
+                var replace = -1;
+                var distance = int.MaxValue;
+                for (var slot = 0; slot < count; slot++)
+                {
+                    var candidate = selected[slot];
+                    var gap = Mathf.Abs(index - candidate);
+                    if (kinds[(int)roster[candidate].Kind] > 1 && gap < distance)
+                    {
+                        replace = slot;
+                        distance = gap;
+                    }
+                }
+
+                kinds[(int)roster[selected[replace]].Kind]--;
+                selected[replace] = index;
+                kinds[kind]++;
+            }
+
+            Array.Sort(selected);
+            return selected;
         }
 
         private SpawnSpec FindSpawn(SecurityEnemyKind kind, Vector3 size, List<SpawnSpec> assigned, System.Random random, bool initial, int variant)

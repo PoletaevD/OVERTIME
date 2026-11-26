@@ -85,6 +85,12 @@ namespace Overtime
                     HazardPhase.Active => _activeSeconds,
                     _ => _recoverySeconds
                 };
+                if (_state.Phase is HazardPhase.Warning or HazardPhase.Active)
+                {
+                    var cue = _state.Phase == HazardPhase.Warning ? FieldCue.TrapWarn : _kind == ArenaHazardKind.SweepingLaser ? FieldCue.LaserLive : FieldCue.GridLive;
+                    _director.Sound(cue, transform.position);
+                }
+
                 ApplyPresentation();
             }
 
@@ -113,6 +119,13 @@ namespace Overtime
         private void UpdateBeam()
         {
             var direction = BeamDirection();
+            if (_state.Phase == HazardPhase.Warning)
+            {
+                var charge = Mathf.Clamp01(1f - _state.Remaining / _warningSeconds);
+                _beam.widthMultiplier = Mathf.Lerp(0.032f, 0.095f, charge * charge);
+                _beam.startColor = _beam.endColor = Color.Lerp(new Color(1f, 0.66f, 0.16f), new Color(1f, 0.26f, 0.08f), charge);
+            }
+
             _state.BeamLength = Physics.Raycast(transform.position, direction, out var wall, _length, 1, QueryTriggerInteraction.Ignore) ? wall.distance : _length;
             _beam.SetPosition(0, transform.position);
             _beam.SetPosition(1, transform.position + direction * _state.BeamLength);

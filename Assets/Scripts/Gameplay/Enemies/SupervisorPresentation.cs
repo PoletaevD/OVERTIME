@@ -18,6 +18,7 @@ namespace Overtime
         [SerializeField] private ParticleSystem _sparks;
 
         private MaterialPropertyBlock _properties;
+        private Quaternion[] _violationRingRest;
         private Tween _impact;
         private Tween _destruction;
         private float _hitFlash;
@@ -27,6 +28,12 @@ namespace Overtime
 
         private void Awake()
         {
+            _violationRingRest = new Quaternion[_violationRings.Length];
+            for (var index = 0; index < _violationRings.Length; index++)
+            {
+                _violationRingRest[index] = _violationRings[index].transform.localRotation;
+            }
+
             _properties = new MaterialPropertyBlock();
             _impact = DOVirtual.Float(0.8f, 0f, 0.19f, value => _hitFlash = value).SetAutoKill(false).SetUpdate(true).SetLink(gameObject).Pause();
         }
@@ -90,10 +97,13 @@ namespace Overtime
             {
                 _violation.position = attack.Point;
                 _violation.localScale = Vector3.one * attacks.ViolationRadius;
-                foreach (var ring in _violationRings)
+                for (var index = 0; index < _violationRings.Length; index++)
                 {
+                    var ring = _violationRings[index];
                     ring.startColor = ring.endColor = active ? red : Color.Lerp(new Color(0.99f, 0.58f, 0.18f, 0.45f), amber, charge);
-                    ring.widthMultiplier = active ? 0.105f : 0.035f + charge * 0.03f;
+                    ring.widthMultiplier = active ? 0.105f : 0.035f + charge * 0.045f;
+                    var sweep = reduced || active ? 0f : charge * 58f;
+                    ring.transform.localRotation = Quaternion.AngleAxis(sweep, Vector3.up) * _violationRingRest[index];
                 }
             }
 

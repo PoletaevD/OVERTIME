@@ -82,7 +82,7 @@ namespace Overtime
             {
                 if (state.Remaining <= 0f)
                 {
-                    Start(ref state, reinforcementDue ? SupervisorAttack.Reinforcements : Select(phase, state.Sequence++), phase);
+                    BeginAttack(ref state, reinforcementDue ? SupervisorAttack.Reinforcements : Select(phase, state.Sequence++), phase);
                 }
 
                 return false;
@@ -122,7 +122,7 @@ namespace Overtime
             };
         }
 
-        internal void Start(ref Snapshot state, SupervisorAttack attack, SupervisorPhase phase)
+        internal void BeginAttack(ref Snapshot state, SupervisorAttack attack, SupervisorPhase phase)
         {
             var target = PlayerCenter();
             state.Attack = attack;

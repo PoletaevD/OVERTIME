@@ -42,6 +42,7 @@ namespace Overtime
         private string _hint = string.Empty;
 
         internal string Hint => _hint;
+        internal WeaponInstance Hovered => _hover?.Instance;
 
         internal void Prepare(RoomRuntime room, RouteNode node, int seed, CombatWeapon weapon, float scavenger, GameObject[] models, Sprite[] ammoIcons, WeaponId cacheType)
         {
@@ -317,10 +318,17 @@ namespace Overtime
         private string Describe(WeaponInstance instance)
         {
             var definition = instance.Definition;
-            var text = $"<b>{definition.DisplayName}</b>   {instance.Rarity.ToString().ToUpperInvariant()}\n";
+            var accent = instance.Rarity switch
+            {
+                WeaponRarity.Epic => "#D2B8EF",
+                WeaponRarity.Rare => "#96CDFF",
+                WeaponRarity.Uncommon => "#94E3CA",
+                _ => "#D7E0E0"
+            };
+            var text = $"<b>{definition.DisplayName}</b>   <color={accent}>{instance.Rarity.ToString().ToUpperInvariant()}</color>\n";
             foreach (var affix in instance.Affixes)
             {
-                text += ObjectNames(affix.Kind) + "   ";
+                text += $"<size=74%><b>{ObjectNames(affix.Kind)}</b> {EffectLabel(affix)}</size>    ";
             }
 
             var tuning = definition.Tuning;
@@ -330,6 +338,23 @@ namespace Overtime
             var equippedDamage = _weapon.DamageFor(_weapon.ActiveSlot) * _weapon.PelletsFor(_weapon.ActiveSlot);
             var comparison = _weapon.HasSecondary ? $" · replaces {_weapon.ActiveName}" : " · fills slot 2";
             return text + $"\n{damage:0.#} DMG / volley ({equippedDamage:0.#} equipped)   {instance.Stored.Magazine} MAG   {AmmoName(definition.Id)}\n[G] PICK UP{comparison}";
+        }
+
+        private string EffectLabel(WeaponAffix affix)
+        {
+            return affix.Kind switch
+            {
+                WeaponModifier.BurstModule => $"{affix.Magnitude * 1000f:0} ms interval",
+                WeaponModifier.SlugConversion => $"{affix.Magnitude:0.#}x slug",
+                WeaponModifier.Splitter => $"splits at {affix.Magnitude:0.#} m",
+                WeaponModifier.ExplosiveCore => $"{affix.Magnitude:0.#} m blast",
+                WeaponModifier.RicochetChamber => $"{affix.Magnitude:0%} retained",
+                WeaponModifier.CryoPayload => $"{affix.Magnitude:0.#} s slow",
+                WeaponModifier.FanOutput => $"{affix.Magnitude:0.#} degrees",
+                WeaponModifier.GyroscopicStabilizer => $"recoil -{affix.Magnitude:0%}",
+                WeaponModifier.PhaseAccelerator => "accelerating bolt",
+                _ => $"{affix.Magnitude:0.#}x final round"
+            };
         }
 
         private string ObjectNames(WeaponModifier modifier)
@@ -440,7 +465,12 @@ namespace Overtime
             var id = (int)instance.Definition.Id;
             if (_pickupModels != null && id < _pickupModels.Length && _pickupModels[id] != null)
             {
-                Instantiate(_pickupModels[id], root, false);
+                var gun = Instantiate(_pickupModels[id], root, false);
+                var model = gun.transform.Find("World Model");
+                if (model != null)
+                {
+                    new WeaponModules(model, _shell).Equip(instance);
+                }
             }
 
             Part(root, new Vector3(0f, -0.24f, 0f), new Vector3(0.29f, 0.026f, length * 0.87f), _emitter, color);

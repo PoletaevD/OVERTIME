@@ -48,14 +48,14 @@ namespace Overtime.Tests
                 {
                     var range = room.Category switch
                     {
-                        RoomCategory.Entry => Is.InRange(8, 10),
-                        RoomCategory.Containment => Is.InRange(20, 24),
-                        _ => Is.InRange(12, 20)
+                        RoomCategory.Entry => Is.InRange(5, 7),
+                        RoomCategory.Containment => Is.InRange(13, 16),
+                        _ => Is.InRange(8, 13)
                     };
                     Assert.That(variant.Markers.Length, range, $"{room.Title}: {variant.Title}");
-                    Assert.That(variant.InitialActive, Is.InRange(7, Mathf.Min(16, variant.Markers.Length)));
+                    Assert.That(variant.InitialActive, Is.InRange(5, Mathf.Min(11, variant.Markers.Length)));
                     Assert.That(variant.ReinforcementThreshold, Is.LessThan(variant.InitialActive));
-                    Assert.That(variant.ReinforcementBatch, Is.InRange(2, 4));
+                    Assert.That(variant.ReinforcementBatch, Is.InRange(1, 3));
                     Assert.That(variant.Markers.Distinct().Count(), Is.EqualTo(variant.Markers.Length));
                     foreach (var index in variant.Markers)
                     {
