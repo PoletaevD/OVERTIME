@@ -210,20 +210,22 @@ namespace Overtime.Editor
             }
 
             var panel = HudRect(sectorHud.GetComponentInParent<Canvas>().transform, "Supervisor HUD", position, new Vector2(572f, 67f), new Vector2(0.5f, 1f));
-            HudImage(panel, "Vanguard Frame", Vector2.zero, new Vector2(572f, 67f), new Color(0.023f, 0.053f, 0.072f, 0.93f));
             var title = HudText(panel, "Name", "THE SUPERVISOR", new Vector2(-110f, 18f), new Vector2(320f, 23f), 22f, TextAlignmentOptions.Left);
-            title.fontStyle = FontStyles.Bold;
-            title.characterSpacing = 2.5f;
+            title.fontStyle = FontStyles.Bold | FontStyles.Italic;
+            title.characterSpacing = 4f;
+            title.fontSize = 24f;
             var vitals = HudText(panel, "Hit Points", string.Empty, new Vector2(184f, 16f), new Vector2(170f, 21f), 17f, TextAlignmentOptions.Right);
-            var phase = HudText(panel, "Phase", string.Empty, new Vector2(0f, -21f), new Vector2(540f, 17f), 14f, TextAlignmentOptions.Center);
-            phase.characterSpacing = 2.7f;
+            vitals.fontStyle = FontStyles.Bold;
+            var phase = HudText(panel, "Phase", string.Empty, new Vector2(0f, -21f), new Vector2(540f, 17f), 14f, TextAlignmentOptions.Left);
+            phase.characterSpacing = 3f;
             var track = HudImage(panel, "Health Track", new Vector2(0f, -3f), new Vector2(542f, 9f), new Color(0.17f, 0.24f, 0.31f));
             var fill = HudImage(track.rectTransform, "Health Fill", Vector2.zero, Vector2.zero, Color.cyan);
             fill.rectTransform.anchorMin = Vector2.zero;
             fill.rectTransform.anchorMax = Vector2.one;
             foreach (var fraction in new[] { SupervisorBoss.EmergencyThreshold, SupervisorBoss.CorrectiveThreshold })
             {
-                HudImage(track.rectTransform, "Phase Threshold", new Vector2((fraction - 0.5f) * 542f, 0f), new Vector2(2.5f, 13f), new Color(0.92f, 0.96f, 0.99f));
+                var threshold = HudImage(track.rectTransform, "Phase Threshold", new Vector2((fraction - 0.5f) * 542f, 0f), new Vector2(4.5f, 15f), new Color(0.92f, 0.96f, 0.99f));
+                threshold.rectTransform.localRotation = Quaternion.Euler(0f, 0f, -22f);
             }
 
             var controller = sectorHud.gameObject.AddComponent<SupervisorHud>();

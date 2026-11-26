@@ -19,9 +19,9 @@ namespace Overtime
         [SerializeField] private TMP_Text _playerReadout;
         [SerializeField] private TMP_Text _worldReadout;
         [SerializeField] private RectTransform _worldTrack;
+        [SerializeField] private RawImage[] _glyphs = System.Array.Empty<RawImage>();
 
         private Tween _appearance;
-        private readonly RawImage[] _glyphs = new RawImage[4];
         private RectTransform _worldRecorded;
         private RectTransform _worldDepth;
         private RectTransform _worldCursor;
@@ -33,43 +33,7 @@ namespace Overtime
 
         private void Awake()
         {
-            _fieldDisplay = GetComponentInParent<CombatHud>() != null && GetComponentInParent<SectorHud>() != null;
-            if (_fieldDisplay)
-            {
-                _status.fontStyle |= FontStyles.Bold | FontStyles.Italic;
-                _time.fontStyle |= FontStyles.Bold;
-            }
-
-            var atlas = Resources.Load<Texture2D>("Temporal Glyphs");
-            var binding = _worldTrack.parent.Find("Temporal Bindings");
-            if (binding != null && atlas != null)
-            {
-                binding.gameObject.SetActive(false);
-                var labels = new[] { "Q   RESET", "E   OVERRIDE", "C   RECALL", "SHIFT   SLOW" };
-                for (var index = 0; index < _glyphs.Length; index++)
-                {
-                    var glyph = new GameObject(labels[index], typeof(RectTransform)).AddComponent<RawImage>();
-                    glyph.rectTransform.SetParent(_worldTrack.parent, false);
-                    glyph.rectTransform.anchorMin = glyph.rectTransform.anchorMax = Vector2.zero;
-                    glyph.rectTransform.anchoredPosition = new Vector2(index * 96f + 49f, -1f);
-                    glyph.rectTransform.sizeDelta = new Vector2(42f, 42f);
-                    glyph.texture = atlas;
-                    glyph.uvRect = new Rect(index % 2 * 0.5f, index < 2 ? 0.5f : 0f, 0.5f, 0.5f);
-                    glyph.raycastTarget = false;
-                    _glyphs[index] = glyph;
-                    var key = new GameObject("Binding", typeof(RectTransform)).AddComponent<TextMeshProUGUI>();
-                    key.rectTransform.SetParent(glyph.transform, false);
-                    key.rectTransform.anchoredPosition = new Vector2(0f, -32f);
-                    key.rectTransform.sizeDelta = new Vector2(94f, 22f);
-                    key.font = _status.font;
-                    key.fontSize = 12.5f;
-                    key.fontStyle = FontStyles.Bold;
-                    key.alignment = TextAlignmentOptions.Center;
-                    key.raycastTarget = false;
-                    key.SetText(labels[index]);
-                }
-            }
-
+            _fieldDisplay = GetComponentInParent<SectorHud>() != null;
             _playerDepthImage = _depth.GetComponent<Image>();
             _accent = _activeLabel.GetComponent<Image>();
             _worldRecorded = (RectTransform)_worldTrack.Find("Recorded History");
@@ -182,10 +146,7 @@ namespace Overtime
             });
             for (var index = 0; index < _glyphs.Length; index++)
             {
-                if (_glyphs[index] != null)
-                {
-                    _glyphs[index].color = (int)mode == index + 1 ? color : new Color(0.86f, 0.90f, 0.93f);
-                }
+                _glyphs[index].color = (int)mode == index + 1 ? color : new Color(0.86f, 0.90f, 0.93f);
             }
 
             _status.color = color;

@@ -7,7 +7,6 @@ namespace Overtime.Editor
 {
     internal sealed partial class PlaygroundHudBuilder
     {
-        private static readonly Color s_ink = new(0.035f, 0.054f, 0.077f, 0.91f);
         private static readonly Color s_paper = new(0.91f, 0.95f, 0.97f);
         private static readonly Color s_muted = new(0.64f, 0.78f, 0.85f);
         private static readonly Color s_cyan = new(0.27f, 0.88f, 0.90f);
@@ -32,7 +31,7 @@ namespace Overtime.Editor
             scaler.matchWidthOrHeight = 0.5f;
 
             var reticle = BuildReticle(root.transform);
-            var movement = Panel("Movement", root.transform, Vector2.zero, new Vector2(44f, 45f), new Vector2(382f, 142f), s_ink).rectTransform;
+            var movement = Rect("Movement", root.transform, Vector2.zero, new Vector2(44f, 45f), new Vector2(382f, 142f));
             var indicator = Panel("Magnet Indicator", movement, Vector2.zero, new Vector2(18f, 111f), new Vector2(8f, 8f), s_orange);
             Label("Identity", movement, new Vector2(34f, 104f), new Vector2(300f, 23f), "M E R I D I A N   /   LOCOMOTION", 15f, s_cyan);
             var speed = Label("Speed", movement, new Vector2(16f, 51f), new Vector2(154f, 46f), "0.0 <size=50%>M/S</size>", 38f, s_paper);
@@ -42,16 +41,16 @@ namespace Overtime.Editor
             var fill = Panel("Speed Fill", movement, Vector2.zero, new Vector2(18f, 22f), new Vector2(346f, 3f), s_cyan);
             fill.rectTransform.localScale = new Vector3(0f, 1f, 1f);
 
-            var hints = Panel("Controls", root.transform, Vector2.one, Vector2.zero, new Vector2(418f, 134f), s_ink);
-            hints.rectTransform.pivot = Vector2.one;
-            hints.rectTransform.anchoredPosition = new Vector2(-44f, -44f);
+            var hints = Rect("Controls", root.transform, Vector2.one, Vector2.zero, new Vector2(418f, 134f));
+            hints.pivot = Vector2.one;
+            hints.anchoredPosition = new Vector2(-44f, -44f);
             var group = hints.gameObject.AddComponent<CanvasGroup>();
             var hintText = "WASD   MOVE     MOUSE   LOOK\nSPACE   TAP JUMP / HOLD  ATTACH/DROP\nLMB   CAPTURE / FIRE     ESC   RELEASE\nR   RESET    H   HINTS    F3   DEBUG    F4   MOTION";
             Label("Bindings", hints.transform, new Vector2(16f, 10f), new Vector2(386f, 114f), hintText, 16f, s_paper);
 
-            var debugPanel = Panel("Debug Overlay", root.transform, Vector2.up, Vector2.zero, new Vector2(420f, 234f), s_ink);
-            debugPanel.rectTransform.pivot = Vector2.up;
-            debugPanel.rectTransform.anchoredPosition = new Vector2(44f, -44f);
+            var debugPanel = Rect("Debug Overlay", root.transform, Vector2.up, Vector2.zero, new Vector2(420f, 234f));
+            debugPanel.pivot = Vector2.up;
+            debugPanel.anchoredPosition = new Vector2(44f, -44f);
             var debug = Label("Telemetry", debugPanel.transform, new Vector2(18f, 12f), new Vector2(384f, 210f), "MOTOR TELEMETRY", 17f, s_cyan);
             debugPanel.gameObject.SetActive(false);
 
@@ -63,7 +62,7 @@ namespace Overtime.Editor
         {
             var root = movementHud.transform;
             var lowerRight = Vector2.right;
-            var panel = Panel("Temporal Timeline", root, lowerRight, Vector2.zero, new Vector2(386f, 116f), s_ink).rectTransform;
+            var panel = Rect("Temporal Timeline", root, lowerRight, Vector2.zero, new Vector2(386f, 116f));
             panel.pivot = lowerRight;
             panel.anchoredPosition = new Vector2(-44f, 45f);
             Label("Rewind Binding", panel, new Vector2(18f, 73f), new Vector2(214f, 32f), "Q вЂ” REWIND", 25f, s_paper);
@@ -110,6 +109,7 @@ namespace Overtime.Editor
             var difference = panel.Find("History Seconds").GetComponent<TMP_Text>();
             var player = panel.Find("Rewind Binding").GetComponent<TMP_Text>();
             PlaceReadout(status, new Vector2(18f, 118f), new Vector2(234f, 26f), 19f, "NORMAL");
+            status.color = TemporalEffects.ModeColor(TemporalMode.Normal);
             PlaceReadout(difference, new Vector2(253f, 118f), new Vector2(115f, 26f), 14f, "P-W  0.00 s");
             PlaceReadout(player, new Vector2(18f, 91f), new Vector2(350f, 22f), 17f, "PLAYER  FWD   0.00 s");
             var world = Label("World Readout", panel, new Vector2(18f, 47f), new Vector2(350f, 22f), "WORLD   FWD   0.00 s", 17f, s_paper);
@@ -123,7 +123,7 @@ namespace Overtime.Editor
             Undo.RegisterCreatedObjectUndo(worldTrack.gameObject, "Add World History");
             PlaygroundSceneBuilder.Wire(hud, "_playerReadout", player, "_worldReadout", world, "_worldTrack", worldTrack);
 
-            Label("Temporal Bindings", panel, new Vector2(18f, 7f), new Vector2(350f, 18f), "Q RESET   E OVERRIDE   C RECALL   SHIFT BULLET TIME", 13f, s_muted);
+            CombatHudLayout.BuildTemporalGlyphs(hud);
             var debugPanel = (RectTransform)movementHud.transform.Find("Debug Overlay");
             var debugText = (RectTransform)debugPanel.Find("Telemetry");
             Undo.RecordObjects(new Object[] { debugPanel, debugText }, "Resize Temporal Diagnostics");

@@ -17,12 +17,6 @@ namespace Overtime
         [SerializeField] private TMP_Text _healthLabel;
         [SerializeField] private Image _healthFill;
         [SerializeField] private CanvasGroup _damageFlash;
-        [SerializeField] private TMP_Text _ammoLabel;
-        [SerializeField] private TMP_Text _reloadLabel;
-        [SerializeField] private Image _reloadFill;
-        [SerializeField] private Image _weaponIcon;
-        [SerializeField] private TMP_Text _stowedLabel;
-        [SerializeField] private TMP_Text _actionLabel;
         [SerializeField] private TMP_Text _energyLabel;
         [SerializeField] private TMP_Text _costLabel;
         [SerializeField] private Image _energyFill;
@@ -53,12 +47,6 @@ namespace Overtime
         private Tween _energyPulse;
         private Tween _hitPulse;
         private Tween _stationTween;
-        private Tween _weaponPulse;
-        private int _slot = -1;
-        private WeaponDefinition _activeDefinition;
-        private WeaponDefinition _stowedDefinition;
-        private int _stowedSlot = -1;
-        private string _weaponAction;
         private float _hitWindow;
         private int _groupedDamage;
         private bool _groupedKill;
@@ -76,30 +64,17 @@ namespace Overtime
 
         private void Awake()
         {
-            var layout = new CombatHudLayout();
-            layout.Apply(transform);
             if (_lootHint != null)
             {
-                _modulePlates = layout.CreateModulePlates(_lootHint.rectTransform);
+                _modulePlates = CreateModulePlates(_lootHint.rectTransform);
             }
 
-            _ammoLabel.enabled = false;
             _numbers = new DamageNumbers((RectTransform)transform, _player.GetComponentInChildren<Camera>(), _hitLabel);
             _stationGroup = _stationHint.GetComponent<CanvasGroup>();
             _healthPulse = BuildPulse(0.34f, PresentHealthPulse);
             _energyPulse = BuildPulse(0.42f, value => _energyFill.color = Color.Lerp(s_chrono, Color.white, value));
             _hitPulse = BuildPulse(0.22f, PresentHitPulse);
             _restart.onClick.AddListener(_director.RequestRestart);
-            if (_weaponIcon != null)
-            {
-                _weaponPulse = _weaponIcon.rectTransform.DOScale(1f, 0.20f).From(0.84f, false).SetAutoKill(false).SetUpdate(true).Pause();
-            }
-            var legacy = transform.Find("Directional Damage");
-            if (legacy != null)
-            {
-                legacy.gameObject.SetActive(false);
-            }
-
             var arc = _damageArc != null ? _damageArc : Resources.Load<Sprite>("Damage Arc");
             if (arc != null)
             {
@@ -116,7 +91,6 @@ namespace Overtime
         {
             _director.DamageConfirmed += _numbers.Show;
             _director.ProjectileHit += OnImpact;
-            _player.Combat.Weapon.SwitchStarted += OnSwitch;
             _player.Combat.Weapon.AmmoCollected += OnAmmoCollected;
             _player.Combat.Health.Damaged += OnDamage;
             _director.ModeChanged += OnModeChanged;
@@ -128,7 +102,6 @@ namespace Overtime
             _director.DamageConfirmed -= _numbers.Show;
             _numbers.Clear();
             _director.ProjectileHit -= OnImpact;
-            _player.Combat.Weapon.SwitchStarted -= OnSwitch;
             _player.Combat.Weapon.AmmoCollected -= OnAmmoCollected;
             _player.Combat.Health.Damaged -= OnDamage;
             _director.ModeChanged -= OnModeChanged;
@@ -147,7 +120,6 @@ namespace Overtime
             _energyPulse.Kill();
             _hitPulse.Kill();
             _stationTween?.Kill();
-            _weaponPulse?.Kill();
             _deathTween?.Kill();
             _remainingPulse?.Kill();
             _numbers?.Dispose();
@@ -159,7 +131,6 @@ namespace Overtime
             _numbers.Project(_player.ReducedMotion);
             var combat = _player.Combat;
             RefreshHealth(combat.Health);
-            RefreshAmmo(combat.Weapon);
             RefreshLootHint();
             RefreshEnergy();
             RefreshDeath(combat);
@@ -190,6 +161,26 @@ namespace Overtime
             _ammoNoticeFade?.Kill();
             _ammoNoticeFade = DOTween.Sequence().SetUpdate(true).AppendInterval(0.8f);
             _ammoNoticeFade.Append(DOTween.To(() => _ammoNotice.alpha, value => _ammoNotice.alpha = value, 0f, _player.ReducedMotion ? 0f : 0.24f));
+        }
+
+        private static RawImage[] CreateModulePlates(RectTransform hint)
+        {
+            var texture = Resources.Load<Texture2D>("Module Plates");
+            var plates = new RawImage[3];
+            for (var index = 0; index < plates.Length; index++)
+            {
+                var plate = new GameObject("Attachment Profile", typeof(RectTransform)).AddComponent<RawImage>();
+                plate.rectTransform.SetParent(hint, false);
+                plate.rectTransform.anchorMin = plate.rectTransform.anchorMax = new Vector2(0.5f, 0f);
+                plate.rectTransform.pivot = new Vector2(0.5f, 1f);
+                plate.rectTransform.sizeDelta = new Vector2(44f, 44f);
+                plate.texture = texture;
+                plate.raycastTarget = false;
+                plate.enabled = false;
+                plates[index] = plate;
+            }
+
+            return plates;
         }
 
         private void RefreshLootHint()
@@ -292,63 +283,6 @@ namespace Overtime
             var intensity = amount * (_player.ReducedMotion ? 0.55f : 1f);
             _healthFill.color = Color.Lerp(s_text, _healthColor, intensity);
             _damageFlash.alpha = _healthColor == s_damage ? intensity * 0.65f : 0f;
-        }
-
-        private void RefreshAmmo(CombatWeapon weapon)
-        {
-            var action = weapon.IsSwitching ? "EXCHANGING" : weapon.IsReloading ? "RELOADING" : weapon.IsCharging ? "CHARGING" : weapon.Magazine == 0 ? (weapon.Reserve > 0 ? "R  /  RELOAD" : "NO AMMUNITION") : string.Empty;
-            if (_actionLabel == null)
-            {
-                _reloadLabel.SetText(action.Length == 0 ? weapon.ActiveName : action);
-            }
-            else
-            {
-                RefreshLoadout(weapon, action);
-            }
-
-            _reloadFill.color = weapon.IsCharging ? s_chrono : s_weak;
-            SetFill(_reloadFill, weapon.IsSwitching ? weapon.SwitchProgress : weapon.IsCharging ? weapon.ChargeProgress : weapon.ReloadProgress);
-        }
-
-        private void OnSwitch()
-        {
-            if (!_player.ReducedMotion)
-            {
-                _weaponPulse?.Restart();
-            }
-        }
-
-        private void RefreshLoadout(CombatWeapon weapon, string action)
-        {
-            if (_activeDefinition != weapon.ActiveDefinition || _slot != weapon.ActiveSlot)
-            {
-                _activeDefinition = weapon.ActiveDefinition;
-                _slot = weapon.ActiveSlot;
-                _weaponIcon.sprite = _activeDefinition?.Icon;
-                _weaponIcon.enabled = _weaponIcon.sprite != null;
-                _reloadLabel.SetText(weapon.ActiveName);
-            }
-
-            if (_weaponAction != action)
-            {
-                _weaponAction = action;
-                _actionLabel.SetText(action);
-            }
-
-            _stowedLabel.gameObject.SetActive(weapon.HasSecondary);
-            if (!weapon.HasSecondary)
-            {
-                return;
-            }
-
-            var stowedSlot = 1 - _slot;
-            var definition = weapon.Definition(stowedSlot);
-            if (_stowedDefinition != definition || _stowedSlot != stowedSlot)
-            {
-                _stowedSlot = stowedSlot;
-                _stowedDefinition = definition;
-                _stowedLabel.SetText($"[{stowedSlot + 1}]   {weapon.Name(stowedSlot)}");
-            }
         }
 
         private void RefreshEnergy()

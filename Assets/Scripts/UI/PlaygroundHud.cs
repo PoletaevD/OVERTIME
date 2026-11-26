@@ -58,7 +58,7 @@ namespace Overtime
         private CombatHealth _health;
         private Tween _jumpTween;
         private Tween _hintsTween;
-        private bool _showHints = true;
+        private bool _showHints;
 
         private void Awake()
         {
@@ -73,17 +73,10 @@ namespace Overtime
             _vitals = transform.Find("Combat Vitals") as RectTransform;
             if (_vitals != null)
             {
-                _vitalsRest = new Vector2(40f, 29f);
-                _movementPanel.gameObject.SetActive(false);
-                _showHints = false;
-                _hints.alpha = 0f;
-                foreach (var arm in _reticleArms)
-                {
-                    var outline = arm.gameObject.AddComponent<Outline>();
-                    outline.effectDistance = new Vector2(1f, -1f);
-                    outline.effectColor = new Color(0.03f, 0.06f, 0.08f, 0.95f);
-                }
+                _vitalsRest = _vitals.anchoredPosition;
             }
+
+            _showHints = _hints.alpha > 0f;
             if (_weapon != null && _deadlineScope == null)
             {
                 _deadlineScope = DeadlineScope.Create(transform);

@@ -15,19 +15,15 @@ namespace Overtime.Editor
             var hints = controls.Find("Bindings").GetComponent<TMP_Text>();
             hints.text = "WASD  MOVE   MOUSE  LOOK\nSPACE  JUMP / GRAVITY   LMB  FIRE\nR  RELOAD   F  CHARGE   F5  RESTART\nQ  RESET   E  OVERRIDE   C  RECALL\nSHIFT  BULLET TIME   ESC  RELEASE\nF3  DEBUG   F4  MOTION   H  HINTS";
 
-            var left = Panel("Combat Vitals", root, Vector2.zero, new Vector2(44f, 202f), new Vector2(382f, 124f), s_ink).rectTransform;
-            var health = Label("Health", left, new Vector2(18f, 83f), new Vector2(346f, 28f), "VITALS  100 / 100", 24f, s_paper);
-            var healthFill = Meter("Health", left, 75f, 6f, s_paper);
-            var energy = Label("Chrono Energy", left, new Vector2(18f, 44f), new Vector2(346f, 25f), "CHRONO  100 / 100", 20f, s_cyan);
+            var left = Rect("Combat Vitals", root, Vector2.zero, new Vector2(40f, 29f), new Vector2(382f, 124f));
+            var health = Label("Health", left, new Vector2(15f, 79f), new Vector2(345f, 57f), string.Empty, 46f, s_paper);
+            var healthFill = Meter("Health", left, 75f, 11f, s_paper);
+            var energy = Label("Chrono Energy", left, new Vector2(18f, 44f), new Vector2(346f, 25f), string.Empty, 20f, s_cyan);
             var energyFill = Meter("Chrono", left, 36f, 5f, s_cyan);
             var cost = Label("Energy Cost", left, new Vector2(18f, 9f), new Vector2(346f, 20f), string.Empty, 14f, s_muted);
 
-            var right = Panel("ARC-01 Readout", root, Vector2.right, Vector2.zero, new Vector2(386f, 104f), s_ink).rectTransform;
-            right.pivot = Vector2.right;
-            right.anchoredPosition = new Vector2(-44f, 214f);
-            var reload = Label("Weapon Status", right, new Vector2(18f, 70f), new Vector2(346f, 23f), "ARC-01  /  AUTO", 16f, s_cyan);
-            var ammo = Label("Magazine and Reserve", right, new Vector2(18f, 19f), new Vector2(346f, 46f), "30  <size=55%>/ 180</size>", 38f, s_paper);
-            var reloadFill = Meter("Reload", right, 11f, 4f, s_orange);
+            CombatHudLayout.AddHealthDivisions(left);
+            CombatHudLayout.SetCombatDefaults(root, health, energy, player, director);
 
             var center = Vector2.one * 0.5f;
             var station = CenterLabel("Recharge Prompt", root, new Vector2(0f, -160f), new Vector2(440f, 36f), "F  /  RECHARGE CHRONO ENERGY", 20f, s_cyan);
@@ -45,24 +41,26 @@ namespace Overtime.Editor
             AddDamageEdge(damage, false);
             AddDamageEdge(damage, true);
 
-            var death = Panel("Recovery Screen", root, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.12f, 0.022f, 0.033f, 0.65f));
-            death.rectTransform.anchorMax = Vector2.one;
+            var death = Rect("Recovery Screen", root, Vector2.zero, Vector2.zero, Vector2.zero);
+            death.anchorMax = Vector2.one;
             var deathGroup = AddOverlayGroup(death.gameObject);
             var deathTitle = CenterLabel("Recovery Status", death.transform, new Vector2(0f, 105f), new Vector2(920f, 72f), "TEMPORAL RECOVERY AVAILABLE", 44f, s_paper);
+            CombatHudLayout.StyleHeading(deathTitle, new Color(1f, 0.39f, 0.20f));
             var deathInfo = CenterLabel("Recovery Instructions", death.transform, new Vector2(0f, 46f), new Vector2(680f, 36f), string.Empty, 21f, s_orange);
 
-            var restartPanel = Panel("Retry Button", death.transform, center, new Vector2(0f, -28f), new Vector2(270f, 50f), s_ink);
-            restartPanel.rectTransform.pivot = center;
-            restartPanel.raycastTarget = true;
-            var restart = restartPanel.gameObject.AddComponent<Button>();
-            restart.targetGraphic = restartPanel;
-            CenterLabel("Retry Label", restart.transform, Vector2.zero, new Vector2(260f, 44f), "RESTART DRILL", 22f, s_paper);
+            var retry = Rect("Retry Button", death, center, new Vector2(0f, -28f), new Vector2(270f, 50f));
+            retry.pivot = center;
+            retry.anchoredPosition = new Vector2(0f, -28f);
+            var restart = retry.gameObject.AddComponent<Button>();
+            var retryLabel = CenterLabel("Retry Label", retry, Vector2.zero, new Vector2(260f, 44f), "RESTART DRILL", 22f, s_paper);
+            retryLabel.raycastTarget = true;
+            restart.targetGraphic = retryLabel;
             restart.gameObject.SetActive(false);
             root.gameObject.AddComponent<GraphicRaycaster>();
             new GameObject("Combat UI Input", typeof(EventSystem), typeof(InputSystemUIInputModule));
 
             var hud = root.gameObject.AddComponent<CombatHud>();
-            PlaygroundSceneBuilder.Wire(hud, "_director", director, "_player", player, "_healthLabel", health, "_healthFill", healthFill, "_damageFlash", damageGroup, "_ammoLabel", ammo, "_reloadLabel", reload, "_reloadFill", reloadFill, "_energyLabel", energy, "_costLabel", cost, "_energyFill", energyFill, "_stationHint", station, "_hitMarker", hitMarker, "_hitLabel", hitLabel, "_hitGroup", hitGroup, "_deathGroup", deathGroup, "_deathTitle", deathTitle, "_deathInfo", deathInfo, "_restart", restart);
+            PlaygroundSceneBuilder.Wire(hud, "_director", director, "_player", player, "_healthLabel", health, "_healthFill", healthFill, "_damageFlash", damageGroup, "_energyLabel", energy, "_costLabel", cost, "_energyFill", energyFill, "_stationHint", station, "_hitMarker", hitMarker, "_hitLabel", hitLabel, "_hitGroup", hitGroup, "_deathGroup", deathGroup, "_deathTitle", deathTitle, "_deathInfo", deathInfo, "_restart", restart);
             return hud;
         }
 
@@ -70,10 +68,10 @@ namespace Overtime.Editor
         {
             var root = movement.transform;
             var top = new Vector2(0.5f, 1f);
-            var panel = Panel("Security Encounter", root, top, Vector2.zero, new Vector2(248f, 43f), s_ink);
-            panel.rectTransform.pivot = top;
-            panel.rectTransform.anchoredPosition = new Vector2(0f, -42f);
-            var remaining = Label("Remaining Hostiles", panel.transform, new Vector2(13f, 6f), new Vector2(222f, 30f), string.Empty, 18f, s_cyan);
+            var panel = Rect("Security Encounter", root, top, Vector2.zero, new Vector2(248f, 43f));
+            panel.pivot = top;
+            panel.anchoredPosition = new Vector2(0f, -42f);
+            var remaining = Label("Remaining Hostiles", panel.transform, new Vector2(13f, 6f), new Vector2(222f, 30f), $"HOSTILES  {enemies.Length:00}", 18f, s_cyan);
             remaining.alignment = TextAlignmentOptions.Center;
 
             PlaygroundSceneBuilder.Wire(hud, "_enemies", enemies, "_remainingLabel", remaining);
@@ -85,23 +83,23 @@ namespace Overtime.Editor
             var root = movement.transform;
             root.Find("Controls/Bindings").GetComponent<TMP_Text>().text = "WASD  MOVE   MOUSE  LOOK\nSPACE  JUMP / GRAVITY   LMB  FIRE\nR  RELOAD   F5  RETRY SECTOR\nQ  RESET   E  OVERRIDE   C  RECALL\nSHIFT  BULLET TIME   ESC  RELEASE\nF3  DEBUG   F4  MOTION   H  HINTS";
             InstallDamageArcs(root, combat);
-            var top = new Vector2(0.5f, 1f);
-            var card = Panel("Sector Encounter", root, top, Vector2.zero, new Vector2(357f, 113f), s_ink);
-            card.rectTransform.pivot = top;
-            card.rectTransform.anchoredPosition = new Vector2(0f, -38f);
-            Panel("Sector Accent", card.transform, Vector2.zero, new Vector2(0f, 0f), new Vector2(3f, 113f), s_cyan);
+            var card = Panel("Sector Encounter", root, Vector2.up, Vector2.zero, new Vector2(357f, 113f), new Color(0.035f, 0.051f, 0.061f, 0.45f)).rectTransform;
+            card.pivot = Vector2.up;
+            card.anchoredPosition = new Vector2(40f, -32f);
             var room = Label("Room Number", card.transform, new Vector2(17f, 81f), new Vector2(280f, 20f), string.Empty, 15f, s_cyan);
             var title = Label("Room Title", card.transform, new Vector2(17f, 47f), new Vector2(326f, 31f), string.Empty, 23f, s_paper);
             var state = Label("Encounter Status", card.transform, new Vector2(17f, 16f), new Vector2(325f, 23f), string.Empty, 15f, s_orange);
+            CombatHudLayout.SetSectorDefaults(root, route, room, title, state);
             var arrow = CenterLabel("Exit Direction", card.transform, new Vector2(145f, -29f), new Vector2(30f, 30f), "^", 24f, s_cyan);
             arrow.gameObject.SetActive(false);
 
             var announcement = CenterLabel("Room Announcement", root, new Vector2(0f, 230f), new Vector2(750f, 56f), string.Empty, 35f, s_cyan);
             var intro = AddOverlayGroup(announcement.gameObject);
-            var win = Panel("Sector Success", root, Vector2.zero, Vector2.zero, Vector2.zero, new Color(0.035f, 0.059f, 0.084f, 0.96f));
-            win.rectTransform.anchorMax = Vector2.one;
+            var win = Rect("Sector Success", root, Vector2.zero, Vector2.zero, Vector2.zero);
+            win.anchorMax = Vector2.one;
             var success = AddOverlayGroup(win.gameObject);
-            CenterLabel("Sector Clear Title", win.transform, new Vector2(0f, 143f), new Vector2(1200f, 88f), "SECURITY SECTOR CLEARED", 58f, s_paper);
+            var heading = CenterLabel("Sector Clear Title", win, new Vector2(0f, 143f), new Vector2(1200f, 88f), "SECURITY SECTOR CLEARED", 58f, s_paper);
+            CombatHudLayout.StyleHeading(heading, new Color(0.42f, 0.92f, 0.86f));
             var stats = CenterLabel("Sector Statistics", win.transform, new Vector2(0f, -9f), new Vector2(760f, 185f), string.Empty, 25f, s_cyan);
             CenterLabel("Replay Instructions", win.transform, new Vector2(0f, -158f), new Vector2(480f, 38f), "F5  /  RETRY SECTOR", 17f, s_orange);
 

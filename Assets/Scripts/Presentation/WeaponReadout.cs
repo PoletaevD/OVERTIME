@@ -64,11 +64,11 @@ namespace Overtime
                 _progress = progress;
                 if (progress >= 0)
                 {
-                    _digits.SetText("<mark=#13252CD8>{0:00} <size=60%>{1:000}</size></mark>\n<size=45%>{2:0}%</size>", _magazine, _reserve, progress);
+                    _digits.SetText("{0:00} <size=60%>{1:000}</size>\n<size=45%>{2:0}%</size>", _magazine, _reserve, progress);
                 }
                 else
                 {
-                    _digits.SetText("<mark=#13252CD8>{0:00} <size=60%>{1:000}</size></mark>", _magazine, _reserve);
+                    _digits.SetText("{0:00} <size=60%>{1:000}</size>", _magazine, _reserve);
                 }
             }
 

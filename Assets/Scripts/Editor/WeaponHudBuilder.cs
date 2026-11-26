@@ -9,23 +9,6 @@ namespace Overtime.Editor
         internal void BuildWeaponHud(PlaygroundHud movement, SectorRoute route, TemporalDirector director, WeaponDefinition[] options)
         {
             var root = movement.transform;
-            var combat = root.GetComponent<CombatHud>();
-            var readout = (RectTransform)root.Find("ARC-01 Readout");
-            readout.sizeDelta = new Vector2(386f, 139f);
-            var status = readout.Find("Weapon Status").GetComponent<TMP_Text>();
-            status.rectTransform.anchoredPosition = new Vector2(18f, 100f);
-            var ammo = readout.Find("Magazine and Reserve").GetComponent<TMP_Text>();
-            ammo.rectTransform.anchoredPosition = new Vector2(18f, 45f);
-            var reload = readout.Find("Reload Track").GetComponent<Image>();
-            reload.rectTransform.anchoredPosition = new Vector2(18f, 38f);
-            var fill = readout.Find("Reload Fill").GetComponent<Image>();
-            fill.rectTransform.anchoredPosition = reload.rectTransform.anchoredPosition;
-            var icon = Panel("Active Weapon Icon", readout, Vector2.zero, new Vector2(275f, 89f), new Vector2(91f, 43f), s_paper);
-            icon.preserveAspect = true;
-            var stowed = Label("Stowed Weapon Readout", readout, new Vector2(18f, 9f), new Vector2(352f, 22f), string.Empty, 15f, s_muted);
-            var action = Label("Weapon Action", readout, new Vector2(18f, 81f), new Vector2(260f, 17f), string.Empty, 13f, s_orange);
-            PlaygroundSceneBuilder.Wire(combat, "_weaponIcon", icon, "_stowedLabel", stowed, "_actionLabel", action);
-
             var reticle = root.Find("Reticle");
             var precision = Rect("Charge Reticle", reticle, Vector2.one * 0.5f, Vector2.zero, Vector2.zero);
             Panel("Precision Point", precision, Vector2.one * 0.5f, new Vector2(-1.5f, -1.5f), new Vector2(3f, 3f), s_paper);
@@ -88,6 +71,7 @@ namespace Overtime.Editor
 
             var controller = existing != null ? existing : root.gameObject.AddComponent<WeaponSelectionHud>();
             PlaygroundSceneBuilder.Wire(controller, "_route", route, "_director", director, "_overlay", group, "_buttons", buttons);
+            overlay.gameObject.SetActive(false);
         }
     }
 }

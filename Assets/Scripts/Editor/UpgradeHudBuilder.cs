@@ -114,6 +114,7 @@ namespace Overtime.Editor
             {
                 var position = new Vector2(index % 9 * 42f, index / 9 * 35f);
                 var icon = Panel($"Run Protocol {index + 1}", strip, Vector2.zero, position, new Vector2(28f, 28f), s_paper);
+                icon.gameObject.SetActive(false);
                 var level = Label("Level", icon.transform, new Vector2(27f, 0f), new Vector2(12f, 17f), string.Empty, 13f, s_paper);
                 icons.GetArrayElementAtIndex(index).objectReferenceValue = icon;
                 levels.GetArrayElementAtIndex(index).objectReferenceValue = level;
@@ -160,6 +161,7 @@ namespace Overtime.Editor
             {
                 var position = new Vector2(index % 9 * 42f, index / 9 * 35f);
                 icons[index] = Panel($"Run Protocol {index + 1}", strip, Vector2.zero, position, new Vector2(28f, 28f), s_paper);
+                icons[index].gameObject.SetActive(false);
                 levels[index] = Label("Level", icons[index].transform, new Vector2(27f, 0f), new Vector2(12f, 17f), string.Empty, 13f, s_paper);
             }
 
@@ -179,11 +181,13 @@ namespace Overtime.Editor
             var notice = AddOverlayGroup(noticeText.gameObject);
 
             var top = new Vector2(0.5f, 1f);
-            var panel = Panel("Current Protocol Build", root, top, new Vector2(0f, -177f), new Vector2(1240f, 732f), new Color(0.035f, 0.059f, 0.084f, 0.97f));
-            panel.rectTransform.pivot = top;
+            var panel = Rect("Current Protocol Build", root, top, new Vector2(0f, -177f), new Vector2(1240f, 732f));
+            panel.pivot = top;
+            panel.anchoredPosition = new Vector2(0f, -177f);
             var group = AddOverlayGroup(panel.gameObject);
             Panel("Build Accent", panel.transform, Vector2.zero, new Vector2(0f, 728f), new Vector2(1240f, 4f), s_cyan);
-            Label("Current Build Title", panel.transform, new Vector2(28f, 661f), new Vector2(530f, 48f), "RUN PROTOCOLS", 38f, s_paper).fontStyle = FontStyles.Bold;
+            var heading = Label("Current Build Title", panel, new Vector2(28f, 661f), new Vector2(530f, 48f), "RUN PROTOCOLS", 38f, s_paper);
+            CombatHudLayout.StyleHeading(heading, new Color(0.74f, 0.84f, 0.88f));
             var weapon = Label("Effective Weapon Stats", panel.transform, new Vector2(28f, 611f), new Vector2(1184f, 51f), string.Empty, 18f, s_cyan);
             var chrono = Label("Effective Chrono Stats", panel.transform, new Vector2(28f, 581f), new Vector2(1184f, 25f), string.Empty, 18f, s_muted);
             Panel("Build Divider", panel.transform, Vector2.zero, new Vector2(28f, 568f), new Vector2(1184f, 2f), new Color(0.18f, 0.32f, 0.38f));
